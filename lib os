@@ -1,0 +1,824 @@
+-- ModernGlassUI.lua
+-- Clean, modern "glass" remaster of original library.
+-- Usage:
+--   local ModernUI = require(path_to_this_module)
+--   local uiRoot = ModernUI:Init(configTable, playerGuiParent)
+--   local cat = uiRoot:CreateCategory("My Cat", UDim2.fromOffset(200,36)) -- draggable
+--   local sec = cat:CreateSection("Weapons")
+--   sec:CreateButton("Do Thing", function() print("clicked") end)
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+-- Theme / config
+local Theme = {
+    Primary = Color3.fromRGB(28, 36, 52),
+    Secondary = Color3.fromRGB(18, 26, 40),
+    Accent = Color3.fromRGB(64, 160, 160),
+    Text = Color3.fromRGB(240, 245, 250),
+    MutedText = Color3.fromRGB(180, 190, 200),
+    Font = Enum.Font.Gotham,
+    TextSize = 13,
+    HeaderHeight = 34,
+    EntryMargin = 6,
+    Animation = {Time = 0.25, Easing = Enum.EasingStyle.Quad, Direction = Enum.EasingDirection.Out},
+    PanelWidth = 300,
+    DefaultEntryHeight = 36,
+    GlassTransparency = 0.48,
+    StrokeTransparency = 0.7
+}
+
+-- Basic helpers
+local function newInstance(class, props, parent)
+    local obj = Instance.new(class)
+    if props then
+        for k, v in pairs(props) do
+            if k == "Children" and type(v) == "table" then
+                -- handled after parent set
+            else
+                obj[k] = v
+            end
+        end
+    end
+    if parent then obj.Parent = parent end
+    if props and props.Children then
+        for _, child in ipairs(props.Children) do
+            child.Parent = obj
+        end
+    end
+    return obj
+end
+
+local function tween(obj, props, t)
+    t = t or Theme.Animation.Time
+    local tweenInfo = TweenInfo.new(t, Theme.Animation.Easing, Theme.Animation.Direction)
+    TweenService:Create(obj, tweenInfo, props):Play()
+end
+
+-- Base node classes (keeps structure like original)
+local NodeType = {
+    Unknown = 0, Root = 1, Category = 2, Section = 3, Header = 4, Entry = 5, UiElement = 6
+}
+
+local Node = {}
+Node.__index = Node
+function Node:New(t, parent, guiObject)
+    local self = setmetatable({}, Node)
+    self.Type = t or NodeType.Unknown
+    self.Parent = parent
+    self.Children = {}
+    self.GuiObject = guiObject or nil
+    if parent then
+        parent:AddChild(self)
+    end
+    return self
+end
+function Node:AddChild(child)
+    child.Parent = self
+    table.insert(self.Children, child)
+    if child.GuiObject and self.GuiObject then
+        child.GuiObject.Parent = self.GuiObject
+    end
+end
+function Node:RecursiveUpdateGui()
+    self:UpdateGui()
+    for _, c in ipairs(self.Children) do
+        c:RecursiveUpdateGui()
+    end
+end
+function Node:UpdateGui() end
+
+-- UiElement (base for interactive elements)
+local UiElement = setmetatable({}, {__index = Node})
+UiElement.__index = UiElement
+function UiElement:New(size, position, title)
+    local self = setmetatable(Node:New(NodeType.UiElement, nil, nil), UiElement)
+    self.Size = size
+    self.Position = position
+    self.Title = title or ""
+    self.Value = nil
+    return self
+end
+function UiElement:SetValue() end
+function UiElement:GetValue() return self.Value end
+
+-- Collapser (small +/- button)
+local Collapser = setmetatable({}, {__index = UiElement})
+Collapser.__index = Collapser
+function Collapser:New()
+    local inst = setmetatable(UiElement:New(UDim2.new(0,24,0,24), UDim2.new(1,-30,0,5), ""), Collapser)
+    inst.GuiObject = newInstance("TextButton", {
+        Text = "-",
+        TextColor3 = Theme.Text,
+        BackgroundTransparency = 1,
+        AutoButtonColor = false,
+        Font = Theme.Font,
+        TextSize = Theme.TextSize,
+        Size = inst.Size,
+        Position = inst.Position
+    })
+    inst.GuiObject.MouseButton1Click:Connect(function()
+        if inst.Parent and inst.Parent.Parent then
+            local cat = inst.Parent.Parent
+            cat.Collapsed = not cat.Collapsed
+            if cat.Collapsed then cat:Collapse() else cat:Expand() end
+        end
+    end)
+    return inst
+end
+function Collapser:Collapse() if self.GuiObject then self.GuiObject.Text = "+" end end
+function Collapser:Expand() if self.GuiObject then self.GuiObject.Text = "-" end end
+function Collapser:UpdateGui()
+    self.GuiObject.TextScaled = true
+    self.GuiObject.TextColor3 = Theme.Text
+    self.GuiObject.BackgroundTransparency = 1
+    self.GuiObject.Size = self.Size
+    self.GuiObject.Position = self.Position
+    if self.Parent and self.Parent.Parent and self.Parent.Parent.Collapsed then
+        self.GuiObject.Text = "+"
+    else
+        self.GuiObject.Text = "-"
+    end
+end
+
+-- Header for sections (title bar)
+local Header = setmetatable({}, {__index = Node})
+Header.__index = Header
+function Header:New()
+    local self = setmetatable(Node:New(NodeType.Header, nil, nil), Header)
+    self.GuiObject = newInstance("TextLabel", {
+        Size = UDim2.new(1,0,0,Theme.HeaderHeight),
+        BackgroundTransparency = 1,
+        Text = "",
+        Font = Theme.Font,
+        TextSize = Theme.TextSize * 1.15,
+        TextColor3 = Theme.Text,
+        BorderSizePixel = 0,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        Padding = UDim.new(0,0)
+    })
+    -- Collapser
+    self.CollapseButton = Collapser:New()
+    self:AddChild(self.CollapseButton)
+    return self
+end
+function Header:UpdateGui()
+    if self.Parent and self.Parent.Title then
+        self.GuiObject.Text = "  " .. tostring(self.Parent.Title)
+    end
+    self.GuiObject.Font = Theme.Font
+    self.GuiObject.TextSize = Theme.TextSize * 1.15
+    self.GuiObject.TextColor3 = Theme.Text
+    self.GuiObject.BackgroundTransparency = 1
+end
+
+-- Generic Entry (frame) holding an element
+local Entry = setmetatable({}, {__index = Node})
+Entry.__index = Entry
+function Entry:New(height)
+    local self = setmetatable(Node:New(NodeType.Entry, nil, nil), Entry)
+    self.Value = nil
+    self.Height = height or Theme.DefaultEntryHeight
+    self.GuiObject = newInstance("Frame", {
+        Size = UDim2.new(1,0,0,self.Height),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0
+    })
+    return self
+end
+function Entry:UpdateGui()
+    -- set frame visuals by parent container
+    self.GuiObject.Size = UDim2.new(1,0,0,self.Height)
+end
+
+-- Section container
+local Section = setmetatable({}, {__index = Node})
+Section.__index = Section
+function Section:New(title)
+    local self = setmetatable(Node:New(NodeType.Section, nil, nil), Section)
+    self.Collapsed = false
+    self.Height = 0
+    self.Title = title or ""
+    self.GuiObject = newInstance("Frame", {
+        Size = UDim2.new(0, Theme.PanelWidth, 0, 0),
+        BackgroundColor3 = Theme.Secondary,
+        BorderSizePixel = 0,
+        ClipsDescendants = true
+    })
+    -- glass look: gradient + stroke + shadow
+    local stroke = newInstance("UIStroke", {Color = Theme.Text, Transparency = Theme.StrokeTransparency}, self.GuiObject)
+    local corner = newInstance("UICorner", {CornerRadius = UDim.new(0,8)}, self.GuiObject)
+    -- optional blur if game's allowed: add BlurEffect at ScreenGui level (handled later)
+    self.Header = Header:New()
+    self:AddChild(self.Header)
+    return self
+end
+
+function Section:ReorderGui(noTween)
+    local totalHeight = Theme.HeaderHeight
+    if not self.Collapsed then
+        for _, child in ipairs(self.Children) do
+            if child.Type ~= NodeType.Header then
+                child.GuiObject:TweenPosition(UDim2.new(0, 0, 0, totalHeight), Theme.Animation.Direction, Theme.Animation.Easing, noTween and 0 or Theme.Animation.Time, true)
+                totalHeight = totalHeight + child.Height + Theme.EntryMargin
+            end
+        end
+    end
+    totalHeight = totalHeight - Theme.EntryMargin
+    tween(self.GuiObject, {Size = UDim2.new(0, Theme.PanelWidth, 0, totalHeight)}, noTween and 0 or Theme.Animation.Time)
+    self.Height = totalHeight
+    if self.Parent and self.Parent.Type ~= NodeType.Root then
+        -- parent (category) needs reorder as well
+        if self.Parent.ReorderGui then self.Parent:ReorderGui(noTween) end
+    end
+end
+
+function Section:Collapse()
+    self.Collapsed = true
+    self.Header.CollapseButton:Collapse()
+    self:ReorderGui()
+end
+function Section:Expand()
+    self.Collapsed = false
+    self.Header.CollapseButton:Expand()
+    self:ReorderGui()
+end
+function Section:UpdateGui()
+    self.GuiObject.Size = UDim2.new(0, Theme.PanelWidth, 0, 0)
+    self.GuiObject.BackgroundColor3 = Theme.Secondary
+    self.GuiObject.BorderSizePixel = 0
+    self.GuiObject.ClipsDescendants = true
+    self:ReorderGui(true)
+end
+
+function Section:AddEntry(e)
+    self:AddChild(e)
+    e.GuiObject.Parent = self.GuiObject
+    e:RecursiveUpdateGui()
+    self:ReorderGui(true)
+end
+
+-- Section factory wrapper for external use
+local SectionFactory = {}
+SectionFactory.__index = SectionFactory
+setmetatable(SectionFactory, {__index = Section})
+
+function SectionFactory:CreateSection(title)
+    local s = Section:New(title)
+    self:AddChild(s)
+    s.GuiObject.Parent = self.GuiObject
+    s:RecursiveUpdateGui()
+    return s
+end
+
+-- Category (draggable top-level panel)
+local Category = setmetatable({}, {__index = Node})
+Category.__index = Category
+function Category:New(title, draggable)
+    local self = setmetatable(Node:New(NodeType.Category, nil, nil), Category)
+    self.Draggable = (draggable == nil) and true or draggable
+    self.Title = title or ""
+    self.Collapsed = false
+    self.Position = UDim2.fromOffset(60, 80)
+    self.GuiObject = newInstance("Frame", {
+        Size = UDim2.new(0, Theme.PanelWidth, 0, Theme.HeaderHeight),
+        Position = self.Position,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0
+    })
+    -- panel container inside for glass card look
+    self.Panel = newInstance("Frame", {
+        Size = UDim2.new(1,0,1,0),
+        BackgroundColor3 = Theme.Secondary,
+        BackgroundTransparency = Theme.GlassTransparency,
+        BorderSizePixel = 0,
+        Parent = self.GuiObject
+    })
+    newInstance("UICorner", {CornerRadius = UDim.new(0,10)}, self.Panel)
+    newInstance("UIStroke", {Color = Theme.Text, Thickness = 1, Transparency = Theme.StrokeTransparency}, self.Panel)
+    -- header inside panel
+    self.Header = Header:New()
+    self.Header.GuiObject.Parent = self.Panel
+    self.Header.CollapseButton.GuiObject.Parent = self.Panel
+    self:AddChild(self.Header)
+    -- container for entries (children) inside the panel
+    self.EntriesFolder = newInstance("Frame", {Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1, Parent = self.Panel})
+    self.EntriesFolder.Name = "Entries"
+    -- create draggable behavior
+    self:ApplyDraggability()
+    return self
+end
+
+function Category:ApplyDraggability()
+    local dragging = false
+    local dragStart, startPos
+    local headerGui = self.Header.GuiObject
+    headerGui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and self.Draggable then
+            dragging = true
+            dragStart = input.Position
+            startPos = self.GuiObject.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    headerGui.InputChanged:Connect(function(input)
+        -- required to receive MouseMovement
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            self.GuiObject.Position = newPos
+        end
+    end)
+end
+
+function Category:AutoMove()
+    -- basic auto layout: place next to siblings
+    local siblings = 0
+    if self.Parent then
+        for _, v in ipairs(self.Parent.Children) do
+            siblings = siblings + 1
+        end
+    end
+    local x = 100 + (siblings - 1) * (Theme.PanelWidth + 24)
+    self.GuiObject.Position = UDim2.fromOffset(x, 36)
+end
+
+function Category:UpdateGui()
+    self.Panel.Size = UDim2.new(1,0,1,0)
+    self.Header:UpdateGui()
+    self.Header.GuiObject.Parent = self.Panel
+    self.Header.CollapseButton.GuiObject.Parent = self.Panel
+    -- ensure each child entry/frame parented
+    for _, child in ipairs(self.Children) do
+        if child ~= self.Header then
+            child.GuiObject.Parent = self.Panel
+        end
+    end
+end
+
+function Category:CreateSection(title)
+    local s = Section:New(title)
+    self:AddChild(s)
+    s.GuiObject.Parent = self.Panel
+    s:RecursiveUpdateGui()
+    return s
+end
+
+-- Basic UI Elements (Button, Slider, Textbox, Switch, ColorPicker, Selector, KeyDetector)
+-- Button
+local ButtonElement = setmetatable({}, {__index = UiElement})
+ButtonElement.__index = ButtonElement
+function ButtonElement:New(text, callback)
+    local self = setmetatable(UiElement:New(UDim2.new(1,-12,0,Theme.DefaultEntryHeight), UDim2.new(0,6,0,6), text), ButtonElement)
+    self.Callback = callback or function() end
+    self.GuiObject = newInstance("TextButton", {
+        Text = text,
+        Size = self.Size,
+        Position = self.Position,
+        BackgroundColor3 = Theme.Secondary,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Theme.Font,
+        TextSize = Theme.TextSize,
+        TextColor3 = Theme.Text
+    })
+    newInstance("UICorner", {CornerRadius = UDim.new(0,6)}, self.GuiObject)
+    local stroke = newInstance("UIStroke", {Color = Theme.Text, Transparency = Theme.StrokeTransparency}, self.GuiObject)
+    self.GuiObject.MouseEnter:Connect(function()
+        stroke.Transparency = 0.85
+    end)
+    self.GuiObject.MouseLeave:Connect(function()
+        stroke.Transparency = Theme.StrokeTransparency
+    end)
+    self.GuiObject.MouseButton1Click:Connect(function()
+        pcall(self.Callback)
+    end)
+    return self
+end
+function ButtonElement:UpdateGui()
+    self.GuiObject.Text = self.Title
+    self.GuiObject.Font = Theme.Font
+    self.GuiObject.TextColor3 = Theme.Text
+    self.GuiObject.TextSize = Theme.TextSize
+    self.GuiObject.BackgroundColor3 = Theme.Secondary
+    self.GuiObject.Size = self.Size
+    self.GuiObject.Position = self.Position
+end
+
+-- Slider element
+local SliderElement = setmetatable({}, {__index = UiElement})
+SliderElement.__index = SliderElement
+function SliderElement:New(title, callback, min, max, step, default, dynamic)
+    local self = setmetatable(UiElement:New(UDim2.new(1,-12,0,Theme.DefaultEntryHeight), UDim2.new(0,6,0,6), title), SliderElement)
+    self.Callback = callback or function() end
+    self.Min = min or 0
+    self.Max = max or 1
+    self.Step = step or 0.01
+    self.Value = default or self.Min
+    self.Dynamic = dynamic or false
+    -- create base frame
+    self.GuiObject = newInstance("Frame", {Size = self.Size, Position = self.Position, BackgroundTransparency = 1})
+    local bg = newInstance("Frame", {Size = UDim2.new(0.78,0,1,0), Position = UDim2.new(0,0,0,0), BackgroundColor3 = Theme.Secondary, Parent = self.GuiObject})
+    newInstance("UICorner", {CornerRadius = UDim.new(0,6)}, bg)
+    local filler = newInstance("Frame", {Size = UDim2.new((self.Value-self.Min)/(self.Max-self.Min),0,1,0), Position = UDim2.new(0,0,0,0), BackgroundColor3 = Theme.Accent, Parent = bg})
+    local handle = newInstance("Frame", {Size = UDim2.new(0,10,1,0), Position = UDim2.new(0,0,0,0), BackgroundColor3 = Theme.Text, Parent = filler})
+    newInstance("UICorner", {CornerRadius = UDim.new(0,4)}, filler)
+    local box = newInstance("TextBox", {Size = UDim2.new(0.22,-6,1,0), Position = UDim2.new(0.78,6,0,0), Text = tostring(self.Value), Parent = self.GuiObject, BackgroundColor3 = Theme.Secondary, TextColor3 = Theme.Text, Font = Theme.Font, TextSize = Theme.TextSize, BorderSizePixel = 0})
+    newInstance("UICorner", {CornerRadius = UDim.new(0,6)}, box)
+    -- interactions
+    local active = false
+    bg.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            active = true
+            local abs = bg.AbsoluteSize.X
+            local pos = math.clamp((inp.Position.X - bg.AbsolutePosition.X)/abs, 0, 1)
+            local newVal = self.Min + (pos * (self.Max - self.Min))
+            -- snap to step
+            newVal = math.round(newVal / self.Step) * self.Step
+            self.Value = math.clamp(newVal, self.Min, self.Max)
+            filler.Size = UDim2.new((self.Value-self.Min)/(self.Max-self.Min),0,1,0)
+            box.Text = tostring(self.Value)
+            if self.Dynamic then pcall(self.Callback, self.Value) end
+        end
+    end)
+    bg.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            active = false
+            pcall(self.Callback, self.Value)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if active and inp.UserInputType == Enum.UserInputType.MouseMovement then
+            local abs = bg.AbsoluteSize.X
+            local pos = math.clamp((inp.Position.X - bg.AbsolutePosition.X)/abs, 0, 1)
+            local newVal = self.Min + (pos * (self.Max - self.Min))
+            newVal = math.round(newVal / self.Step) * self.Step
+            self.Value = math.clamp(newVal, self.Min, self.Max)
+            filler.Size = UDim2.new((self.Value-self.Min)/(self.Max-self.Min),0,1,0)
+            box.Text = tostring(self.Value)
+            if self.Dynamic then pcall(self.Callback, self.Value) end
+        end
+    end)
+    box.FocusLost:Connect(function()
+        local n = tonumber(box.Text)
+        if n then
+            self.Value = math.clamp(math.round(n / self.Step) * self.Step, self.Min, self.Max)
+            box.Text = tostring(self.Value)
+            filler.Size = UDim2.new((self.Value-self.Min)/(self.Max-self.Min),0,1,0)
+            pcall(self.Callback, self.Value)
+        else
+            box.Text = tostring(self.Value)
+        end
+    end)
+    -- store references
+    self._filler = filler
+    self._box = box
+    return self
+end
+function SliderElement:SetValue(v)
+    self.Value = math.clamp(v, self.Min, self.Max)
+    self._filler.Size = UDim2.new((self.Value-self.Min)/(self.Max-self.Min),0,1,0)
+    self._box.Text = tostring(self.Value)
+end
+function SliderElement:GetValue() return self.Value end
+function SliderElement:UpdateGui()
+    -- reposition / style basics if needed
+end
+
+-- TextBox element
+local TextBoxElement = setmetatable({}, {__index = UiElement})
+TextBoxElement.__index = TextBoxElement
+function TextBoxElement:New(placeholder, callback, acceptPattern, dynamic)
+    local self = setmetatable(UiElement:New(UDim2.new(1,-12,0,Theme.DefaultEntryHeight), UDim2.new(0,6,0,6), placeholder), TextBoxElement)
+    self.Callback = callback or function() end
+    self.AcceptPattern = acceptPattern or "^.*$"
+    self.Dynamic = dynamic or false
+    self.Value = ""
+    self.GuiObject = newInstance("TextBox", {
+        Text = "",
+        PlaceholderText = placeholder or "",
+        Size = self.Size,
+        Position = self.Position,
+        BackgroundColor3 = Theme.Secondary,
+        TextColor3 = Theme.Text,
+        Font = Theme.Font,
+        TextSize = Theme.TextSize,
+        BorderSizePixel = 0
+    })
+    newInstance("UICorner", {CornerRadius = UDim.new(0,6)}, self.GuiObject)
+    self.GuiObject.FocusLost:Connect(function()
+        if string.match(self.GuiObject.Text or "", self.AcceptPattern) then
+            self.Value = self.GuiObject.Text
+            pcall(self.Callback, self.Value)
+        else
+            self.GuiObject.Text = self.Value
+        end
+    end)
+    if self.Dynamic then
+        self.GuiObject.Changed:Connect(function(prop)
+            if prop == "Text" and self.GuiObject:IsFocused() then
+                if string.match(self.GuiObject.Text or "", self.AcceptPattern) then
+                    self.Value = self.GuiObject.Text
+                    pcall(self.Callback, self.Value)
+                else
+                    self.GuiObject.Text = self.Value
+                end
+            end
+        end)
+    end
+    return self
+end
+function TextBoxElement:SetValue(v)
+    self.Value = v or ""
+    if self.GuiObject then self.GuiObject.Text = self.Value end
+end
+function TextBoxElement:GetValue() return self.Value end
+
+-- Switch (toggle)
+local SwitchElement = setmetatable({}, {__index = UiElement})
+SwitchElement.__index = SwitchElement
+function SwitchElement:New(title, callback, default)
+    local self = setmetatable(UiElement:New(UDim2.new(1,-12,0,Theme.DefaultEntryHeight), UDim2.new(0,6,0,6), title), SwitchElement)
+    self.Callback = callback or function() end
+    self.Value = default or false
+    self.GuiObject = newInstance("Frame", {Size = self.Size, Position = self.Position, BackgroundTransparency = 1})
+    local label = newInstance("TextLabel", {Text = title, Size = UDim2.new(0.78,0,1,0), BackgroundTransparency = 1, TextColor3 = Theme.Text, Font = Theme.Font, TextSize = Theme.TextSize, Parent = self.GuiObject})
+    local btn = newInstance("TextButton", {Size = UDim2.new(0.18,0,0.6,0), Position = UDim2.new(0.82,0,0.2,0), BackgroundColor3 = Theme.Secondary, BorderSizePixel = 0, Parent = self.GuiObject})
+    newInstance("UICorner", {CornerRadius = UDim.new(0,8)}, btn)
+    local inner = newInstance("Frame", {Size = UDim2.new(0.48,0,1,0), Position = UDim2.new(0,0,0,0), BackgroundColor3 = Theme.Text, Parent = btn})
+    newInstance("UICorner", {CornerRadius = UDim.new(0,8)}, inner)
+    btn.MouseButton1Click:Connect(function()
+        self.Value = not self.Value
+        pcall(self.Callback, self.Value)
+        if self.Value then
+            tween(btn, {BackgroundColor3 = Theme.Accent}, 0.12)
+        else
+            tween(btn, {BackgroundColor3 = Theme.Secondary}, 0.12)
+        end
+    end)
+    self._btn = btn
+    return self
+end
+function SwitchElement:SetValue(v)
+    self.Value = v and true or false
+    if self._btn then
+        self._btn.BackgroundColor3 = (self.Value and Theme.Accent) or Theme.Secondary
+    end
+end
+function SwitchElement:GetValue() return self.Value end
+
+-- Color picker is simplified: uses three sliders + preview
+local ColorPickerElement = setmetatable({}, {__index = UiElement})
+ColorPickerElement.__index = ColorPickerElement
+function ColorPickerElement:New(title, callback, defaultColor)
+    local self = setmetatable(UiElement:New(UDim2.new(1,-12,0,Theme.DefaultEntryHeight), UDim2.new(0,6,0,6), title), ColorPickerElement)
+    self.Callback = callback or function() end
+    self.Value = defaultColor or Theme.Accent
+    -- we create a compact element that toggles open to show sliders
+    self.GuiObject = newInstance("Frame", {Size = self.Size, Position = self.Position, BackgroundTransparency = 1})
+    local label = newInstance("TextLabel", {Text = title, Size = UDim2.new(1,-40,1,0), BackgroundTransparency = 1, TextColor3 = Theme.Text, Font = Theme.Font, TextSize = Theme.TextSize, Parent = self.GuiObject})
+    local preview = newInstance("Frame", {Size = UDim2.new(0,28,0,20), Position = UDim2.new(1,-34,0.5,-10), BackgroundColor3 = self.Value, Parent = self.GuiObject})
+    newInstance("UICorner", {CornerRadius = UDim.new(0,6)}, preview)
+    local openBtn = newInstance("TextButton", {Size = UDim2.new(0,20,0,20), Position = UDim2.new(1,-60,0.5,-10), Text = "▾", BackgroundTransparency = 1, Parent = self.GuiObject, TextColor3 = Theme.Text, Font = Theme.Font, TextSize = Theme.TextSize})
+    self._preview = preview
+    self._open = false
+    self._slidersFrame = newInstance("Frame", {Size = UDim2.new(1,0,0,110), Position = UDim2.new(0,0,1,6), BackgroundTransparency = 1, Parent = self.GuiObject})
+    -- three sliders for RGB
+    local rS = SliderElement:New("R", function(v) self.Value = Color3.fromRGB(math.floor(v), math.floor(gS.Value), math.floor(bS.Value)); self._preview.BackgroundColor3 = self.Value; pcall(self.Callback, self.Value) end, 0, 255, 1, self.Value.R*255, true)
+    local gS = SliderElement:New("G", function(v) self.Value = Color3.fromRGB(math.floor(rS.Value), math.floor(v), math.floor(bS.Value)); self._preview.BackgroundColor3 = self.Value; pcall(self.Callback, self.Value) end, 0, 255, 1, self.Value.G*255, true)
+    local bS = SliderElement:New("B", function(v) self.Value = Color3.fromRGB(math.floor(rS.Value), math.floor(gS.Value), math.floor(v)); self._preview.BackgroundColor3 = self.Value; pcall(self.Callback, self.Value) end, 0, 255, 1, self.Value.B*255, true)
+    -- parent sliders inside the slidersFrame
+    rS.GuiObject.Parent = self._slidersFrame
+    gS.GuiObject.Parent = self._slidersFrame
+    bS.GuiObject.Parent = self._slidersFrame
+    rS.GuiObject.Position = UDim2.new(0,0,0,0)
+    gS.GuiObject.Position = UDim2.new(0,0,0,36)
+    bS.GuiObject.Position = UDim2.new(0,0,0,72)
+    -- show/hide toggling
+    openBtn.MouseButton1Click:Connect(function()
+        self._open = not self._open
+        if self._open then
+            tween(self.GuiObject, {Size = UDim2.new(self.Size.X.Scale, self.Size.X.Offset, 0, Theme.DefaultEntryHeight + 110)}, 0.18)
+        else
+            tween(self.GuiObject, {Size = self.Size}, 0.18)
+        end
+    end)
+    self._r = rS; self._g = gS; self._b = bS
+    return self
+end
+function ColorPickerElement:SetValue(c)
+    self.Value = c
+    if self._preview then self._preview.BackgroundColor3 = c end
+    if self._r and self._g and self._b then
+        self._r:SetValue(c.R*255); self._g:SetValue(c.G*255); self._b:SetValue(c.B*255)
+    end
+    pcall(self.Callback, self.Value)
+end
+function ColorPickerElement:GetValue() return self.Value end
+
+-- Selector (drop-down search list)
+local SelectorElement = setmetatable({}, {__index = UiElement})
+SelectorElement.__index = SelectorElement
+function SelectorElement:New(title, optionsGetter, callback)
+    local self = setmetatable(UiElement:New(UDim2.new(1,-12,0,Theme.DefaultEntryHeight), UDim2.new(0,6,0,6), title), SelectorElement)
+    self.Callback = callback or function() end
+    self.GetOptions = optionsGetter or function() return {} end
+    self.Value = nil
+    self._expanded = false
+    self.GuiObject = newInstance("Frame", {Size = self.Size, Position = self.Position, BackgroundTransparency = 1})
+    local btn = newInstance("TextButton", {Text = title.." [Empty]", Size = UDim2.new(1,0,1,0), BackgroundColor3 = Theme.Secondary, TextColor3 = Theme.Text, Font = Theme.Font, TextSize = Theme.TextSize, Parent = self.GuiObject, BorderSizePixel = 0})
+    newInstance("UICorner", {CornerRadius = UDim.new(0,6)}, btn)
+    self._list = newInstance("ScrollingFrame", {Size = UDim2.new(1,0,0,0), Position = UDim2.new(0,0,1,6), CanvasSize = UDim2.new(0,0,0,0), ScrollBarThickness = 6, BackgroundTransparency = 1, Parent = self.GuiObject})
+    btn.MouseButton1Click:Connect(function()
+        self._expanded = not self._expanded
+        if self._expanded then
+            local opts = self:GetOptions()
+            local y = 0
+            self._list:ClearAllChildren()
+            for i, opt in ipairs(opts) do
+                local tbtn = newInstance("TextButton", {Text = tostring(opt), Size = UDim2.new(1,-8,0,28), Position = UDim2.new(0,4,0,y), BackgroundColor3 = Theme.Secondary, TextColor3 = Theme.Text, Parent = self._list, BorderSizePixel = 0})
+                newInstance("UICorner", {CornerRadius = UDim.new(0,6)}, tbtn)
+                tbtn.MouseButton1Click:Connect(function()
+                    self.Value = opt
+                    btn.Text = string.format("%s [%s]", title, tostring(opt))
+                    self._expanded = false
+                    self._list.Size = UDim2.new(1,0,0,0)
+                    pcall(self.Callback, opt)
+                end)
+                y = y + 28 + 6
+            end
+            self._list.CanvasSize = UDim2.new(0,0,0,y)
+            self._list.Size = UDim2.new(1,0,0, math.min(y, 160))
+        else
+            self._list:ClearAllChildren()
+            self._list.Size = UDim2.new(1,0,0,0)
+        end
+    end)
+    return self
+end
+function SelectorElement:GetValue() return self.Value end
+function SelectorElement:SetValue(v)
+    self.Value = v
+end
+
+-- Key detector
+local KeyDetectElement = setmetatable({}, {__index = UiElement})
+KeyDetectElement.__index = KeyDetectElement
+function KeyDetectElement:New(title, callback, default)
+    local self = setmetatable(UiElement:New(UDim2.new(1,-12,0,Theme.DefaultEntryHeight), UDim2.new(0,6,0,6), title), KeyDetectElement)
+    self.Callback = callback or function() end
+    self.Value = default or Enum.KeyCode.Unknown
+    self.GuiObject = newInstance("Frame", {Size = self.Size, Position = self.Position, BackgroundTransparency = 1})
+    local label = newInstance("TextLabel", {Text = title, Size = UDim2.new(0.7,0,1,0), BackgroundTransparency = 1, TextColor3 = Theme.Text, Font = Theme.Font, TextSize = Theme.TextSize, Parent = self.GuiObject})
+    local btn = newInstance("TextButton", {Size = UDim2.new(0.28,0,1,0), Position = UDim2.new(0.72,0,0,0), Text = self.Value.Name, BackgroundColor3 = Theme.Secondary, Parent = self.GuiObject, BorderSizePixel = 0})
+    newInstance("UICorner", {CornerRadius = UDim.new(0,6)}, btn)
+    btn.MouseButton1Click:Connect(function()
+        btn.Text = "..."
+        local event
+        event = UserInputService.InputBegan:Wait()
+        while event and event.UserInputType ~= Enum.UserInputType.Keyboard do
+            event = UserInputService.InputBegan:Wait()
+        end
+        if event and event.KeyCode then
+            self.Value = event.KeyCode
+            btn.Text = self.Value.Name
+            pcall(self.Callback, self.Value)
+        end
+    end)
+    return self
+end
+function KeyDetectElement:SetValue(kc)
+    self.Value = kc
+end
+function KeyDetectElement:GetValue() return self.Value end
+
+-- Root GUI manager
+local Root = {}
+Root.__index = Root
+function Root:New(parentGui)
+    local self = setmetatable(Node:New(NodeType.Root, nil, nil), Root)
+    self.ScreenGui = newInstance("ScreenGui", {Parent = parentGui or game.Players.LocalPlayer:WaitForChild("PlayerGui")})
+    self.ScreenGui.IgnoreGuiInset = true
+    self.ScreenGui.ResetOnSpawn = false
+    -- main container frame for safety
+    self.GuiObject = newInstance("Frame", {Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1, Parent = self.ScreenGui})
+    return self
+end
+
+function Root:CreateCategory(title, posOrAuto)
+    local cat = Category:New(title, true)
+    self:AddChild(cat)
+    cat.GuiObject.Parent = self.ScreenGui
+    if type(posOrAuto) == "table" or type(posOrAuto) == "UDim2" then
+        cat.GuiObject.Position = posOrAuto
+    else
+        cat:AutoMove()
+    end
+    cat:RecursiveUpdateGui()
+    return cat
+end
+
+function Root:Init(conf)
+    if conf then
+        for k,v in pairs(conf) do Theme[k] = v end
+    end
+    -- optionally add blur effect to the GUI (ScreenSpace)
+    -- NOTE: LocalScripts can't create PostEffect in some contexts, so it's optional and commented
+    -- local blur = Instance.new("BlurEffect") blur.Size = 6 blur.Parent = game.Lighting
+    self:RecursiveUpdateGui()
+    return self
+end
+
+-- convenience methods on Category/Section to create elements (keeps old API)
+function Category:CreateButton(text, callback)
+    local eEntry = Entry:New(Theme.DefaultEntryHeight)
+    local btn = ButtonElement:New(text, callback)
+    eEntry:AddChild(btn)
+    eEntry.GuiObject.Parent = self.Panel
+    self:AddEntry(eEntry)
+    return btn
+end
+
+function Section:CreateButton(text, callback)
+    local eEntry = Entry:New(Theme.DefaultEntryHeight)
+    local btn = ButtonElement:New(text, callback)
+    eEntry:AddChild(btn)
+    eEntry.GuiObject.Parent = self.GuiObject
+    self:AddEntry(eEntry)
+    return btn
+end
+
+function Section:CreateSlider(title, callback, min, max, step, default, dynamic)
+    local eEntry = Entry:New(Theme.DefaultEntryHeight)
+    local s = SliderElement:New(title, callback, min, max, step, default, dynamic)
+    eEntry:AddChild(s)
+    s.GuiObject.Parent = self.GuiObject
+    self:AddEntry(eEntry)
+    return s
+end
+
+function Section:CreateTextBox(title, callback, pattern, dynamic)
+    local eEntry = Entry:New(Theme.DefaultEntryHeight)
+    local tb = TextBoxElement:New(title, callback, pattern, dynamic)
+    eEntry:AddChild(tb)
+    tb.GuiObject.Parent = self.GuiObject
+    self:AddEntry(eEntry)
+    return tb
+end
+
+function Section:CreateSwitch(title, callback, default)
+    local eEntry = Entry:New(Theme.DefaultEntryHeight)
+    local sw = SwitchElement:New(title, callback, default)
+    eEntry:AddChild(sw)
+    sw.GuiObject.Parent = self.GuiObject
+    self:AddEntry(eEntry)
+    return sw
+end
+
+function Section:CreateColorPicker(title, callback, default)
+    local eEntry = Entry:New(Theme.DefaultEntryHeight)
+    local cp = ColorPickerElement:New(title, callback, default)
+    eEntry:AddChild(cp)
+    cp.GuiObject.Parent = self.GuiObject
+    self:AddEntry(eEntry)
+    return cp
+end
+
+function Section:CreateSelector(title, getter, callback)
+    local eEntry = Entry:New(Theme.DefaultEntryHeight)
+    local sel = SelectorElement:New(title, getter, callback)
+    eEntry:AddChild(sel)
+    sel.GuiObject.Parent = self.GuiObject
+    self:AddEntry(eEntry)
+    return sel
+end
+
+function Section:CreateKeyDetector(title, callback, default)
+    local eEntry = Entry:New(Theme.DefaultEntryHeight)
+    local kd = KeyDetectElement:New(title, callback, default)
+    eEntry:AddChild(kd)
+    kd.GuiObject.Parent = self.GuiObject
+    self:AddEntry(eEntry)
+    return kd
+end
+
+-- expose module
+local ModernGlassUI = {}
+ModernGlassUI.__index = ModernGlassUI
+
+function ModernGlassUI:Init(config, parentGui)
+    local root = Root:New(parentGui)
+    root:Init(config)
+    return root
+end
+
+-- default theme export in case user wants to tweak
+ModernGlassUI.Theme = Theme
+
+return ModernGlassUI
