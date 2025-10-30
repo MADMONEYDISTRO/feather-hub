@@ -1,6 +1,3 @@
--- Advanced Login GUI with Loading Screen
--- Place this in StarterGui as a LocalScript
-
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
@@ -122,7 +119,8 @@ loadingPercent.Text = "0%"
 loadingPercent.TextColor3 = Color3.fromRGB(100, 150, 220)
 loadingPercent.Font = Enum.Font.GothamBold
 loadingPercent.TextSize = 20
-loadingPercent.Parent = loadingFrame
+loadingPercent.Parent = loadingFrame 
+
 
 -- Login Frame
 local loginFrame = Instance.new("Frame")
@@ -199,47 +197,21 @@ local profileImageCorner = Instance.new("UICorner")
 profileImageCorner.CornerRadius = UDim.new(1, 0)
 profileImageCorner.Parent = profileImage
 
+
 -- Welcome Text
 local welcomeText = Instance.new("TextLabel")
 welcomeText.Name = "WelcomeText"
 welcomeText.Size = UDim2.new(1, -40, 0, 40)
 welcomeText.Position = UDim2.new(0, 20, 0, 195)
 welcomeText.BackgroundTransparency = 1
-welcomeText.Text = "Welcome,"
+welcomeText.Text = "Glide past limits"
 welcomeText.TextColor3 = Color3.fromRGB(100, 130, 170)
 welcomeText.Font = Enum.Font.Gotham
 welcomeText.TextSize = 18
 welcomeText.TextXAlignment = Enum.TextXAlignment.Center
 welcomeText.Parent = loginContainer
 
--- Username Text
-local usernameText = Instance.new("TextLabel")
-usernameText.Name = "UsernameText"
-usernameText.Size = UDim2.new(1, -40, 0, 40)
-usernameText.Position = UDim2.new(0, 20, 0, 230)
-usernameText.BackgroundTransparency = 1
-usernameText.Text = player.Name
-usernameText.TextColor3 = Color3.fromRGB(100, 150, 220)
-usernameText.Font = Enum.Font.GothamBold
-usernameText.TextSize = 28
-usernameText.TextXAlignment = Enum.TextXAlignment.Center
-usernameText.Parent = loginContainer
-
--- Username Input
-local usernameInput = Instance.new("TextBox")
-usernameInput.Name = "UsernameInput"
-usernameInput.Size = UDim2.new(1, -60, 0, 50)
-usernameInput.Position = UDim2.new(0, 30, 0, 295)
-usernameInput.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-usernameInput.BorderSizePixel = 0
-usernameInput.PlaceholderText = "Username"
-usernameInput.PlaceholderColor3 = Color3.fromRGB(150, 170, 200)
-usernameInput.Text = ""
-usernameInput.TextColor3 = Color3.fromRGB(80, 100, 140)
-usernameInput.Font = Enum.Font.Gotham
-usernameInput.TextSize = 16
-usernameInput.ClearTextOnFocus = false
-usernameInput.Parent = loginContainer
+local usernameInput = Instance.new("TextBox") usernameInput.Name = "UsernameInput" usernameInput.Size = UDim2.new(1, -60, 0, 50) usernameInput.Position = UDim2.new(0, 30, 0, 295) usernameInput.BackgroundColor3 = Color3.fromRGB(255, 255, 255) usernameInput.BorderSizePixel = 0 usernameInput.PlaceholderText = "Username" usernameInput.PlaceholderColor3 = Color3.fromRGB(150, 170, 200) usernameInput.Text = "" usernameInput.TextColor3 = Color3.fromRGB(80, 100, 140) usernameInput.Font = Enum.Font.Gotham usernameInput.TextSize = 16 usernameInput.ClearTextOnFocus = false usernameInput.Parent = loginContainer
 
 local usernameCorner = Instance.new("UICorner")
 usernameCorner.CornerRadius = UDim.new(0, 10)
@@ -510,8 +482,8 @@ for _, tabName in ipairs(tabs) do
 end
 pages["Combat"].Visible = true -- default
 
--- Sample buttons for Combat and Visuals
-local function createSampleButton(parent, text)
+-- Sample button creator with click logic
+local function createSampleButton(parent, text, onClick)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(0, 250, 0, 45)
     b.BackgroundColor3 = Color3.fromRGB(200, 220, 240)
@@ -522,28 +494,99 @@ local function createSampleButton(parent, text)
     b.AutoButtonColor = false
     local corner = Instance.new("UICorner", b)
     corner.CornerRadius = UDim.new(0,10)
+
     b.MouseEnter:Connect(function()
         TweenService:Create(b, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(180, 200, 255)}):Play()
     end)
     b.MouseLeave:Connect(function()
         TweenService:Create(b, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(200, 220, 240)}):Play()
     end)
+
+    -- Click action
+    if onClick then
+        b.MouseButton1Click:Connect(onClick)
+    end
+
     b.Parent = parent
     return b
 end
 
--- Combat sample buttons
-local combatFeatures = {"Aimbot", "Hitbox Expander", "Silent Aim", "Rapid Fire"}
-for i, name in ipairs(combatFeatures) do
-    local btn = createSampleButton(pages["Combat"], name)
-    btn.Position = UDim2.new(0, 10, 0, (i-1)*55)
+-- 🟦 Combat Buttons
+local combatFeatures = {
+    { "Aimbot F", function()
+        -- Paste your Aimbot code here:
+        -- Example:
+        -- loadstring(game:HttpGet("https://example.com/aimbot.lua"))()
+    end },
+    { "Hitbox Expander", function()
+        function getplrsname()
+for i,v in pairs(game:GetChildren()) do
+if v.ClassName == "Players" then
+return v.Name
+end
+end
+end
+local players = getplrsname()
+local plr = game[players].LocalPlayer
+coroutine.resume(coroutine.create(function()
+while  wait(1) do
+coroutine.resume(coroutine.create(function()
+for _,v in pairs(game[players]:GetPlayers()) do
+if v.Name ~= plr.Name and v.Character then
+v.Character.RightUpperLeg.CanCollide = false
+v.Character.RightUpperLeg.Transparency = 10
+v.Character.RightUpperLeg.Size = Vector3.new(13,13,13)
+ 
+v.Character.LeftUpperLeg.CanCollide = false
+v.Character.LeftUpperLeg.Transparency = 10
+v.Character.LeftUpperLeg.Size = Vector3.new(13,13,13)
+ 
+v.Character.HeadHB.CanCollide = false
+v.Character.HeadHB.Transparency = 10
+v.Character.HeadHB.Size = Vector3.new(13,13,13)
+ 
+v.Character.HumanoidRootPart.CanCollide = false
+v.Character.HumanoidRootPart.Transparency = 10
+v.Character.HumanoidRootPart.Size = Vector3.new(13,13,13)
+ 
+end
+end
+end))
+end
+end))
+    end },
+    { "inf ammo", function()
+        -- Paste your inf ammo code here
+    end },
+    { "Rapid Fire", function()
+        -- Paste your Rapid Fire code here
+    end },
+}
+
+for i, data in ipairs(combatFeatures) do
+    local btn = createSampleButton(pages["Combat"], data[1], data[2])
+    btn.Position = UDim2.new(0, 10, 0, (i - 1) * 55)
 end
 
--- Visuals sample buttons
-local visualFeatures = {"ESP", "Tracers", "Chams", "Crosshair"}
-for i, name in ipairs(visualFeatures) do
-    local btn = createSampleButton(pages["Visuals"], name)
-    btn.Position = UDim2.new(0, 10, 0, (i-1)*55)
+-- 🟩 Visual Buttons
+local visualFeatures = {
+    { "ESP E", function()
+        -- Paste your ESP code here
+    end },
+    { "Tracers", function()
+        -- Paste your Tracers code here
+    end },
+    { "Chams", function()
+        -- Paste your Chams code here
+    end },
+    { "Crosshair", function()
+        -- Paste your Crosshair code here
+    end },
+}
+
+for i, data in ipairs(visualFeatures) do
+    local btn = createSampleButton(pages["Visuals"], data[1], data[2])
+    btn.Position = UDim2.new(0, 10, 0, (i - 1) * 55)
 end
 
 -- Settings Tab (Themes + Settings)
