@@ -1,0 +1,44 @@
+-- Create minimized icon
+        local miniIcon = Instance.new("TextLabel")
+        miniIcon.Name = "MiniIcon"
+        miniIcon.Size = UDim2.new(1, 0, 1, 0)
+        miniIcon.BackgroundTransparency = 1
+        miniIcon.Font = Enum.Font.GothamBold
+        miniIcon.Text = ""
+        miniIcon.TextSize = 32
+        miniIcon.Parent = mainFrame
+        
+    else
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local goal = {
+            Size = originalSize,
+            Position = originalPosition
+        }
+        local tween = TweenService:Create(mainFrame, tweenInfo, goal)
+        tween:Play()
+        
+        if mainFrame:FindFirstChild("MiniIcon") then
+            mainFrame.MiniIcon:Destroy()
+        end
+        
+        wait(0.1)
+        header.Visible = true
+        navBar.Visible = true
+        contentFrame.Visible = true
+    end
+end
+
+minimizeButton.MouseButton1Click:Connect(toggleMinimize)
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and isMinimized then
+        toggleMinimize()
+    end
+end)
+
+-- Hotkey (Right Shift) to toggle minimize
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
+        toggleMinimize()
+    end
+end)
