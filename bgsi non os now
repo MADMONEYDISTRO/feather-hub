@@ -1,4 +1,633 @@
--- Create minimized icon
+-- Roblox Script UI with Draggable and Minimizable Features
+-- Hotkey: Right Shift to toggle minimize
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Create ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ScriptHubUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+-- Main Frame (Container)
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 480, 0, 600)
+mainFrame.Position = UDim2.new(0.5, -240, 0.5, -300)
+mainFrame.BackgroundColor3 = Color3.fromRGB(17, 24, 39)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 16)
+mainCorner.Parent = mainFrame
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(147, 51, 234)
+mainStroke.Transparency = 0.7
+mainStroke.Thickness = 2
+mainStroke.Parent = mainFrame
+
+-- Header
+local header = Instance.new("Frame")
+header.Name = "Header"
+header.Size = UDim2.new(1, 0, 0, 56)
+header.Position = UDim2.new(0, 0, 0, 0)
+header.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+header.BorderSizePixel = 0
+header.Parent = mainFrame
+
+local headerCorner = Instance.new("UICorner")
+headerCorner.CornerRadius = UDim.new(0, 16)
+headerCorner.Parent = header
+
+local headerFix = Instance.new("Frame")
+headerFix.Size = UDim2.new(1, 0, 0, 16)
+headerFix.Position = UDim2.new(0, 0, 1, -16)
+headerFix.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+headerFix.BorderSizePixel = 0
+headerFix.Parent = header
+
+-- Header Title
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(0, 200, 1, 0)
+titleLabel.Position = UDim2.new(0, 60, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.Text = "Feather Hub"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 18
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = header
+
+local subtitleLabel = Instance.new("TextLabel")
+subtitleLabel.Name = "SubtitleLabel"
+subtitleLabel.Size = UDim2.new(0, 200, 0, 16)
+subtitleLabel.Position = UDim2.new(0, 60, 0, 32)
+subtitleLabel.BackgroundTransparency = 1
+subtitleLabel.Font = Enum.Font.Gotham
+subtitleLabel.Text = "FREE VERSION"
+subtitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+subtitleLabel.TextSize = 10
+subtitleLabel.TextTransparency = 0.3
+subtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+subtitleLabel.Parent = header
+
+-- Minimize Button
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Name = "MinimizeButton"
+minimizeButton.Size = UDim2.new(0, 40, 0, 40)
+minimizeButton.Position = UDim2.new(1, -48, 0, 8)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.BackgroundTransparency = 0.8
+minimizeButton.BorderSizePixel = 0
+minimizeButton.Font = Enum.Font.GothamBold
+minimizeButton.Text = "_"
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.TextSize = 20
+minimizeButton.Parent = header
+
+local minimizeCorner = Instance.new("UICorner")
+minimizeCorner.CornerRadius = UDim.new(0, 8)
+minimizeCorner.Parent = minimizeButton
+
+-- Navigation Bar
+local navBar = Instance.new("Frame")
+navBar.Name = "NavBar"
+navBar.Size = UDim2.new(1, 0, 0, 48)
+navBar.Position = UDim2.new(0, 0, 0, 56)
+navBar.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
+navBar.BorderSizePixel = 0
+navBar.Parent = mainFrame
+
+local navStroke = Instance.new("UIStroke")
+navStroke.Color = Color3.fromRGB(55, 65, 81)
+navStroke.Thickness = 1
+navStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+navStroke.Parent = navBar
+
+-- Navigation Buttons
+local function createNavButton(name, text, position, icon)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Size = UDim2.new(0.333, 0, 1, 0)
+    button.Position = position
+    button.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
+    button.BorderSizePixel = 0
+    button.Font = Enum.Font.GothamMedium
+    button.Text = icon .. " " .. text
+    button.TextColor3 = Color3.fromRGB(156, 163, 175)
+    button.TextSize = 14
+    button.Parent = navBar
+    return button
+end
+
+local homeButton = createNavButton("HomeButton", "Home", UDim2.new(0, 0, 0, 0), "")
+local mainButton = createNavButton("MainButton", "Main", UDim2.new(0.333, 0, 0, 0), "")
+local settingsButton = createNavButton("SettingsButton", "⚙️", UDim2.new(0.666, 0, 0, 0), "")
+
+-- Content Frame
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, 0, 1, -104)
+contentFrame.Position = UDim2.new(0, 0, 0, 104)
+contentFrame.BackgroundColor3 = Color3.fromRGB(17, 24, 39)
+contentFrame.BorderSizePixel = 0
+contentFrame.ScrollBarThickness = 6
+contentFrame.ScrollBarImageColor3 = Color3.fromRGB(147, 51, 234)
+contentFrame.Parent = mainFrame
+
+-- Home Page
+local homePage = Instance.new("Frame")
+homePage.Name = "HomePage"
+homePage.Size = UDim2.new(1, -24, 0, 500)
+homePage.Position = UDim2.new(0, 12, 0, 12)
+homePage.BackgroundTransparency = 1
+homePage.Visible = true
+homePage.Parent = contentFrame
+
+-- Welcome Card
+local welcomeCard = Instance.new("Frame")
+welcomeCard.Size = UDim2.new(1, 0, 0, 120)
+welcomeCard.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+welcomeCard.BackgroundTransparency = 0.8
+welcomeCard.BorderSizePixel = 0
+welcomeCard.Parent = homePage
+
+local welcomeCorner = Instance.new("UICorner")
+welcomeCorner.CornerRadius = UDim.new(0, 12)
+welcomeCorner.Parent = welcomeCard
+
+local welcomeStroke = Instance.new("UIStroke")
+welcomeStroke.Color = Color3.fromRGB(147, 51, 234)
+welcomeStroke.Transparency = 0.7
+welcomeStroke.Thickness = 1
+welcomeStroke.Parent = welcomeCard
+
+local welcomeText = Instance.new("TextLabel")
+welcomeText.Size = UDim2.new(1, -24, 0, 30)
+welcomeText.Position = UDim2.new(0, 12, 0, 12)
+welcomeText.BackgroundTransparency = 1
+welcomeText.Font = Enum.Font.GothamBold
+welcomeText.Text = "Welcome,"
+welcomeText.TextColor3 = Color3.fromRGB(255, 255, 255)
+welcomeText.TextSize = 24
+welcomeText.TextXAlignment = Enum.TextXAlignment.Left
+welcomeText.Parent = welcomeCard
+
+-- User Avatar
+local userAvatar = Instance.new("Frame")
+userAvatar.Size = UDim2.new(0, 64, 0, 64)
+userAvatar.Position = UDim2.new(0, 12, 0, 48)
+userAvatar.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+userAvatar.BorderSizePixel = 0
+userAvatar.Parent = welcomeCard
+
+local avatarCorner = Instance.new("UICorner")
+avatarCorner.CornerRadius = UDim.new(1, 0)
+avatarCorner.Parent = userAvatar
+
+local avatarLabel = Instance.new("TextLabel")
+avatarLabel.Size = UDim2.new(1, 0, 1, 0)
+avatarLabel.BackgroundTransparency = 1
+avatarLabel.Font = Enum.Font.GothamBold
+avatarLabel.Text = string.sub(player.Name, 1, 1):upper()
+avatarLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+avatarLabel.TextSize = 28
+avatarLabel.Parent = userAvatar
+
+-- User Name
+local userName = Instance.new("TextLabel")
+userName.Size = UDim2.new(0, 300, 0, 28)
+userName.Position = UDim2.new(0, 84, 0, 56)
+userName.BackgroundTransparency = 1
+userName.Font = Enum.Font.GothamBold
+userName.Text = player.DisplayName
+userName.TextColor3 = Color3.fromRGB(255, 255, 255)
+userName.TextSize = 20
+userName.TextXAlignment = Enum.TextXAlignment.Left
+userName.Parent = welcomeCard
+
+local userTag = Instance.new("TextLabel")
+userTag.Size = UDim2.new(0, 300, 0, 20)
+userTag.Position = UDim2.new(0, 84, 0, 84)
+userTag.BackgroundTransparency = 1
+userTag.Font = Enum.Font.Gotham
+userTag.Text = "@" .. player.Name
+userTag.TextColor3 = Color3.fromRGB(156, 163, 175)
+userTag.TextSize = 12
+userTag.TextXAlignment = Enum.TextXAlignment.Left
+userTag.Parent = welcomeCard
+
+-- Stats Card
+local statsCard = Instance.new("Frame")
+statsCard.Size = UDim2.new(1, 0, 0, 100)
+statsCard.Position = UDim2.new(0, 0, 0, 136)
+statsCard.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
+statsCard.BorderSizePixel = 0
+statsCard.Parent = homePage
+
+local statsCorner = Instance.new("UICorner")
+statsCorner.CornerRadius = UDim.new(0, 12)
+statsCorner.Parent = statsCard
+
+local statsTitle = Instance.new("TextLabel")
+statsTitle.Size = UDim2.new(1, -24, 0, 24)
+statsTitle.Position = UDim2.new(0, 12, 0, 12)
+statsTitle.BackgroundTransparency = 1
+statsTitle.Font = Enum.Font.GothamBold
+statsTitle.Text = "📊 Quick Stats"
+statsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+statsTitle.TextSize = 14
+statsTitle.TextXAlignment = Enum.TextXAlignment.Left
+statsTitle.Parent = statsCard
+
+-- Main Page (Autofarms)
+local mainPage = Instance.new("Frame")
+mainPage.Name = "MainPage"
+mainPage.Size = UDim2.new(1, -24, 0, 1200)
+mainPage.Position = UDim2.new(0, 12, 0, 12)
+mainPage.BackgroundTransparency = 1
+mainPage.Visible = false
+mainPage.Parent = contentFrame
+
+local pageTitle = Instance.new("TextLabel")
+pageTitle.Size = UDim2.new(1, 0, 0, 30)
+pageTitle.BackgroundTransparency = 1
+pageTitle.Font = Enum.Font.GothamBold
+pageTitle.Text = "Autofarm Options"
+pageTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+pageTitle.TextSize = 20
+pageTitle.TextXAlignment = Enum.TextXAlignment.Left
+pageTitle.Parent = mainPage
+
+-- TRICK OR TREAT AUTOFARM SYSTEM
+local trickOrTreatActive = false
+local trickOrTreatLoop = nil
+
+-- Define the CFrames for trick or treat
+local CFrames = {
+	CFrame.new(-5044.845, 25.311, -571.000, -0.553, -0.000, 0.833, 0.000, 1.000, 0.000, -0.833, 0.000, -0.553),
+	CFrame.new(-5035.121, 25.311, -547.469, -0.913, -0.000, -0.409, -0.000, 1.000, -0.000, 0.409, -0.000, -0.913),
+	CFrame.new(-5061.228, 25.311, -553.195, 0.114, -0.000, 0.993, -0.000, 1.000, 0.000, -0.993, -0.000, 0.114),
+	CFrame.new(-5051.557, 22.522, -595.077, 0.997, 0.000, -0.081, -0.000, 1.000, -0.000, 0.081, 0.000, 0.997)
+}
+
+-- Glide Function
+local function glideTo(targetCFrame, duration)
+	local character = player.Character
+	if not character then return end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	
+	local startCFrame = root.CFrame
+	local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
+	local goal = {CFrame = targetCFrame}
+	local tween = TweenService:Create(root, tweenInfo, goal)
+	tween:Play()
+	tween.Completed:Wait()
+end
+
+-- Start Trick or Treat Farm
+local function startTrickOrTreat()
+	trickOrTreatActive = true
+	print("[FEATHER HUB] Trick or Treat Auto Farm Started!")
+	
+	trickOrTreatLoop = task.spawn(function()
+		while trickOrTreatActive do
+			local character = player.Character
+			if character and character:FindFirstChild("HumanoidRootPart") then
+				local root = character.HumanoidRootPart
+				
+				-- Instantly teleport to first point
+				root.CFrame = CFrames[1]
+				task.wait(1)
+				
+				-- Glide through remaining points
+				for i = 2, #CFrames do
+					if not trickOrTreatActive then break end
+					glideTo(CFrames[i], 1)
+					task.wait(3)
+				end
+				
+				task.wait(3)
+			else
+				task.wait(1)
+			end
+		end
+	end)
+end
+
+-- Stop Trick or Treat Farm
+local function stopTrickOrTreat()
+	trickOrTreatActive = false
+	print("[FEATHER HUB] Trick or Treat Auto Farm Stopped!")
+	if trickOrTreatLoop then
+		task.cancel(trickOrTreatLoop)
+		trickOrTreatLoop = nil
+	end
+end
+
+-- Autofarm Options
+local autofarmOptions = {
+    {name = "Auto Trick or Treat", icon = "🎃", desc = "Farms candy automatically", id = "trickortreat"},
+    {name = "not done", icon = "", desc = "...", id = "notdone2"},
+    {name = "not done", icon = "", desc = "...", id = "notdone3"},
+    {name = "not done", icon = "", desc = "...", id = "notdone4"},
+    {name = "not done", icon = "", desc = "...", id = "notdone5"},
+    {name = "not done", icon = "", desc = "...", id = "notdone6"},
+    {name = "not done", icon = "", desc = "...", id = "notdone7"},
+    {name = "not done", icon = "", desc = "...", id = "notdone8"}
+}
+
+local function createAutofarmButton(option, index)
+    local button = Instance.new("Frame")
+    button.Size = UDim2.new(1, 0, 0, 90)
+    button.Position = UDim2.new(0, 0, 0, 42 + (index - 1) * 98)
+    button.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
+    button.BorderSizePixel = 0
+    button.Parent = mainPage
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = button
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(55, 65, 81)
+    stroke.Thickness = 1
+    stroke.Parent = button
+    
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Size = UDim2.new(0, 40, 0, 40)
+    iconLabel.Position = UDim2.new(0, 12, 0, 12)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.Font = Enum.Font.GothamBold
+    iconLabel.Text = option.icon
+    iconLabel.TextSize = 24
+    iconLabel.Parent = button
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(0, 250, 0, 24)
+    nameLabel.Position = UDim2.new(0, 60, 0, 12)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Text = option.name
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextSize = 14
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.Parent = button
+    
+    local descLabel = Instance.new("TextLabel")
+    descLabel.Size = UDim2.new(0, 250, 0, 16)
+    descLabel.Position = UDim2.new(0, 60, 0, 36)
+    descLabel.BackgroundTransparency = 1
+    descLabel.Font = Enum.Font.Gotham
+    descLabel.Text = option.desc
+    descLabel.TextColor3 = Color3.fromRGB(156, 163, 175)
+    descLabel.TextSize = 11
+    descLabel.TextXAlignment = Enum.TextXAlignment.Left
+    descLabel.Parent = button
+    
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0, 60, 0, 32)
+    toggleButton.Position = UDim2.new(1, -72, 0, 12)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(55, 65, 81)
+    toggleButton.BorderSizePixel = 0
+    toggleButton.Font = Enum.Font.GothamBold
+    toggleButton.Text = "OFF"
+    toggleButton.TextColor3 = Color3.fromRGB(209, 213, 219)
+    toggleButton.TextSize = 14
+    toggleButton.Parent = button
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 8)
+    toggleCorner.Parent = toggleButton
+    
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, -24, 0, 20)
+    statusLabel.Position = UDim2.new(0, 12, 0, 62)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Font = Enum.Font.GothamMedium
+    statusLabel.Text = ""
+    statusLabel.TextColor3 = Color3.fromRGB(74, 222, 128)
+    statusLabel.TextSize = 11
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.Visible = false
+    statusLabel.Parent = button
+    
+    local isActive = false
+    
+    toggleButton.MouseButton1Click:Connect(function()
+        isActive = not isActive
+        
+        if isActive then
+            toggleButton.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
+            toggleButton.Text = "ON"
+            toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            statusLabel.Text = "🟢 Active"
+            statusLabel.Visible = true
+            
+            -- Execute script based on ID
+            if option.id == "trickortreat" then
+                startTrickOrTreat()
+            else
+                print("[SCRIPT] Activated: " .. option.name)
+            end
+            
+        else
+            toggleButton.BackgroundColor3 = Color3.fromRGB(55, 65, 81)
+            toggleButton.Text = "OFF"
+            toggleButton.TextColor3 = Color3.fromRGB(209, 213, 219)
+            statusLabel.Visible = false
+            
+            -- Stop script based on ID
+            if option.id == "trickortreat" then
+                stopTrickOrTreat()
+            else
+                print("[SCRIPT] Deactivated: " .. option.name)
+            end
+        end
+    end)
+    
+    return button
+end
+
+for i, option in ipairs(autofarmOptions) do
+    createAutofarmButton(option, i)
+end
+
+-- Settings Page
+local settingsPage = Instance.new("Frame")
+settingsPage.Name = "SettingsPage"
+settingsPage.Size = UDim2.new(1, -24, 0, 300)
+settingsPage.Position = UDim2.new(0, 12, 0, 12)
+settingsPage.BackgroundTransparency = 1
+settingsPage.Visible = false
+settingsPage.Parent = contentFrame
+
+local settingsTitle = Instance.new("TextLabel")
+settingsTitle.Size = UDim2.new(1, 0, 0, 30)
+settingsTitle.BackgroundTransparency = 1
+settingsTitle.Font = Enum.Font.GothamBold
+settingsTitle.Text = "Settings"
+settingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+settingsTitle.TextSize = 20
+settingsTitle.TextXAlignment = Enum.TextXAlignment.Left
+settingsTitle.Parent = settingsPage
+
+local aboutCard = Instance.new("Frame")
+aboutCard.Size = UDim2.new(1, 0, 0, 100)
+aboutCard.Position = UDim2.new(0, 0, 0, 42)
+aboutCard.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
+aboutCard.BorderSizePixel = 0
+aboutCard.Parent = settingsPage
+
+local aboutCorner = Instance.new("UICorner")
+aboutCorner.CornerRadius = UDim.new(0, 12)
+aboutCorner.Parent = aboutCard
+
+local aboutTitle = Instance.new("TextLabel")
+aboutTitle.Size = UDim2.new(1, -24, 0, 24)
+aboutTitle.Position = UDim2.new(0, 12, 0, 12)
+aboutTitle.BackgroundTransparency = 1
+aboutTitle.Font = Enum.Font.GothamBold
+aboutTitle.Text = "LAST UPDATE: 11-7-25"
+aboutTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+aboutTitle.TextSize = 14
+aboutTitle.TextXAlignment = Enum.TextXAlignment.Left
+aboutTitle.Parent = aboutCard
+
+local versionLabel = Instance.new("TextLabel")
+versionLabel.Size = UDim2.new(1, -24, 0, 20)
+versionLabel.Position = UDim2.new(0, 12, 0, 42)
+versionLabel.BackgroundTransparency = 1
+versionLabel.Font = Enum.Font.Gotham
+versionLabel.Text = "Version: 1.0.0 BETA"
+versionLabel.TextColor3 = Color3.fromRGB(156, 163, 175)
+versionLabel.TextSize = 12
+versionLabel.TextXAlignment = Enum.TextXAlignment.Left
+versionLabel.Parent = aboutCard
+
+local creditLabel = Instance.new("TextLabel")
+creditLabel.Size = UDim2.new(1, -24, 0, 20)
+creditLabel.Position = UDim2.new(0, 12, 0, 66)
+creditLabel.BackgroundTransparency = 1
+creditLabel.Font = Enum.Font.Gotham
+creditLabel.Text = "Madmoney was here"
+creditLabel.TextColor3 = Color3.fromRGB(156, 163, 175)
+creditLabel.TextSize = 12
+creditLabel.TextXAlignment = Enum.TextXAlignment.Left
+creditLabel.Parent = aboutCard
+
+-- Navigation Logic
+local currentPage = "home"
+
+local function switchPage(pageName)
+    homePage.Visible = false
+    mainPage.Visible = false
+    settingsPage.Visible = false
+    
+    homeButton.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
+    homeButton.TextColor3 = Color3.fromRGB(156, 163, 175)
+    mainButton.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
+    mainButton.TextColor3 = Color3.fromRGB(156, 163, 175)
+    settingsButton.BackgroundColor3 = Color3.fromRGB(31, 41, 55)
+    settingsButton.TextColor3 = Color3.fromRGB(156, 163, 175)
+    
+    if pageName == "home" then
+        homePage.Visible = true
+        homeButton.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+        homeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    elseif pageName == "main" then
+        mainPage.Visible = true
+        mainButton.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+        mainButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    elseif pageName == "settings" then
+        settingsPage.Visible = true
+        settingsButton.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+        settingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end
+    
+    currentPage = pageName
+    contentFrame.CanvasSize = UDim2.new(0, 0, 0, pageName == "main" and 1224 or 512)
+end
+
+homeButton.MouseButton1Click:Connect(function() switchPage("home") end)
+mainButton.MouseButton1Click:Connect(function() switchPage("main") end)
+settingsButton.MouseButton1Click:Connect(function() switchPage("settings") end)
+
+-- Dragging functionality
+local dragging = false
+local dragInput, mousePos, framePos
+
+local function update(input)
+    local delta = input.Position - mousePos
+    mainFrame.Position = UDim2.new(
+        framePos.X.Scale,
+        framePos.X.Offset + delta.X,
+        framePos.Y.Scale,
+        framePos.Y.Offset + delta.Y
+    )
+end
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        mousePos = input.Position
+        framePos = mainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+header.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+-- Minimize functionality
+local isMinimized = false
+local originalSize = mainFrame.Size
+local originalPosition = mainFrame.Position
+
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    
+    if isMinimized then
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local goal = {
+            Size = UDim2.new(0, 60, 0, 60),
+            Position = UDim2.new(1, -80, 0, 20)
+        }
+        local tween = TweenService:Create(mainFrame, tweenInfo, goal)
+        tween:Play()
+        
+        wait(0.1)
+        header.Visible = false
+        navBar.Visible = false
+        contentFrame.Visible = false
+        
+        -- Create minimized icon
         local miniIcon = Instance.new("TextLabel")
         miniIcon.Name = "MiniIcon"
         miniIcon.Size = UDim2.new(1, 0, 1, 0)
