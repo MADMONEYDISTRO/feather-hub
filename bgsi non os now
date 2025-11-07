@@ -1,5 +1,3 @@
--- Roblox Script UI with Draggable and Minimizable Features
--- Hotkey: Right Shift to toggle minimize
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -10,14 +8,14 @@ local CoreGui = game:GetService("CoreGui")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Create ScreenGui
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ScriptHubUI"
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
--- Main Frame (Container)
+
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 480, 0, 600)
@@ -36,7 +34,7 @@ mainStroke.Transparency = 0.7
 mainStroke.Thickness = 2
 mainStroke.Parent = mainFrame
 
--- Header
+
 local header = Instance.new("Frame")
 header.Name = "Header"
 header.Size = UDim2.new(1, 0, 0, 56)
@@ -56,7 +54,7 @@ headerFix.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
 headerFix.BorderSizePixel = 0
 headerFix.Parent = header
 
--- Header Title
+
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "TitleLabel"
 titleLabel.Size = UDim2.new(0, 200, 1, 0)
@@ -82,7 +80,7 @@ subtitleLabel.TextTransparency = 0.3
 subtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 subtitleLabel.Parent = header
 
--- Minimize Button
+
 local minimizeButton = Instance.new("TextButton")
 minimizeButton.Name = "MinimizeButton"
 minimizeButton.Size = UDim2.new(0, 40, 0, 40)
@@ -100,7 +98,7 @@ local minimizeCorner = Instance.new("UICorner")
 minimizeCorner.CornerRadius = UDim.new(0, 8)
 minimizeCorner.Parent = minimizeButton
 
--- Navigation Bar
+
 local navBar = Instance.new("Frame")
 navBar.Name = "NavBar"
 navBar.Size = UDim2.new(1, 0, 0, 48)
@@ -115,7 +113,7 @@ navStroke.Thickness = 1
 navStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 navStroke.Parent = navBar
 
--- Navigation Buttons
+
 local function createNavButton(name, text, position, icon)
     local button = Instance.new("TextButton")
     button.Name = name
@@ -146,7 +144,7 @@ contentFrame.ScrollBarThickness = 6
 contentFrame.ScrollBarImageColor3 = Color3.fromRGB(147, 51, 234)
 contentFrame.Parent = mainFrame
 
--- Home Page
+
 local homePage = Instance.new("Frame")
 homePage.Name = "HomePage"
 homePage.Size = UDim2.new(1, -24, 0, 500)
@@ -184,7 +182,7 @@ welcomeText.TextSize = 24
 welcomeText.TextXAlignment = Enum.TextXAlignment.Left
 welcomeText.Parent = welcomeCard
 
--- User Avatar
+
 local userAvatar = Instance.new("Frame")
 userAvatar.Size = UDim2.new(0, 64, 0, 64)
 userAvatar.Position = UDim2.new(0, 12, 0, 48)
@@ -205,7 +203,7 @@ avatarLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 avatarLabel.TextSize = 28
 avatarLabel.Parent = userAvatar
 
--- User Name
+
 local userName = Instance.new("TextLabel")
 userName.Size = UDim2.new(0, 300, 0, 28)
 userName.Position = UDim2.new(0, 84, 0, 56)
@@ -228,7 +226,7 @@ userTag.TextSize = 12
 userTag.TextXAlignment = Enum.TextXAlignment.Left
 userTag.Parent = welcomeCard
 
--- Stats Card
+
 local statsCard = Instance.new("Frame")
 statsCard.Size = UDim2.new(1, 0, 0, 100)
 statsCard.Position = UDim2.new(0, 0, 0, 136)
@@ -251,7 +249,7 @@ statsTitle.TextSize = 14
 statsTitle.TextXAlignment = Enum.TextXAlignment.Left
 statsTitle.Parent = statsCard
 
--- Main Page (Autofarms)
+
 local mainPage = Instance.new("Frame")
 mainPage.Name = "MainPage"
 mainPage.Size = UDim2.new(1, -24, 0, 1200)
@@ -465,7 +463,7 @@ for i, option in ipairs(autofarmOptions) do
     createAutofarmButton(option, i)
 end
 
--- Settings Page
+
 local settingsPage = Instance.new("Frame")
 settingsPage.Name = "SettingsPage"
 settingsPage.Size = UDim2.new(1, -24, 0, 300)
@@ -528,7 +526,7 @@ creditLabel.TextSize = 12
 creditLabel.TextXAlignment = Enum.TextXAlignment.Left
 creditLabel.Parent = aboutCard
 
--- Navigation Logic
+
 local currentPage = "home"
 
 local function switchPage(pageName)
@@ -565,7 +563,7 @@ homeButton.MouseButton1Click:Connect(function() switchPage("home") end)
 mainButton.MouseButton1Click:Connect(function() switchPage("main") end)
 settingsButton.MouseButton1Click:Connect(function() switchPage("settings") end)
 
--- Dragging functionality
+
 local dragging = false
 local dragInput, mousePos, framePos
 
@@ -605,7 +603,7 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Minimize functionality
+
 local isMinimized = false
 local originalSize = mainFrame.Size
 local originalPosition = mainFrame.Position
