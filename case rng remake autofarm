@@ -1,0 +1,440 @@
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local localPlayer = Players.LocalPlayer
+local isDragging = false
+local dragInput, dragStart, startPos
+
+
+local colors = {
+    background = Color3.fromRGB(20, 20, 28),
+    surface = Color3.fromRGB(28, 28, 38),
+    primary = Color3.fromRGB(99, 102, 241),
+    success = Color3.fromRGB(34, 197, 94),
+    danger = Color3.fromRGB(239, 68, 68),
+    text = Color3.fromRGB(248, 250, 252),
+    textSecondary = Color3.fromRGB(148, 163, 184),
+    accent = Color3.fromRGB(168, 85, 247)
+}
+
+
+local function addButtonEffect(button, hoverColor, clickColor)
+    local originalColor = button.BackgroundColor3
+    
+    button.MouseEnter:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = hoverColor}):Play()
+        TweenService:Create(button, TweenInfo.new(0.2), {Size = button.Size + UDim2.new(0, 4, 0, 2)}):Play()
+    end)
+    
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = originalColor}):Play()
+        TweenService:Create(button, TweenInfo.new(0.2), {Size = button.Size - UDim2.new(0, 4, 0, 2)}):Play()
+    end)
+    
+    button.MouseButton1Down:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = clickColor}):Play()
+        TweenService:Create(button, TweenInfo.new(0.1), {Size = button.Size - UDim2.new(0, 2, 0, 2)}):Play()
+    end)
+    
+    button.MouseButton1Up:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = hoverColor}):Play()
+        TweenService:Create(button, TweenInfo.new(0.1), {Size = button.Size + UDim2.new(0, 2, 0, 2)}):Play()
+    end)
+end
+
+
+local function createModernGUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ModernFarmUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = game:GetService("CoreGui")
+
+    
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 340, 0, 280)
+    mainFrame.Position = UDim2.new(0.5, -170, 0.5, -140)
+    mainFrame.BackgroundTransparency = 0.08
+    mainFrame.BackgroundColor3 = colors.background
+    mainFrame.BorderSizePixel = 0
+    mainFrame.ClipsDescendants = true
+    mainFrame.Parent = screenGui
+
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = UDim.new(0, 16)
+    mainCorner.Parent = mainFrame
+
+    
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 30, 40)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(18, 18, 26))
+    })
+    gradient.Rotation = 45
+    gradient.Parent = mainFrame
+
+    
+    local shadow = Instance.new("ImageLabel")
+    shadow.Image = "rbxassetid://3570695787"
+    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.ImageTransparency = 0.5
+    shadow.BackgroundTransparency = 1
+    shadow.Size = UDim2.new(1, 50, 1, 50)
+    shadow.Position = UDim2.new(0, -25, 0, -25)
+    shadow.ScaleType = Enum.ScaleType.Slice
+    shadow.SliceCenter = Rect.new(10, 10, 230, 230)
+    shadow.ZIndex = 0
+    shadow.Parent = mainFrame
+
+   
+    local headerBar = Instance.new("Frame")
+    headerBar.Size = UDim2.new(1, 0, 0, 50)
+    headerBar.BackgroundTransparency = 0.5
+    headerBar.BackgroundColor3 = colors.surface
+    headerBar.BorderSizePixel = 0
+    headerBar.Parent = mainFrame
+
+    local headerCorner = Instance.new("UICorner")
+    headerCorner.CornerRadius = UDim.new(0, 16)
+    headerCorner.Parent = headerBar
+
+   
+    local accentLine = Instance.new("Frame")
+    accentLine.Size = UDim2.new(1, 0, 0, 2)
+    accentLine.Position = UDim2.new(0, 0, 1, -2)
+    accentLine.BackgroundColor3 = colors.primary
+    accentLine.BorderSizePixel = 0
+    accentLine.Parent = headerBar
+
+    local lineGradient = Instance.new("UIGradient")
+    lineGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, colors.primary),
+        ColorSequenceKeypoint.new(0.5, colors.accent),
+        ColorSequenceKeypoint.new(1, colors.primary)
+    })
+    lineGradient.Parent = accentLine
+
+    
+    local icon = Instance.new("TextLabel")
+    icon.Size = UDim2.new(0, 40, 0, 40)
+    icon.Position = UDim2.new(0, 15, 0, 5)
+    icon.BackgroundTransparency = 1
+    icon.Text = ""
+    icon.TextSize = 28
+    icon.Parent = headerBar
+
+  
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -140, 1, 0)
+    title.Position = UDim2.new(0, 60, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "Feather Hub"
+    title.TextColor3 = colors.text
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 20
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = headerBar
+
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Size = UDim2.new(1, -140, 0, 20)
+    subtitle.Position = UDim2.new(0, 60, 0, 28)
+    subtitle.BackgroundTransparency = 1
+    subtitle.Text = "free edition"
+    subtitle.TextColor3 = colors.textSecondary
+    subtitle.Font = Enum.Font.Gotham
+    subtitle.TextSize = 11
+    subtitle.TextXAlignment = Enum.TextXAlignment.Left
+    subtitle.Parent = headerBar
+
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Size = UDim2.new(0, 32, 0, 32)
+    minimizeBtn.Position = UDim2.new(1, -80, 0, 9)
+    minimizeBtn.Text = "-"
+    minimizeBtn.TextColor3 = colors.textSecondary
+    minimizeBtn.Font = Enum.Font.GothamBold
+    minimizeBtn.TextSize = 20
+    minimizeBtn.BackgroundTransparency = 1
+    minimizeBtn.Parent = headerBar
+
+    
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 32, 0, 32)
+    closeBtn.Position = UDim2.new(1, -45, 0, 9)
+    closeBtn.Text = "x"
+    closeBtn.TextColor3 = colors.danger
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 18
+    closeBtn.BackgroundTransparency = 1
+    closeBtn.Parent = headerBar
+
+   
+    local content = Instance.new("Frame")
+    content.Size = UDim2.new(1, -30, 1, -70)
+    content.Position = UDim2.new(0, 15, 0, 60)
+    content.BackgroundTransparency = 1
+    content.Parent = mainFrame
+
+   
+    local farmButton = Instance.new("TextButton")
+    farmButton.Size = UDim2.new(1, 0, 0, 52)
+    farmButton.Position = UDim2.new(0, 0, 0, 0)
+    farmButton.BackgroundColor3 = colors.primary
+    farmButton.BorderSizePixel = 0
+    farmButton.AutoButtonColor = false
+    farmButton.Text = ""
+    farmButton.Parent = content
+
+    local farmCorner = Instance.new("UICorner")
+    farmCorner.CornerRadius = UDim.new(0, 12)
+    farmCorner.Parent = farmButton
+
+    local farmIcon = Instance.new("TextLabel")
+    farmIcon.Size = UDim2.new(0, 30, 1, 0)
+    farmIcon.Position = UDim2.new(0, 15, 0, 0)
+    farmIcon.BackgroundTransparency = 1
+    farmIcon.Text = ""
+    farmIcon.TextSize = 20
+    farmIcon.Parent = farmButton
+
+    local farmText = Instance.new("TextLabel")
+    farmText.Size = UDim2.new(1, -60, 1, 0)
+    farmText.Position = UDim2.new(0, 50, 0, 0)
+    farmText.BackgroundTransparency = 1
+    farmText.Text = "FARM MONEY"
+    farmText.TextColor3 = colors.text
+    farmText.Font = Enum.Font.GothamBold
+    farmText.TextSize = 16
+    farmText.TextXAlignment = Enum.TextXAlignment.Left
+    farmText.Parent = farmButton
+
+    
+    local caseButton = Instance.new("TextButton")
+    caseButton.Size = UDim2.new(1, 0, 0, 52)
+    caseButton.Position = UDim2.new(0, 0, 0, 62)
+    caseButton.BackgroundColor3 = colors.accent
+    caseButton.BorderSizePixel = 0
+    caseButton.AutoButtonColor = false
+    caseButton.Text = ""
+    caseButton.Parent = content
+
+    local caseCorner = Instance.new("UICorner")
+    caseCorner.CornerRadius = UDim.new(0, 12)
+    caseCorner.Parent = caseButton
+
+    local caseIcon = Instance.new("TextLabel")
+    caseIcon.Size = UDim2.new(0, 30, 1, 0)
+    caseIcon.Position = UDim2.new(0, 15, 0, 0)
+    caseIcon.BackgroundTransparency = 1
+    caseIcon.Text = ""
+    caseIcon.TextSize = 20
+    caseIcon.Parent = caseButton
+
+    local caseText = Instance.new("TextLabel")
+    caseText.Size = UDim2.new(1, -60, 1, 0)
+    caseText.Position = UDim2.new(0, 50, 0, 0)
+    caseText.BackgroundTransparency = 1
+    caseText.Text = "INSTA OPEN CASE"
+    caseText.TextColor3 = colors.text
+    caseText.Font = Enum.Font.GothamBold
+    caseText.TextSize = 16
+    caseText.TextXAlignment = Enum.TextXAlignment.Left
+    caseText.Parent = caseButton
+
+    
+    local statusPanel = Instance.new("Frame")
+    statusPanel.Size = UDim2.new(1, 0, 0, 70)
+    statusPanel.Position = UDim2.new(0, 0, 0, 124)
+    statusPanel.BackgroundColor3 = colors.surface
+    statusPanel.BackgroundTransparency = 0.3
+    statusPanel.BorderSizePixel = 0
+    statusPanel.Parent = content
+
+    local statusCorner = Instance.new("UICorner")
+    statusCorner.CornerRadius = UDim.new(0, 12)
+    statusCorner.Parent = statusPanel
+
+    local statusTitle = Instance.new("TextLabel")
+    statusTitle.Size = UDim2.new(1, -20, 0, 20)
+    statusTitle.Position = UDim2.new(0, 12, 0, 10)
+    statusTitle.BackgroundTransparency = 1
+    statusTitle.Text = "STATUS"
+    statusTitle.TextColor3 = colors.textSecondary
+    statusTitle.Font = Enum.Font.GothamBold
+    statusTitle.TextSize = 11
+    statusTitle.TextXAlignment = Enum.TextXAlignment.Left
+    statusTitle.Parent = statusPanel
+
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, -20, 0, 28)
+    statusLabel.Position = UDim2.new(0, 12, 0, 32)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "Ready to start..."
+    statusLabel.TextColor3 = colors.text
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.TextSize = 13
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.TextWrapped = true
+    statusLabel.Parent = statusPanel
+
+   
+    addButtonEffect(farmButton, Color3.fromRGB(109, 112, 251), Color3.fromRGB(89, 92, 231))
+    addButtonEffect(caseButton, Color3.fromRGB(178, 95, 257), Color3.fromRGB(158, 75, 237))
+
+    
+    local function updateInput(input)
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+
+    headerBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    isDragging = false
+                end
+            end)
+        end
+    end)
+
+    headerBar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and isDragging then
+            updateInput(input)
+        end
+    end)
+
+   
+    local isFarming = false
+    local lastTouchTime = 0
+
+    local function toggleFarm()
+        isFarming = not isFarming
+        if isFarming then
+            farmText.Text = "STOP FARM"
+            farmIcon.Text = ""
+            farmButton.BackgroundColor3 = colors.danger
+            statusLabel.Text = "Preparing farm system..."
+
+            spawn(function()
+                local cashPart = workspace:FindFirstChild("Obbies") and 
+                                 workspace.Obbies:FindFirstChild("9") and 
+                                 workspace.Obbies["9"]:FindFirstChild("Folder") and 
+                                 workspace.Obbies["9"].Folder:FindFirstChild("Cash") and 
+                                 workspace.Obbies["9"].Folder.Cash:FindFirstChild("Collect")
+
+                if not (cashPart and cashPart:IsA("BasePart")) then
+                    statusLabel.Text = " Collection block not found!"
+                    isFarming = false
+                    farmText.Text = "FARM MONEY"
+                    farmIcon.Text = ""
+                    farmButton.BackgroundColor3 = colors.primary
+                    return
+                end
+
+                local touchInterest = cashPart:FindFirstChild("TouchInterest")
+                local char = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+                local hrp = char:WaitForChild("HumanoidRootPart", 5)
+                
+                if not hrp then
+                    statusLabel.Text = "Character not ready!"
+                    isFarming = false
+                    return
+                end
+
+                hrp.CFrame = cashPart.CFrame * CFrame.new(0, 3, 0)
+                statusLabel.Text = " Farming active..."
+
+                local heartbeatConn
+                heartbeatConn = RunService.Heartbeat:Connect(function()
+                    if not isFarming then
+                        heartbeatConn:Disconnect()
+                        statusLabel.Text = "Farm stopped."
+                        return
+                    end
+
+                    if tick() - lastTouchTime < 0.3 then return end
+                    lastTouchTime = tick()
+
+                    if touchInterest then
+                        firetouchinterest(hrp, cashPart, 0)
+                        firetouchinterest(hrp, cashPart, 1)
+                    else
+                        local origPos = hrp.CFrame
+                        hrp.CFrame = cashPart.CFrame * CFrame.new(0, 2.5, 0)
+                        wait(0.05)
+                        hrp.CFrame = origPos
+                    end
+                end)
+            end)
+        else
+            farmText.Text = "FARM MONEY"
+            farmIcon.Text = ""
+            farmButton.BackgroundColor3 = colors.primary
+            statusLabel.Text = "Farm stopped."
+        end
+    end
+
+    local function setAnimationSpeed()
+        local settings = localPlayer:FindFirstChild("Settings")
+        if settings then
+            local animSpeed = settings:FindFirstChild("Animation Speed")
+            if animSpeed and animSpeed:IsA("NumberValue") then
+                animSpeed.Value = 1000
+                statusLabel.Text = " Animation Speed set to 1000"
+                spawn(function()
+                    wait(2)
+                    statusLabel.Text = isFarming and " Farming active..." or "Ready to start..."
+                end)
+            else
+                statusLabel.Text = "Animation Speed not found!"
+            end
+        else
+            statusLabel.Text = "Settings not found!"
+        end
+    end
+
+    
+    farmButton.MouseButton1Click:Connect(toggleFarm)
+    caseButton.MouseButton1Click:Connect(setAnimationSpeed)
+    minimizeBtn.MouseButton1Click:Connect(function()
+        mainFrame.Visible = false
+    end)
+    closeBtn.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+        print(" UI removed from memory.")
+    end)
+
+    
+    mainFrame.Size = UDim2.new(0, 0, 0, 0)
+    mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    TweenService:Create(mainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 340, 0, 280),
+        Position = UDim2.new(0.5, -170, 0.5, -140)
+    }):Play()
+
+    return mainFrame, screenGui
+end
+
+
+local guiFrame, guiContainer = createModernGUI()
+print([[
+Feather Hub Loaded!
+ Free Edition
+]])
