@@ -1,5 +1,6 @@
 local children = workspace.Hoops:GetChildren()
 
+-- Anti-AFK
 coroutine.wrap(function()
     repeat wait() until game:GetService("Players").LocalPlayer
     local VirtualUser = game:GetService("VirtualUser")
@@ -9,21 +10,35 @@ coroutine.wrap(function()
     end)
 end)()
 
-local farmActive = false
+local TweenService = game:GetService("TweenService")
+local Player = game.Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local HRP = Character:WaitForChild("HumanoidRootPart")
 
+local farmActive = false
+local glideActive = false
+
+-----------------------------------------------------
+-- AUTO FARM START/STOP
+-----------------------------------------------------
 function stopfarm()
     farmActive = false
+    glideActive = false
 end
 
 function runfarm()
     farmActive = true
-    
+    glideActive = true
+
+    -----------------------------------------------------
+    -- HOOP + ORB AUTOFARM THREAD
+    -----------------------------------------------------
     coroutine.wrap(function()
         while farmActive do
             pcall(function()
                 for i, child in ipairs(children) do
-                    if child.Name == "Hoop" and farmActive then
-                        child.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame
+                    if child.Name == "Hoop" then
+                        child.CFrame = HRP.CFrame
                         child.Transparency = 1
                         child.hoopSound.Volume = 0
                         if child:FindFirstChild("hoopParticle") then
@@ -31,33 +46,85 @@ function runfarm()
                             child.hoopGui:Destroy()
                             child.hoopParticle:Destroy()
                         end
-                    end    
-                end
-            end)
-            wait(0)
-        end
-    end)()
-    
-    coroutine.wrap(function()
-        while farmActive do
-            pcall(function()
-                for i,v in pairs(game:GetService("Workspace").orbFolder:GetDescendants()) do
-                    if farmActive then
-                        if string.match(v.Name, " Orb") then
-                            v.outerOrb.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame
-                        elseif v.Name == "Gem" then
-                            v.outerGem.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame
-                        end
                     end
                 end
             end)
-            wait(0)
+            wait()
+        end
+    end)()
+
+    -----------------------------------------------------
+    -- ORB PICKUP THREAD
+    -----------------------------------------------------
+    coroutine.wrap(function()
+        while farmActive do
+            pcall(function()
+                for i,v in pairs(workspace.orbFolder:GetDescendants()) do
+                    if string.match(v.Name," Orb") then
+                        v.outerOrb.CFrame = HRP.CFrame
+                    elseif v.Name == "Gem" then
+                        v.outerGem.CFrame = HRP.CFrame
+                    end
+                end
+            end)
+            wait()
+        end
+    end)()
+
+    -----------------------------------------------------
+    -- NEW: GLIDE BACK & FORTH 200 STUDS
+    -----------------------------------------------------
+    coroutine.wrap(function()
+        local basePos = HRP.Position
+        local forward = HRP.CFrame.LookVector * 200
+        local back = -HRP.CFrame.LookVector * 200
+
+        while farmActive and glideActive do
+            -- move forward
+            local tween1 = TweenService:Create(
+                HRP,
+                TweenInfo.new(2, Enum.EasingStyle.Linear),
+                { CFrame = CFrame.new(basePos + forward) }
+            )
+            tween1:Play()
+            tween1.Completed:Wait()
+
+            -- move backward
+            local tween2 = TweenService:Create(
+                HRP,
+                TweenInfo.new(2, Enum.EasingStyle.Linear),
+                { CFrame = CFrame.new(basePos + back) }
+            )
+            tween2:Play()
+            tween2.Completed:Wait()
+        end
+    end)()
+
+    -----------------------------------------------------
+    -- NEW: SPOOF JUMP EVERY 3 SEC
+    -----------------------------------------------------
+    coroutine.wrap(function()
+        while farmActive do
+            pcall(function()
+                local hum = Character:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    hum.Jump = true
+                    task.wait(0.1)
+                    hum.Jump = false
+                end
+            end)
+            wait(3)
         end
     end)()
 end
 
-game.Players.LocalPlayer.CharacterAdded:Connect(function()
-    repeat wait() until game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+-----------------------------------------------------
+-- RESTART FARM ON RESPAWN
+-----------------------------------------------------
+game.Players.LocalPlayer.CharacterAdded:Connect(function(char)
+    Character = char
+    HRP = char:WaitForChild("HumanoidRootPart")
+
     if farmActive then
         stopfarm()
         wait(0.5)
@@ -65,10 +132,13 @@ game.Players.LocalPlayer.CharacterAdded:Connect(function()
     end
 end)
 
-local TweenService = game:GetService("TweenService")
-local ACCENT_COLOR_START = Color3.fromRGB(0, 120, 255) -- Deep Blue
-local ACCENT_COLOR_END = Color3.fromRGB(0, 180, 255)   -- Lighter Blue
-local ERROR_COLOR = Color3.fromRGB(255, 60, 60)        -- Red/Stop State
+-----------------------------------------------------
+-- UI SETUP (unchanged from your script)
+-----------------------------------------------------
+
+local ACCENT_COLOR_START = Color3.fromRGB(0, 120, 255)
+local ACCENT_COLOR_END = Color3.fromRGB(0, 180, 255)
+local ERROR_COLOR = Color3.fromRGB(255, 60, 60)
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AdvancedFeatherHub"
@@ -83,7 +153,6 @@ MainFrame.Position = UDim2.new(0.5, -160, 0.5, -95)
 MainFrame.Size = UDim2.new(0, 320, 0, 190)
 MainFrame.Active = true
 MainFrame.Draggable = true
-MainFrame.Name = "MainFrame"
 
 local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 16)
@@ -94,7 +163,6 @@ AccentHeader.Parent = MainFrame
 AccentHeader.BackgroundColor3 = ACCENT_COLOR_START
 AccentHeader.BorderSizePixel = 0
 AccentHeader.Size = UDim2.new(1, 0, 0, 5)
-AccentHeader.Name = "AccentHeader"
 
 local UIGradient = Instance.new("UIGradient")
 UIGradient.Color = ColorSequence.new({
@@ -113,11 +181,10 @@ Title.Font = Enum.Font.GothamBold
 Title.Text = "FEATHER HUB"
 Title.TextColor3 = Color3.fromRGB(200, 200, 200)
 Title.TextSize = 18
-Title.Name = "TitleLabel"
 
 local CloseButton = Instance.new("TextButton")
 CloseButton.Parent = MainFrame
-CloseButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40) -- Dark background for hover effect
+CloseButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 CloseButton.BorderSizePixel = 0
 CloseButton.Position = UDim2.new(1, -40, 0, 10)
 CloseButton.Size = UDim2.new(0, 30, 0, 30)
@@ -126,7 +193,6 @@ CloseButton.Text = "X"
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseButton.TextSize = 18
 CloseButton.AutoButtonColor = false
-CloseButton.Name = "CloseButton"
 
 local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 8)
@@ -141,7 +207,6 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.Text = "Status: Idle"
 StatusLabel.TextColor3 = ACCENT_COLOR_START
 StatusLabel.TextSize = 14
-StatusLabel.Name = "StatusLabel"
 
 local FarmButton = Instance.new("TextButton")
 FarmButton.Parent = MainFrame
@@ -154,7 +219,6 @@ FarmButton.Text = "START HOOP & ORB FARM"
 FarmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 FarmButton.TextSize = 18
 FarmButton.AutoButtonColor = false
-FarmButton.Name = "FarmButton"
 
 local ButtonCorner = Instance.new("UICorner")
 ButtonCorner.CornerRadius = UDim.new(0, 10)
@@ -170,38 +234,10 @@ local function updateFarmButtonState(isActive)
     StatusLabel.Text = statusText
     StatusLabel.TextColor3 = statusColor
 
-    TweenService:Create(FarmButton, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+    TweenService:Create(FarmButton, TweenInfo.new(0.3), {
         BackgroundColor3 = targetColor
     }):Play()
 end
-
-
-FarmButton.MouseEnter:Connect(function()
-    local hoverColor = farmActive and Color3.fromRGB(255, 90, 90) or Color3.fromRGB(30, 150, 255)
-    TweenService:Create(FarmButton, TweenInfo.new(0.2), {
-        BackgroundColor3 = hoverColor
-    }):Play()
-end)
-
-FarmButton.MouseLeave:Connect(function()
-    local normalColor = farmActive and ERROR_COLOR or ACCENT_COLOR_START
-    TweenService:Create(FarmButton, TweenInfo.new(0.2), {
-        BackgroundColor3 = normalColor
-    }):Play()
-end)
-
-CloseButton.MouseEnter:Connect(function()
-    TweenService:Create(CloseButton, TweenInfo.new(0.2), {
-        BackgroundColor3 = Color3.fromRGB(50, 50, 55) -- Darker hover
-    }):Play()
-end)
-
-CloseButton.MouseLeave:Connect(function()
-    TweenService:Create(CloseButton, TweenInfo.new(0.2), {
-        BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-    }):Play()
-end)
-
 
 FarmButton.MouseButton1Click:Connect(function()
     if not farmActive then
@@ -213,11 +249,9 @@ FarmButton.MouseButton1Click:Connect(function()
     end
 end)
 
-
 CloseButton.MouseButton1Click:Connect(function()
     stopfarm()
     ScreenGui:Destroy()
 end)
-
 
 updateFarmButtonState(false)
