@@ -1,346 +1,257 @@
--- Feather Hub Loading Screen
+local children = workspace.Hoops:GetChildren()
+
+-- Anti-AFK
+coroutine.wrap(function()
+    repeat wait() until game:GetService("Players").LocalPlayer
+    local VirtualUser = game:GetService("VirtualUser")
+    game:GetService("Players").LocalPlayer.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+end)()
+
 local TweenService = game:GetService("TweenService")
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
+local Player = game.Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local HRP = Character:WaitForChild("HumanoidRootPart")
 
--- Create ScreenGui
-local LoaderGui = Instance.new("ScreenGui")
-LoaderGui.Name = "FeatherLoader"
-LoaderGui.ResetOnSpawn = false
-LoaderGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local farmActive = false
+local glideActive = false
 
--- For executors
-if gethui then
-    LoaderGui.Parent = gethui()
-elseif syn and syn.protect_gui then
-    syn.protect_gui(LoaderGui)
-    LoaderGui.Parent = game.CoreGui
-else
-    LoaderGui.Parent = game.CoreGui
+-----------------------------------------------------
+-- AUTO FARM START/STOP
+-----------------------------------------------------
+function stopfarm()
+    farmActive = false
+    glideActive = false
 end
 
-pcall(function()
-    if not LoaderGui.Parent then
-        LoaderGui.Parent = player:WaitForChild("PlayerGui")
+function runfarm()
+    farmActive = true
+    glideActive = true
+
+    -----------------------------------------------------
+    -- HOOP + ORB AUTOFARM THREAD
+    -----------------------------------------------------
+    coroutine.wrap(function()
+        while farmActive do
+            pcall(function()
+                for i, child in ipairs(children) do
+                    if child.Name == "Hoop" then
+                        child.CFrame = HRP.CFrame
+                        child.Transparency = 1
+                        child.hoopSound.Volume = 0
+                        if child:FindFirstChild("hoopParticle") then
+                            child.playerParticle:Destroy()
+                            child.hoopGui:Destroy()
+                            child.hoopParticle:Destroy()
+                        end
+                    end
+                end
+            end)
+            wait()
+        end
+    end)()
+
+    -----------------------------------------------------
+    -- ORB PICKUP THREAD
+    -----------------------------------------------------
+    coroutine.wrap(function()
+        while farmActive do
+            pcall(function()
+                for i,v in pairs(workspace.orbFolder:GetDescendants()) do
+                    if string.match(v.Name," Orb") then
+                        v.outerOrb.CFrame = HRP.CFrame
+                    elseif v.Name == "Gem" then
+                        v.outerGem.CFrame = HRP.CFrame
+                    end
+                end
+            end)
+            wait()
+        end
+    end)()
+
+    -----------------------------------------------------
+    -- NEW: GLIDE BACK & FORTH 200 STUDS
+    -----------------------------------------------------
+    coroutine.wrap(function()
+        local basePos = HRP.Position
+        local forward = HRP.CFrame.LookVector * 200
+        local back = -HRP.CFrame.LookVector * 200
+
+        while farmActive and glideActive do
+            -- move forward
+            local tween1 = TweenService:Create(
+                HRP,
+                TweenInfo.new(2, Enum.EasingStyle.Linear),
+                { CFrame = CFrame.new(basePos + forward) }
+            )
+            tween1:Play()
+            tween1.Completed:Wait()
+
+            -- move backward
+            local tween2 = TweenService:Create(
+                HRP,
+                TweenInfo.new(2, Enum.EasingStyle.Linear),
+                { CFrame = CFrame.new(basePos + back) }
+            )
+            tween2:Play()
+            tween2.Completed:Wait()
+        end
+    end)()
+
+    -----------------------------------------------------
+    -- NEW: SPOOF JUMP EVERY 3 SEC
+    -----------------------------------------------------
+    coroutine.wrap(function()
+        while farmActive do
+            pcall(function()
+                local hum = Character:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    hum.Jump = true
+                    task.wait(0.1)
+                    hum.Jump = false
+                end
+            end)
+            wait(3)
+        end
+    end)()
+end
+
+-----------------------------------------------------
+-- RESTART FARM ON RESPAWN
+-----------------------------------------------------
+game.Players.LocalPlayer.CharacterAdded:Connect(function(char)
+    Character = char
+    HRP = char:WaitForChild("HumanoidRootPart")
+
+    if farmActive then
+        stopfarm()
+        wait(0.5)
+        runfarm()
     end
 end)
 
--- Main container
-local Container = Instance.new("Frame")
-Container.Name = "Container"
-Container.Size = UDim2.new(0, 350, 0, 140)
-Container.Position = UDim2.new(0.5, -175, 0.5, -70)
-Container.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-Container.BorderSizePixel = 0
-Container.Parent = LoaderGui
+-----------------------------------------------------
+-- UI SETUP (unchanged from your script)
+-----------------------------------------------------
 
-local ContainerCorner = Instance.new("UICorner")
-ContainerCorner.CornerRadius = UDim.new(0, 12)
-ContainerCorner.Parent = Container
+local ACCENT_COLOR_START = Color3.fromRGB(0, 120, 255)
+local ACCENT_COLOR_END = Color3.fromRGB(0, 180, 255)
+local ERROR_COLOR = Color3.fromRGB(255, 60, 60)
 
--- Container gradient
-local ContainerGradient = Instance.new("UIGradient")
-ContainerGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 30, 35)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 25, 30))
-}
-ContainerGradient.Rotation = 90
-ContainerGradient.Parent = Container
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AdvancedFeatherHub"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ResetOnSpawn = false
 
--- Border stroke
-local ContainerStroke = Instance.new("UIStroke")
-ContainerStroke.Color = Color3.fromRGB(50, 50, 60)
-ContainerStroke.Thickness = 1
-ContainerStroke.Transparency = 0.5
-ContainerStroke.Parent = Container
+local MainFrame = Instance.new("Frame")
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Position = UDim2.new(0.5, -160, 0.5, -95)
+MainFrame.Size = UDim2.new(0, 320, 0, 190)
+MainFrame.Active = true
+MainFrame.Draggable = true
 
--- Top accent bar
-local AccentBar = Instance.new("Frame")
-AccentBar.Name = "AccentBar"
-AccentBar.Size = UDim2.new(1, 0, 0, 4)
-AccentBar.Position = UDim2.new(0, 0, 0, 0)
-AccentBar.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-AccentBar.BorderSizePixel = 0
-AccentBar.Parent = Container
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 16)
+UICorner.Parent = MainFrame
 
-local AccentCorner = Instance.new("UICorner")
-AccentCorner.CornerRadius = UDim.new(0, 12)
-AccentCorner.Parent = AccentBar
+local AccentHeader = Instance.new("Frame")
+AccentHeader.Parent = MainFrame
+AccentHeader.BackgroundColor3 = ACCENT_COLOR_START
+AccentHeader.BorderSizePixel = 0
+AccentHeader.Size = UDim2.new(1, 0, 0, 5)
 
--- Accent gradient animation
-local AccentGradient = Instance.new("UIGradient")
-AccentGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 150, 255)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(120, 170, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 150, 255))
-}
-AccentGradient.Parent = AccentBar
-
--- Logo/Title container
-local TitleContainer = Instance.new("Frame")
-TitleContainer.Size = UDim2.new(1, 0, 0, 50)
-TitleContainer.Position = UDim2.new(0, 0, 0, 15)
-TitleContainer.BackgroundTransparency = 1
-TitleContainer.Parent = Container
-
--- Logo icon
-local LogoIcon = Instance.new("TextLabel")
-LogoIcon.Size = UDim2.new(0, 40, 0, 40)
-LogoIcon.Position = UDim2.new(0, 20, 0, 5)
-LogoIcon.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-LogoIcon.BackgroundTransparency = 0.9
-LogoIcon.BorderSizePixel = 0
-LogoIcon.Text = ""
-LogoIcon.TextColor3 = Color3.fromRGB(100, 150, 255)
-LogoIcon.TextSize = 24
-LogoIcon.Font = Enum.Font.GothamBold
-LogoIcon.Parent = TitleContainer
-
-local LogoCorner = Instance.new("UICorner")
-LogoCorner.CornerRadius = UDim.new(1, 0)
-LogoCorner.Parent = LogoIcon
-
-local LogoStroke = Instance.new("UIStroke")
-LogoStroke.Color = Color3.fromRGB(100, 150, 255)
-LogoStroke.Thickness = 2
-LogoStroke.Transparency = 0.3
-LogoStroke.Parent = LogoIcon
-
--- Title text
-local Title = Instance.new("TextLabel")
-Title.Name = "Title"
-Title.Size = UDim2.new(1, -70, 0, 25)
-Title.Position = UDim2.new(0, 70, 0, 5)
-Title.BackgroundTransparency = 1
-Title.Text = "Feather Hub"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 18
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = TitleContainer
-
--- Loading message
-local LoadingMessage = Instance.new("TextLabel")
-LoadingMessage.Name = "LoadingMessage"
-LoadingMessage.Size = UDim2.new(1, -70, 0, 20)
-LoadingMessage.Position = UDim2.new(0, 70, 0, 28)
-LoadingMessage.BackgroundTransparency = 1
-LoadingMessage.Text = "Preparing Feather…"
-LoadingMessage.TextColor3 = Color3.fromRGB(160, 160, 170)
-LoadingMessage.TextSize = 13
-LoadingMessage.Font = Enum.Font.Gotham
-LoadingMessage.TextXAlignment = Enum.TextXAlignment.Left
-LoadingMessage.Parent = TitleContainer
-
--- Loading bar background
-local BarBackground = Instance.new("Frame")
-BarBackground.Name = "BarBackground"
-BarBackground.Size = UDim2.new(1, -40, 0, 8)
-BarBackground.Position = UDim2.new(0, 20, 0, 80)
-BarBackground.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-BarBackground.BorderSizePixel = 0
-BarBackground.Parent = Container
-
-local BarBgCorner = Instance.new("UICorner")
-BarBgCorner.CornerRadius = UDim.new(1, 0)
-BarBgCorner.Parent = BarBackground
-
--- Loading bar fill
-local BarFill = Instance.new("Frame")
-BarFill.Name = "BarFill"
-BarFill.Size = UDim2.new(0, 0, 1, 0)
-BarFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-BarFill.BorderSizePixel = 0
-BarFill.Parent = BarBackground
-
-local BarFillCorner = Instance.new("UICorner")
-BarFillCorner.CornerRadius = UDim.new(1, 0)
-BarFillCorner.Parent = BarFill
-
--- Bar fill gradient
-local BarGradient = Instance.new("UIGradient")
-BarGradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 150, 255)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(120, 170, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 150, 255))
-}
-BarGradient.Parent = BarFill
-
--- Glow effect on bar
-local BarGlow = Instance.new("Frame")
-BarGlow.Name = "BarGlow"
-BarGlow.Size = UDim2.new(1, 16, 1, 16)
-BarGlow.Position = UDim2.new(0, -8, 0, -8)
-BarGlow.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
-BarGlow.BackgroundTransparency = 0.7
-BarGlow.BorderSizePixel = 0
-BarGlow.ZIndex = 0
-BarGlow.Parent = BarFill
-
-local GlowCorner = Instance.new("UICorner")
-GlowCorner.CornerRadius = UDim.new(1, 0)
-GlowCorner.Parent = BarGlow
-
-local GlowGradient = Instance.new("UIGradient")
-GlowGradient.Transparency = NumberSequence.new{
-    NumberSequenceKeypoint.new(0, 0.7),
-    NumberSequenceKeypoint.new(0.5, 0.4),
-    NumberSequenceKeypoint.new(1, 1)
-}
-GlowGradient.Parent = BarGlow
-
--- Percentage text
-local PercentText = Instance.new("TextLabel")
-PercentText.Name = "PercentText"
-PercentText.Size = UDim2.new(1, -40, 0, 25)
-PercentText.Position = UDim2.new(0, 20, 0, 100)
-PercentText.BackgroundTransparency = 1
-PercentText.Text = "0%"
-PercentText.TextColor3 = Color3.fromRGB(100, 150, 255)
-PercentText.TextSize = 12
-PercentText.Font = Enum.Font.GothamBold
-PercentText.TextXAlignment = Enum.TextXAlignment.Left
-PercentText.Parent = Container
-
--- Version text (bottom right)
-local VersionText = Instance.new("TextLabel")
-VersionText.Size = UDim2.new(0, 50, 0, 25)
-VersionText.Position = UDim2.new(1, -70, 0, 100)
-VersionText.BackgroundTransparency = 1
-VersionText.Text = "v1.0"
-VersionText.TextColor3 = Color3.fromRGB(100, 100, 110)
-VersionText.TextSize = 11
-VersionText.Font = Enum.Font.Gotham
-VersionText.TextXAlignment = Enum.TextXAlignment.Right
-VersionText.Parent = Container
-
--- Loading messages
-local messages = {
-    "Preparing Feather…",
-    "You're almost weightless…",
-    "Fly away..."
-}
-
-local currentMessageIndex = 1
-
--- Animate logo icon pulse
-spawn(function()
-    while LoaderGui.Parent do
-        TweenService:Create(LogoIcon, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            BackgroundTransparency = 0.7
-        }):Play()
-        TweenService:Create(LogoStroke, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            Transparency = 0.1
-        }):Play()
-        wait(1)
-        TweenService:Create(LogoIcon, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            BackgroundTransparency = 0.9
-        }):Play()
-        TweenService:Create(LogoStroke, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-            Transparency = 0.3
-        }):Play()
-        wait(1)
-    end
-end)
-
--- Animate gradient movement
-spawn(function()
-    while LoaderGui.Parent do
-        local currentOffset = BarGradient.Offset
-        TweenService:Create(BarGradient, TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
-            Offset = Vector2.new(currentOffset.X + 1, 0)
-        }):Play()
-        wait(2)
-    end
-end)
-
--- Animate accent bar gradient
-spawn(function()
-    while LoaderGui.Parent do
-        local currentOffset = AccentGradient.Offset
-        TweenService:Create(AccentGradient, TweenInfo.new(3, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
-            Offset = Vector2.new(currentOffset.X + 1, 0)
-        }):Play()
-        wait(3)
-    end
-end)
-
--- Loading progress
-local loadingDuration = 10 -- Total loading time in seconds
-local startTime = tick()
-
--- Update loading bar and percentage
-spawn(function()
-    while tick() - startTime < loadingDuration do
-        local elapsed = tick() - startTime
-        local progress = math.min(elapsed / loadingDuration, 1)
-        local percentage = math.floor(progress * 100)
-        
-        -- Update bar
-        BarFill.Size = UDim2.new(progress, 0, 1, 0)
-        PercentText.Text = percentage .. "%"
-        
-        wait(0.05)
-    end
-    
-    -- Ensure 100%
-    BarFill.Size = UDim2.new(1, 0, 1, 0)
-    PercentText.Text = "100%"
-end)
-
--- Change loading messages every 3.3 seconds
-spawn(function()
-    wait(3.3)
-    
-    while currentMessageIndex < #messages do
-        currentMessageIndex = currentMessageIndex + 1
-        
-        -- Fade out current message
-        local fadeOut = TweenService:Create(LoadingMessage, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {TextTransparency = 1})
-        fadeOut:Play()
-        fadeOut.Completed:Wait()
-        
-        -- Change text
-        LoadingMessage.Text = messages[currentMessageIndex]
-        
-        -- Fade in new message
-        TweenService:Create(LoadingMessage, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {TextTransparency = 0}):Play()
-        
-        wait(3.3)
-    end
-end)
-
--- Wait for loading to complete
-wait(loadingDuration)
-
--- Fade out loading screen
-local fadeOutInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-local fadeOut = TweenService:Create(Container, fadeOutInfo, {
-    BackgroundTransparency = 1,
-    Size = UDim2.new(0, 350, 0, 0)
+local UIGradient = Instance.new("UIGradient")
+UIGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, ACCENT_COLOR_START),
+    ColorSequenceKeypoint.new(1, ACCENT_COLOR_END)
 })
+UIGradient.Rotation = 90
+UIGradient.Parent = AccentHeader
 
-TweenService:Create(Title, fadeOutInfo, {TextTransparency = 1}):Play()
-TweenService:Create(LoadingMessage, fadeOutInfo, {TextTransparency = 1}):Play()
-TweenService:Create(BarBackground, fadeOutInfo, {BackgroundTransparency = 1}):Play()
-TweenService:Create(BarFill, fadeOutInfo, {BackgroundTransparency = 1}):Play()
-TweenService:Create(PercentText, fadeOutInfo, {TextTransparency = 1}):Play()
-TweenService:Create(VersionText, fadeOutInfo, {TextTransparency = 1}):Play()
-TweenService:Create(LogoIcon, fadeOutInfo, {TextTransparency = 1, BackgroundTransparency = 1}):Play()
-TweenService:Create(AccentBar, fadeOutInfo, {BackgroundTransparency = 1}):Play()
-TweenService:Create(ContainerStroke, fadeOutInfo, {Transparency = 1}):Play()
+local Title = Instance.new("TextLabel")
+Title.Parent = MainFrame
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.new(0, 0, 0, 20)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "FEATHER HUB"
+Title.TextColor3 = Color3.fromRGB(200, 200, 200)
+Title.TextSize = 18
 
-fadeOut:Play()
-fadeOut.Completed:Wait()
+local CloseButton = Instance.new("TextButton")
+CloseButton.Parent = MainFrame
+CloseButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+CloseButton.BorderSizePixel = 0
+CloseButton.Position = UDim2.new(1, -40, 0, 10)
+CloseButton.Size = UDim2.new(0, 30, 0, 30)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextSize = 18
+CloseButton.AutoButtonColor = false
 
--- Remove loading screen
-LoaderGui:Destroy()
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 8)
+CloseCorner.Parent = CloseButton
 
--- Wait 1 second then load the main script
-wait(1)
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Parent = MainFrame
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Position = UDim2.new(0, 0, 0, 60)
+StatusLabel.Size = UDim2.new(1, 0, 0, 20)
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Text = "Status: Idle"
+StatusLabel.TextColor3 = ACCENT_COLOR_START
+StatusLabel.TextSize = 14
 
-print("Loading Feather Hub main script...")
+local FarmButton = Instance.new("TextButton")
+FarmButton.Parent = MainFrame
+FarmButton.BackgroundColor3 = ACCENT_COLOR_START
+FarmButton.BorderSizePixel = 0
+FarmButton.Position = UDim2.new(0.5, -140, 0.5, 20)
+FarmButton.Size = UDim2.new(0, 280, 0, 60)
+FarmButton.Font = Enum.Font.GothamBold
+FarmButton.Text = "START HOOP & ORB FARM"
+FarmButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmButton.TextSize = 18
+FarmButton.AutoButtonColor = false
 
--- Load the main Feather Hub script
-loadstring(game:HttpGet("loadstring(game:HttpGet('https://raw.githubusercontent.com/MADMONEYDISTRO/feather-hub/refs/heads/main/rough%20draft'))()"))()
+local ButtonCorner = Instance.new("UICorner")
+ButtonCorner.CornerRadius = UDim.new(0, 10)
+ButtonCorner.Parent = FarmButton
 
+local function updateFarmButtonState(isActive)
+    local targetColor = isActive and ERROR_COLOR or ACCENT_COLOR_START
+    local targetText = isActive and "STOP AUTO FARM" or "START HOOP & ORB FARM"
+    local statusText = isActive and "Status: Farming Active" or "Status: Idle"
+    local statusColor = isActive and ERROR_COLOR or ACCENT_COLOR_START
+
+    FarmButton.Text = targetText
+    StatusLabel.Text = statusText
+    StatusLabel.TextColor3 = statusColor
+
+    TweenService:Create(FarmButton, TweenInfo.new(0.3), {
+        BackgroundColor3 = targetColor
+    }):Play()
+end
+
+FarmButton.MouseButton1Click:Connect(function()
+    if not farmActive then
+        runfarm()
+        updateFarmButtonState(true)
+    else
+        stopfarm()
+        updateFarmButtonState(false)
+    end
+end)
+
+CloseButton.MouseButton1Click:Connect(function()
+    stopfarm()
+    ScreenGui:Destroy()
+end)
+
+updateFarmButtonState(false)
