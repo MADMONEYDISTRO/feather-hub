@@ -1,4 +1,4 @@
--- Feather Hub | Ninja Legends (Complete: Katana Farm + Hoop Farm (Chi))
+-- Feather Hub | Ninja Legends 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -7,17 +7,15 @@ local RunService = game:GetService("RunService")
 local plr = Players.LocalPlayer
 local event = plr:WaitForChild("ninjaEvent")
 
--- Auto Farm State
 local autoFarmEnabled = false
 local farmCoroutine = nil
 local secondsCounter = 0
 local counterCoroutine = nil
 
--- Hoop Farm State
 local hoopFarmEnabled = false
 local hoopCoroutine = nil
 
--- UI Themes
+
 local themes = {
     {name = "Midnight Blue", bg = Color3.fromRGB(20, 25, 45), accent = Color3.fromRGB(65, 105, 225), text = Color3.fromRGB(255, 255, 255)},
     {name = "Crimson Dark", bg = Color3.fromRGB(30, 15, 20), accent = Color3.fromRGB(220, 20, 60), text = Color3.fromRGB(255, 255, 255)},
@@ -46,14 +44,14 @@ local themes = {
 local currentTheme = 1
 local mobileMode = false
 
--- Create ScreenGui
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "NinjaFarmUI"
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = plr:WaitForChild("PlayerGui")
 
--- Main Frame
+
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 380, 0, 320)
@@ -73,7 +71,7 @@ mainStroke.Color = themes[currentTheme].accent
 mainStroke.Thickness = 2
 mainStroke.Parent = mainFrame
 
--- Header
+
 local header = Instance.new("Frame")
 header.Name = "Header"
 header.Size = UDim2.new(1, 0, 0, 50)
@@ -103,7 +101,7 @@ titleLabel.TextSize = 13
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = header
 
--- Close Button (for mobile mode)
+
 local closeBtn = Instance.new("TextButton")
 closeBtn.Name = "CloseButton"
 closeBtn.Size = UDim2.new(0, 35, 0, 35)
@@ -120,7 +118,7 @@ local closeBtnCorner = Instance.new("UICorner")
 closeBtnCorner.CornerRadius = UDim.new(0, 8)
 closeBtnCorner.Parent = closeBtn
 
--- User Info Section
+
 local userSection = Instance.new("Frame")
 userSection.Name = "UserSection"
 userSection.Size = UDim2.new(1, -20, 0, 70)
@@ -168,7 +166,7 @@ usernameLabel.TextSize = 16
 usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
 usernameLabel.Parent = userSection
 
--- Farm Toggle Button
+
 local farmToggle = Instance.new("TextButton")
 farmToggle.Name = "FarmToggle"
 farmToggle.Size = UDim2.new(1, -20, 0, 50)
@@ -184,7 +182,7 @@ local farmCorner = Instance.new("UICorner")
 farmCorner.CornerRadius = UDim.new(0, 10)
 farmCorner.Parent = farmToggle
 
--- Hoop Farm Toggle Button (new)
+
 local hoopToggle = Instance.new("TextButton")
 hoopToggle.Name = "HoopToggle"
 hoopToggle.Size = UDim2.new(1, -20, 0, 50)
@@ -200,7 +198,7 @@ local hoopCorner = Instance.new("UICorner")
 hoopCorner.CornerRadius = UDim.new(0, 10)
 hoopCorner.Parent = hoopToggle
 
--- Seconds Counter (moved down)
+
 local counterLabel = Instance.new("TextLabel")
 counterLabel.Name = "CounterLabel"
 counterLabel.Size = UDim2.new(1, -20, 0, 35)
@@ -217,7 +215,7 @@ local counterCorner = Instance.new("UICorner")
 counterCorner.CornerRadius = UDim.new(0, 8)
 counterCorner.Parent = counterLabel
 
--- Settings Button
+
 local settingsBtn = Instance.new("TextButton")
 settingsBtn.Name = "SettingsButton"
 settingsBtn.Size = UDim2.new(0, 100, 0, 30)
@@ -233,7 +231,7 @@ local settingsCorner = Instance.new("UICorner")
 settingsCorner.CornerRadius = UDim.new(0, 8)
 settingsCorner.Parent = settingsBtn
 
--- Settings Frame
+
 local settingsFrame = Instance.new("Frame")
 settingsFrame.Name = "SettingsFrame"
 settingsFrame.Size = UDim2.new(0, 380, 0, 400)
@@ -254,7 +252,7 @@ settingsStroke.Color = themes[currentTheme].accent
 settingsStroke.Thickness = 2
 settingsStroke.Parent = settingsFrame
 
--- Settings Header
+
 local settingsHeader = Instance.new("Frame")
 settingsHeader.Size = UDim2.new(1, 0, 0, 50)
 settingsHeader.BackgroundColor3 = themes[currentTheme].accent
@@ -297,7 +295,7 @@ local closeSettingsCorner = Instance.new("UICorner")
 closeSettingsCorner.CornerRadius = UDim.new(0, 8)
 closeSettingsCorner.Parent = closeSettingsBtn
 
--- Mobile Mode Toggle
+-
 local mobileLabel = Instance.new("TextLabel")
 mobileLabel.Size = UDim2.new(1, -30, 0, 25)
 mobileLabel.Position = UDim2.new(0, 15, 0, 65)
@@ -323,7 +321,7 @@ local mobileToggleCorner = Instance.new("UICorner")
 mobileToggleCorner.CornerRadius = UDim.new(0, 8)
 mobileToggleCorner.Parent = mobileToggle
 
--- Theme Scroll Frame
+
 local themeLabel = Instance.new("TextLabel")
 themeLabel.Size = UDim2.new(1, -30, 0, 25)
 themeLabel.Position = UDim2.new(0, 15, 0, 105)
@@ -352,7 +350,7 @@ local themeLayout = Instance.new("UIListLayout")
 themeLayout.Padding = UDim.new(0, 5)
 themeLayout.Parent = themeScroll
 
--- Open Button (for mobile)
+
 local openBtn = Instance.new("TextButton")
 openBtn.Name = "OpenButton"
 openBtn.Size = UDim2.new(0, 60, 0, 60)
@@ -369,7 +367,7 @@ local openBtnCorner = Instance.new("UICorner")
 openBtnCorner.CornerRadius = UDim.new(1, 0)
 openBtnCorner.Parent = openBtn
 
--- Create Theme Buttons
+
 for i, theme in ipairs(themes) do
     local themeBtn = Instance.new("TextButton")
     themeBtn.Size = UDim2.new(1, -10, 0, 40)
@@ -392,7 +390,7 @@ end
 
 themeScroll.CanvasSize = UDim2.new(0, 0, 0, #themes * 45)
 
--- Apply Theme Function
+
 function applyTheme()
     local theme = themes[currentTheme]
     
@@ -432,7 +430,7 @@ function applyTheme()
     end
 end
 
--- Auto Farm Function (UPDATED - Equip once, then continuous fire)
+-- Functions
 local function startAutoFarm()
     if farmCoroutine and coroutine.status(farmCoroutine) ~= "dead" then return end
 
@@ -456,11 +454,10 @@ local function startAutoFarm()
             local equipped = char:FindFirstChildWhichIsA("Tool")
             if equipped ~= slot1Tool then
                 humanoid:EquipTool(slot1Tool)
-                task.wait(0.2) -- Small delay to ensure tool is equipped
+                task.wait(0.2) 
             end
         end
 
-        -- Continuous firing loop
         while autoFarmEnabled do
             local args = {
                 "swingKatana"
@@ -485,7 +482,6 @@ local function startCounter()
     coroutine.resume(counterCoroutine)
 end
 
--- Hoop helpers
 local function hasChiValue(obj)
     for _, v in ipairs(obj:GetDescendants()) do
         if v:IsA("ValueBase") and string.lower(v.Name) == "chi" then
@@ -519,7 +515,6 @@ local function getChiHoops()
     return list
 end
 
--- Safe smooth movement (executor-friendly)
 local function smoothTP(hrp, cf, steps, delayPerStep)
     steps = steps or 8
     delayPerStep = delayPerStep or task.wait
@@ -532,7 +527,6 @@ local function smoothTP(hrp, cf, steps, delayPerStep)
     if hrp then hrp.CFrame = cf end
 end
 
--- Hoop Farm function
 local function startHoopFarm()
     if hoopCoroutine and coroutine.status(hoopCoroutine) ~= "dead" then return end
     hoopCoroutine = coroutine.create(function()
@@ -542,7 +536,7 @@ local function startHoopFarm()
             if not hrp then task.wait(0.5) continue end
 
             local hoops = getChiHoops()
-            -- sort by distance from player for efficient route
+
             table.sort(hoops, function(a, b)
                 return (a.Position - hrp.Position).Magnitude < (b.Position - hrp.Position).Magnitude
             end)
@@ -554,11 +548,11 @@ local function startHoopFarm()
 
                 local hoopCF = hoop.CFrame
 
-                -- move to behind the hoop smoothly (safe lerp)
+                --(safe lerp)
                 local behindCF = hoopCF * CFrame.new(0, 0, 12)
                 smoothTP(hrp, behindCF)
 
-                -- move to front smoothly
+             
                 local frontCF = hoopCF * CFrame.new(0, 0, -12)
                 smoothTP(hrp, frontCF)
 
@@ -576,18 +570,17 @@ local function startHoopFarm()
     coroutine.resume(hoopCoroutine)
 end
 
--- Farm Toggle Logic (Katana)
 farmToggle.MouseButton1Click:Connect(function()
     autoFarmEnabled = not autoFarmEnabled
 
     if autoFarmEnabled then
-        -- Visual update
+
         farmToggle.BackgroundColor3 = themes[currentTheme].accent
         farmToggle.Text = "DISABLE AUTO FARM"
         secondsCounter = 0
         counterLabel.Text = "⏱️ Runtime: 0s"
 
-        -- Stop hoop farm if running
+        
         if hoopFarmEnabled then
             hoopFarmEnabled = false
             hoopToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
@@ -599,16 +592,15 @@ farmToggle.MouseButton1Click:Connect(function()
     else
         farmToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
         farmToggle.Text = "ENABLE AUTO KATANA"
-        -- autoFarmEnabled false will cause startAutoFarm coroutine to exit loop naturally
+        
     end
 end)
 
--- Hoop Toggle Logic
 hoopToggle.MouseButton1Click:Connect(function()
     hoopFarmEnabled = not hoopFarmEnabled
 
     if hoopFarmEnabled then
-        -- Visual update
+
         hoopToggle.BackgroundColor3 = themes[currentTheme].accent
         hoopToggle.Text = "DISABLE HOOP FARM"
 
@@ -621,15 +613,14 @@ hoopToggle.MouseButton1Click:Connect(function()
 
         startHoopFarm()
     else
-        -- Visual update
+      
         hoopToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
         hoopToggle.Text = "ENABLE HOOP FARM (CHI)"
 
-        -- hoopFarmEnabled false will cause startHoopFarm coroutine to exit naturally
+        
     end
 end)
 
--- Settings Button Logic
 settingsBtn.MouseButton1Click:Connect(function()
     settingsFrame.Visible = true
     mainFrame.Visible = false
@@ -640,7 +631,7 @@ closeSettingsBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = true
 end)
 
--- Mobile Mode Toggle
+-- Mobile logic
 mobileToggle.MouseButton1Click:Connect(function()
     mobileMode = not mobileMode
     
@@ -657,19 +648,19 @@ mobileToggle.MouseButton1Click:Connect(function()
     end
 end)
 
--- Close Button (Mobile)
+-- Close logic (Mobile)
 closeBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
     openBtn.Visible = true
 end)
 
--- Open Button (Mobile)
+-- Open logic (Mobile)
 openBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = true
     openBtn.Visible = false
 end)
 
--- Right Shift Toggle
+-- Right Shift logic
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
         mainFrame.Visible = not mainFrame.Visible
@@ -681,7 +672,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- Initialize visual theme
 applyTheme()
 
 print("Feather Hub loaded, enjoy your premium experience!")
