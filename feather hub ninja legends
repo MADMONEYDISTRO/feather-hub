@@ -676,7 +676,3 @@ applyTheme()
 
 print("Feather Hub loaded, enjoy your premium experience!")
 print("Press Right Shift to toggle UI")
-
-wait(600)
-
-print("If you see this ur cool")
