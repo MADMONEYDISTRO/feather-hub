@@ -1,6 +1,6 @@
 getgenv().whscript = "Feather Hub"       
 getgenv().webhookexecUrl = "https://discord.com/api/webhooks/1443363952313761843/McEzmt2XTqd30MWnxY8JTmyptNJI4ZvHEDDxdpLv6zm02oo28U2O9ZZZlMOGxsnhhF6D"  --Put your Webhook Url here
-getgenv().ExecLogSecret = true                
+getgenv().ExecLogSecret = false                
 
 
 local ui = gethui()
