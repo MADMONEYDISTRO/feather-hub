@@ -1,5 +1,5 @@
 getgenv().whscript = "Feather Hub"       
-getgenv().webhookexecUrl = "https://discord.com/api/webhooks/1443591903533863015/fD-D1-omiTHYHHv516cwOkj429MdPJ5hVdRZYUe4JvQzTCVzmSCYUZpAgdxRmsRZqYsQ"  
+getgenv().webhookexecUrl = "https://discord.com/api/webhooks/1443655680689967146/Oqm7lQov-a6k3vx2TiuJ7kTsH_jHoW6U5KOeSsUgd8D8lRx0Z8KUb7hXXJRMdLbyKr0Z" 
 getgenv().ExecLogSecret = false                
 
 
