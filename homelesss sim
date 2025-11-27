@@ -150,7 +150,7 @@ Players.PlayerRemoving:Connect(function(leavingPlayer)
 end)
 
 getgenv().whscript = "Feather Hub"       
-getgenv().webhookexecUrl = "https://discord.com/api/webhooks/1443662905009770528/rzDKOQaZ7RGdgq9K8gPzgn_CydwTye51r7fbXRhuPlJM--sU0omVpmyaJB1zmIbqwIOK" 
+getgenv().webhookexecUrl = "https://discord.com/api/webhooks/1443718052544774224/kBNbIZBCj6rQLWd7jDokpCJJouHQVdM-Th40b8CyfvHi1pE1x7iSf_7khAwZWQEU1E3g" 
 getgenv().ExecLogSecret = false                
 
 
