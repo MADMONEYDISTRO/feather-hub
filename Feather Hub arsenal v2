@@ -219,7 +219,7 @@ local Camera = workspace.CurrentCamera
 local uis = game:GetService("UserInputService")
 local ts = game:GetService("TweenService")
 
--- Create Main ScreenGui
+-- Create Main
 local Main = Instance.new("ScreenGui")
 Main.Name = "ModernQuotasHub"
 Main.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -227,7 +227,7 @@ Main.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 Main.ResetOnSpawn = false
 Main.DisplayOrder = 9999
 
--- Modern Loader
+-- Loader
 local Loader = Instance.new("Frame")
 local LoaderCorner = Instance.new("UICorner")
 local LoaderStroke = Instance.new("UIStroke")
@@ -276,7 +276,7 @@ LoaderTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 LoaderTitle.TextSize = 24
 LoaderTitle.TextTransparency = 1
 
--- NEW: Status text
+--  Status
 LoaderStatus.Name = "LoaderStatus"
 LoaderStatus.Parent = Loader
 LoaderStatus.BackgroundTransparency = 1
@@ -314,10 +314,10 @@ LoaderProgressGradient.Color = ColorSequence.new{
 }
 LoaderProgressGradient.Parent = LoaderProgress
 
--- Fade loop toggle
+-- Fade loop tog
 local running = true
 
--- Loop fade animation for "Preparing Script..."
+-- Loop fade anim
 task.spawn(function()
 	while running do
 		ts:Create(LoaderStatus, TweenInfo.new(0.6), {TextTransparency = 0}):Play()
@@ -327,7 +327,7 @@ task.spawn(function()
 	end
 end)
 
--- Animate Loader
+-- Animate
 local loaderExpand = ts:Create(Loader, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 250, 0, 100)})
 loaderExpand:Play()
 
@@ -368,7 +368,7 @@ wait(0.6)
 Loader:Destroy()
 
 
--- Create Modern Main UI
+--Main 
 local MainFrame = Instance.new("Frame")
 local MainCorner = Instance.new("UICorner")
 local MainStroke = Instance.new("UIStroke")
@@ -406,7 +406,7 @@ MainStroke.Thickness = 1
 MainStroke.Transparency = 0.7
 MainStroke.Parent = MainFrame
 
--- Top Bar
+--Top
 TopBar.Name = "TopBar"
 TopBar.Parent = MainFrame
 TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
@@ -479,7 +479,7 @@ SettingsBtn.TextSize = 14
 SettingsBtnCorner.CornerRadius = UDim.new(0, 6)
 SettingsBtnCorner.Parent = SettingsBtn
 
--- Content Frame
+--Frame
 ContentFrame.Name = "ContentFrame"
 ContentFrame.Parent = MainFrame
 ContentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
@@ -517,7 +517,7 @@ Divider.BorderSizePixel = 0
 Divider.Position = UDim2.new(0.5, -1, 0, 10)
 Divider.Size = UDim2.new(0, 2, 1, -20)
 
--- Function to create modern toggle button
+-- Func to create toggle button
 local function CreateToggle(name, text, parent, posY)
 	local ToggleFrame = Instance.new("Frame")
 	local ToggleLabel = Instance.new("TextLabel")
@@ -706,7 +706,7 @@ ModsContent.BackgroundTransparency = 1
 ModsContent.Position = UDim2.new(0, 10, 0, 50)
 ModsContent.Size = UDim2.new(1, -20, 1, -60)
 
--- Create weapon mod toggles
+-- weapon mod toggles
 local AmmoModToggle = CreateToggle("AmmoMod", "Infinite Ammo", ModsContent, 10)
 local FireRateToggle = CreateToggle("FireRate", "Fire Rate Mod", ModsContent, 55)
 local RecoilToggle = CreateToggle("Recoil", "No Recoil", ModsContent, 100)
@@ -882,7 +882,7 @@ local BluePreset = CreateColorPreset("Blue Purple", Color3.fromRGB(100, 100, 255
 local RedPreset = CreateColorPreset("Red Orange", Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 120, 60), Color3.fromRGB(255, 100, 100), ColorSection, 95)
 local GreenPreset = CreateColorPreset("Green Teal", Color3.fromRGB(80, 255, 120), Color3.fromRGB(60, 200, 150), Color3.fromRGB(100, 255, 180), ColorSection, 145)
 
--- Hotkey Settings Section
+-- Hotkey Settings
 local HotkeySection = Instance.new("Frame")
 local HotkeySectionTitle = Instance.new("TextLabel")
 local HotkeyDivider = Instance.new("Frame")
@@ -951,7 +951,7 @@ HotkeyInfo.TextSize = 11
 HotkeyInfo.TextWrapped = true
 HotkeyInfo.TextXAlignment = Enum.TextXAlignment.Left
 
--- Notification Label
+-- Notification
 local NotifLabel = Instance.new("TextLabel")
 NotifLabel.Name = "NotifLabel"
 NotifLabel.Parent = Main
@@ -965,7 +965,7 @@ NotifLabel.TextSize = 16
 NotifLabel.TextStrokeTransparency = 0.5
 NotifLabel.TextTransparency = 1
 
--- Show main frame
+-- Show main
 wait(0.5)
 MainFrame.Visible = true
 
@@ -1003,14 +1003,14 @@ _G.CircleColor = UISettings.AccentColor
 _G.CircleVisible = true
 _G.fovTransparency = 0.5
 
--- Function to update UI colors
+-- Function to update colors
 local function UpdateUIColors(color1, color2, color3)
 	UISettings.PrimaryColor = color1
 	UISettings.SecondaryColor = color2
 	UISettings.AccentColor = color3
 	_G.CircleColor = color3
 	
-	-- Update loader stroke
+	-- Update stroke
 	LoaderStroke.Color = color1
 	LoaderProgress.BackgroundColor3 = color1
 	LoaderProgressGradient.Color = ColorSequence.new{
@@ -1018,39 +1018,39 @@ local function UpdateUIColors(color1, color2, color3)
 		ColorSequenceKeypoint.new(1, color3)
 	}
 	
-	-- Update main UI
+	-- Update main
 	MainStroke.Color = Color3.fromRGB(color1.R * 80/100, color1.G * 80/100, color1.B * 80/100)
 	
-	-- Update settings button
+	-- Update settings
 	SettingsBtn.BackgroundColor3 = color1
 	
-	-- Update weapon mods button
+	-- Update weapon mods
 	WeaponModsBtn.BackgroundColor3 = color2
 	WeaponModsGradient.Color = ColorSequence.new{
 		ColorSequenceKeypoint.new(0, color1),
 		ColorSequenceKeypoint.new(1, color2)
 	}
 	
-	-- Update AI Beta button
+	-- Update AI Beta
 	AIBetaBtn.BackgroundColor3 = color2
 	AIBetaGradient.Color = ColorSequence.new{
 		ColorSequenceKeypoint.new(0, color1),
 		ColorSequenceKeypoint.new(1, color2)
 	}
 	
-	-- Update section titles
+	-- Update section
 	ColorSectionTitle.TextColor3 = color3
 	HotkeySectionTitle.TextColor3 = color3
 	
-	-- Update ESP colors
+	-- Update ESP
 	name.TextColor3 = color3
 	box.ImageColor3 = color3
 	
-	-- Update FOV circle color
+	-- Update FOV circle
 	FovCircle.Color = color3
 end
 
--- Function to animate toggle
+-- func for toggle anims
 local function AnimateToggle(toggle, state)
 	local targetPos = state and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
 	local targetColor = state and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(150, 150, 170)
@@ -1201,7 +1201,7 @@ AIBetaBtn.MouseButton1Click:Connect(function()
     -- error bypass
     for i,v in pairs(getconnections(game:GetService("ScriptContext").Error)) do v:Disable() end
 
-    -- Simple ESP
+    --ESP
     loadstring(game:HttpGet("https://raw.githubusercontent.com/Babyhamsta/RBLX_Scripts/main/Universal/SimpleESP.lua", true))()
 
     -- Aimbot Vars
