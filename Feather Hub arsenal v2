@@ -1,0 +1,1614 @@
+wait(1)
+
+local Camera = workspace.CurrentCamera
+local uis = game:GetService("UserInputService")
+local ts = game:GetService("TweenService")
+
+-- Create Main ScreenGui
+local Main = Instance.new("ScreenGui")
+Main.Name = "ModernQuotasHub"
+Main.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+Main.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Main.ResetOnSpawn = false
+Main.DisplayOrder = 9999
+
+-- Modern Loader
+local Loader = Instance.new("Frame")
+local LoaderCorner = Instance.new("UICorner")
+local LoaderStroke = Instance.new("UIStroke")
+local LoaderGradient = Instance.new("UIGradient")
+local LoaderTitle = Instance.new("TextLabel")
+local LoaderStatus = Instance.new("TextLabel")
+local LoaderBar = Instance.new("Frame")
+local LoaderBarCorner = Instance.new("UICorner")
+local LoaderProgress = Instance.new("Frame")
+local LoaderProgressCorner = Instance.new("UICorner")
+local LoaderProgressGradient = Instance.new("UIGradient")
+
+local ts = game:GetService("TweenService")
+
+Loader.Name = "Loader"
+Loader.Parent = Main
+Loader.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+Loader.BorderSizePixel = 0
+Loader.Position = UDim2.new(0.5, -125, 0.5, -50)
+Loader.Size = UDim2.new(0, 0, 0, 100)
+Loader.Active = true
+
+LoaderCorner.CornerRadius = UDim.new(0, 12)
+LoaderCorner.Parent = Loader
+
+LoaderStroke.Color = Color3.fromRGB(100, 100, 255)
+LoaderStroke.Thickness = 2
+LoaderStroke.Transparency = 0.5
+LoaderStroke.Parent = Loader
+
+LoaderGradient.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 30, 40)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 30))
+}
+LoaderGradient.Rotation = 45
+LoaderGradient.Parent = Loader
+
+LoaderTitle.Name = "LoaderTitle"
+LoaderTitle.Parent = Loader
+LoaderTitle.BackgroundTransparency = 1
+LoaderTitle.Position = UDim2.new(0, 0, 0.18, 0)
+LoaderTitle.Size = UDim2.new(1, 0, 0.3, 0)
+LoaderTitle.Font = Enum.Font.GothamBold
+LoaderTitle.Text = "Feather Loader"
+LoaderTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+LoaderTitle.TextSize = 24
+LoaderTitle.TextTransparency = 1
+
+-- NEW: Status text
+LoaderStatus.Name = "LoaderStatus"
+LoaderStatus.Parent = Loader
+LoaderStatus.BackgroundTransparency = 1
+LoaderStatus.Position = UDim2.new(0, 0, 0.48, 0)
+LoaderStatus.Size = UDim2.new(1, 0, 0.2, 0)
+LoaderStatus.Font = Enum.Font.Gotham
+LoaderStatus.Text = "Preparing Script..."
+LoaderStatus.TextColor3 = Color3.fromRGB(200, 200, 255)
+LoaderStatus.TextSize = 18
+LoaderStatus.TextTransparency = 1
+
+LoaderBar.Name = "LoaderBar"
+LoaderBar.Parent = Loader
+LoaderBar.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+LoaderBar.BorderSizePixel = 0
+LoaderBar.Position = UDim2.new(0.1, 0, 0.75, 0)
+LoaderBar.Size = UDim2.new(0.8, 0, 0.1, 0)
+LoaderBar.BackgroundTransparency = 1
+
+LoaderBarCorner.CornerRadius = UDim.new(1, 0)
+LoaderBarCorner.Parent = LoaderBar
+
+LoaderProgress.Name = "LoaderProgress"
+LoaderProgress.Parent = LoaderBar
+LoaderProgress.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+LoaderProgress.BorderSizePixel = 0
+LoaderProgress.Size = UDim2.new(0, 0, 1, 0)
+
+LoaderProgressCorner.CornerRadius = UDim.new(1, 0)
+LoaderProgressCorner.Parent = LoaderProgress
+
+LoaderProgressGradient.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 100, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 150, 255))
+}
+LoaderProgressGradient.Parent = LoaderProgress
+
+-- Fade loop toggle
+local running = true
+
+-- Loop fade animation for "Preparing Script..."
+task.spawn(function()
+	while running do
+		ts:Create(LoaderStatus, TweenInfo.new(0.6), {TextTransparency = 0}):Play()
+		wait(0.6)
+		ts:Create(LoaderStatus, TweenInfo.new(0.6), {TextTransparency = 0.6}):Play()
+		wait(0.6)
+	end
+end)
+
+-- Animate Loader
+local loaderExpand = ts:Create(Loader, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 250, 0, 100)})
+loaderExpand:Play()
+
+wait(0.5)
+
+local titleFade = ts:Create(LoaderTitle, TweenInfo.new(0.5), {TextTransparency = 0})
+titleFade:Play()
+
+local barFade = ts:Create(LoaderBar, TweenInfo.new(0.5), {BackgroundTransparency = 0})
+barFade:Play()
+
+wait(0.3)
+
+local progressLoad = ts:Create(LoaderProgress, TweenInfo.new(2.5, Enum.EasingStyle.Quad), {Size = UDim2.new(1, 0, 1, 0)})
+progressLoad:Play()
+
+wait(2.8)
+
+-- Stop fade loop
+running = false
+
+-- Fade everything out
+local loaderFade = ts:Create(Loader, TweenInfo.new(0.5), {BackgroundTransparency = 1})
+local strokeFade = ts:Create(LoaderStroke, TweenInfo.new(0.5), {Transparency = 1})
+local titleFadeOut = ts:Create(LoaderTitle, TweenInfo.new(0.5), {TextTransparency = 1})
+local statusFadeOut = ts:Create(LoaderStatus, TweenInfo.new(0.5), {TextTransparency = 1})
+local barFadeOut = ts:Create(LoaderBar, TweenInfo.new(0.5), {BackgroundTransparency = 1})
+local progressFadeOut = ts:Create(LoaderProgress, TweenInfo.new(0.5), {BackgroundTransparency = 1})
+
+loaderFade:Play()
+strokeFade:Play()
+titleFadeOut:Play()
+statusFadeOut:Play()
+barFadeOut:Play()
+progressFadeOut:Play()
+
+wait(0.6)
+Loader:Destroy()
+
+
+-- Create Modern Main UI
+local MainFrame = Instance.new("Frame")
+local MainCorner = Instance.new("UICorner")
+local MainStroke = Instance.new("UIStroke")
+local Shadow = Instance.new("ImageLabel")
+
+local TopBar = Instance.new("Frame")
+local TopBarCorner = Instance.new("UICorner")
+local Title = Instance.new("TextLabel")
+local CloseBtn = Instance.new("TextButton")
+local CloseBtnCorner = Instance.new("UICorner")
+local MinimizeBtn = Instance.new("TextButton")
+local MinimizeBtnCorner = Instance.new("UICorner")
+
+local ContentFrame = Instance.new("Frame")
+local ContentCorner = Instance.new("UICorner")
+local LeftPanel = Instance.new("ScrollingFrame")
+local RightPanel = Instance.new("ScrollingFrame")
+local Divider = Instance.new("Frame")
+
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = Main
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+MainFrame.BorderSizePixel = 0
+MainFrame.Position = UDim2.new(0.5, -250, 0.5, -180)
+MainFrame.Size = UDim2.new(0, 500, 0, 360)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Visible = false
+
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = MainFrame
+
+MainStroke.Color = Color3.fromRGB(80, 80, 120)
+MainStroke.Thickness = 1
+MainStroke.Transparency = 0.7
+MainStroke.Parent = MainFrame
+
+-- Top Bar
+TopBar.Name = "TopBar"
+TopBar.Parent = MainFrame
+TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+TopBar.BorderSizePixel = 0
+TopBar.Size = UDim2.new(1, 0, 0, 45)
+
+TopBarCorner.CornerRadius = UDim.new(0, 12)
+TopBarCorner.Parent = TopBar
+
+local TopBarFix = Instance.new("Frame")
+TopBarFix.Parent = TopBar
+TopBarFix.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+TopBarFix.BorderSizePixel = 0
+TopBarFix.Position = UDim2.new(0, 0, 0.7, 0)
+TopBarFix.Size = UDim2.new(1, 0, 0.3, 0)
+
+Title.Name = "Title"
+Title.Parent = TopBar
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.new(0, 20, 0, 0)
+Title.Size = UDim2.new(0, 200, 1, 0)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "Feather Hub"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 18
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Parent = TopBar
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Position = UDim2.new(1, -35, 0.5, -12)
+CloseBtn.Size = UDim2.new(0, 24, 0, 24)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Text = "×"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 18
+
+CloseBtnCorner.CornerRadius = UDim.new(0, 6)
+CloseBtnCorner.Parent = CloseBtn
+
+MinimizeBtn.Name = "MinimizeBtn"
+MinimizeBtn.Parent = TopBar
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 180, 60)
+MinimizeBtn.BorderSizePixel = 0
+MinimizeBtn.Position = UDim2.new(1, -65, 0.5, -12)
+MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.Text = "−"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.TextSize = 18
+
+MinimizeBtnCorner.CornerRadius = UDim.new(0, 6)
+MinimizeBtnCorner.Parent = MinimizeBtn
+
+local SettingsBtn = Instance.new("TextButton")
+local SettingsBtnCorner = Instance.new("UICorner")
+
+SettingsBtn.Name = "SettingsBtn"
+SettingsBtn.Parent = TopBar
+SettingsBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+SettingsBtn.BorderSizePixel = 0
+SettingsBtn.Position = UDim2.new(1, -95, 0.5, -12)
+SettingsBtn.Size = UDim2.new(0, 24, 0, 24)
+SettingsBtn.Font = Enum.Font.GothamBold
+SettingsBtn.Text = "⚙"
+SettingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SettingsBtn.TextSize = 14
+
+SettingsBtnCorner.CornerRadius = UDim.new(0, 6)
+SettingsBtnCorner.Parent = SettingsBtn
+
+-- Content Frame
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Parent = MainFrame
+ContentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+ContentFrame.BorderSizePixel = 0
+ContentFrame.Position = UDim2.new(0, 10, 0, 55)
+ContentFrame.Size = UDim2.new(1, -20, 1, -65)
+
+ContentCorner.CornerRadius = UDim.new(0, 8)
+ContentCorner.Parent = ContentFrame
+
+-- Left Panel
+LeftPanel.Name = "LeftPanel"
+LeftPanel.Parent = ContentFrame
+LeftPanel.BackgroundTransparency = 1
+LeftPanel.BorderSizePixel = 0
+LeftPanel.Size = UDim2.new(0.48, 0, 1, 0)
+LeftPanel.ScrollBarThickness = 4
+LeftPanel.CanvasSize = UDim2.new(0, 0, 0, 600)
+
+-- Right Panel
+RightPanel.Name = "RightPanel"
+RightPanel.Parent = ContentFrame
+RightPanel.BackgroundTransparency = 1
+RightPanel.BorderSizePixel = 0
+RightPanel.Position = UDim2.new(0.52, 0, 0, 0)
+RightPanel.Size = UDim2.new(0.48, 0, 1, 0)
+RightPanel.ScrollBarThickness = 4
+RightPanel.CanvasSize = UDim2.new(0, 0, 0, 600)
+
+-- Divider
+Divider.Name = "Divider"
+Divider.Parent = ContentFrame
+Divider.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+Divider.BorderSizePixel = 0
+Divider.Position = UDim2.new(0.5, -1, 0, 10)
+Divider.Size = UDim2.new(0, 2, 1, -20)
+
+-- Function to create modern toggle button
+local function CreateToggle(name, text, parent, posY)
+	local ToggleFrame = Instance.new("Frame")
+	local ToggleLabel = Instance.new("TextLabel")
+	local ToggleButton = Instance.new("TextButton")
+	local ToggleBtnCorner = Instance.new("UICorner")
+	local ToggleIndicator = Instance.new("Frame")
+	local IndicatorCorner = Instance.new("UICorner")
+	
+	ToggleFrame.Name = name .. "Frame"
+	ToggleFrame.Parent = parent
+	ToggleFrame.BackgroundTransparency = 1
+	ToggleFrame.Position = UDim2.new(0, 10, 0, posY)
+	ToggleFrame.Size = UDim2.new(1, -20, 0, 35)
+	
+	ToggleLabel.Name = "Label"
+	ToggleLabel.Parent = ToggleFrame
+	ToggleLabel.BackgroundTransparency = 1
+	ToggleLabel.Size = UDim2.new(0.7, 0, 1, 0)
+	ToggleLabel.Font = Enum.Font.Gotham
+	ToggleLabel.Text = text
+	ToggleLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+	ToggleLabel.TextSize = 13
+	ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	
+	ToggleButton.Name = "Button"
+	ToggleButton.Parent = ToggleFrame
+	ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	ToggleButton.BorderSizePixel = 0
+	ToggleButton.Position = UDim2.new(1, -50, 0.5, -12)
+	ToggleButton.Size = UDim2.new(0, 50, 0, 24)
+	ToggleButton.Text = ""
+	
+	ToggleBtnCorner.CornerRadius = UDim.new(1, 0)
+	ToggleBtnCorner.Parent = ToggleButton
+	
+	ToggleIndicator.Name = "Indicator"
+	ToggleIndicator.Parent = ToggleButton
+	ToggleIndicator.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+	ToggleIndicator.BorderSizePixel = 0
+	ToggleIndicator.Position = UDim2.new(0, 3, 0.5, -9)
+	ToggleIndicator.Size = UDim2.new(0, 18, 0, 18)
+	
+	IndicatorCorner.CornerRadius = UDim.new(1, 0)
+	IndicatorCorner.Parent = ToggleIndicator
+	
+	return {Frame = ToggleFrame, Button = ToggleButton, Indicator = ToggleIndicator}
+end
+
+-- Create toggles for left panel
+local EspToggle = CreateToggle("Esp", "Player ESP", LeftPanel, 10)
+local TeamCheckToggle = CreateToggle("TeamCheck", "Team Check", LeftPanel, 50)
+local FovToggle = CreateToggle("Fov", "Draw FOV", LeftPanel, 90)
+local InfJumpToggle = CreateToggle("InfJump", "Infinite Jump", LeftPanel, 130)
+
+-- Create toggles for right panel
+local AimbotToggle = CreateToggle("Aimbot", "Blatant Aimbot", RightPanel, 10)
+local TeamCheck2Toggle = CreateToggle("TeamCheck2", "Team Check", RightPanel, 50)
+local SilentAimToggle = CreateToggle("SilentAim", "OP Silent Aim", RightPanel, 90)
+local SpeedHackToggle = CreateToggle("SpeedHack", "Speed Hack", RightPanel, 130)
+
+-- Weapon Mods Button
+local WeaponModsBtn = Instance.new("TextButton")
+local WeaponModsBtnCorner = Instance.new("UICorner")
+local WeaponModsGradient = Instance.new("UIGradient")
+
+WeaponModsBtn.Name = "WeaponModsBtn"
+WeaponModsBtn.Parent = RightPanel
+WeaponModsBtn.BackgroundColor3 = Color3.fromRGB(80, 100, 255)
+WeaponModsBtn.BorderSizePixel = 0
+WeaponModsBtn.Position = UDim2.new(0, 10, 0, 180)
+WeaponModsBtn.Size = UDim2.new(1, -20, 0, 40)
+WeaponModsBtn.Font = Enum.Font.GothamBold
+WeaponModsBtn.Text = "WEAPON MODS"
+WeaponModsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+WeaponModsBtn.TextSize = 14
+
+WeaponModsBtnCorner.CornerRadius = UDim.new(0, 8)
+WeaponModsBtnCorner.Parent = WeaponModsBtn
+
+WeaponModsGradient.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 120, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 100, 255))
+}
+WeaponModsGradient.Rotation = 45
+WeaponModsGradient.Parent = WeaponModsBtn
+
+-- AI Beta Button
+local AIBetaBtn = Instance.new("TextButton")
+local AIBetaBtnCorner = Instance.new("UICorner")
+local AIBetaGradient = Instance.new("UIGradient")
+
+AIBetaBtn.Name = "AIBetaBtn"
+AIBetaBtn.Parent = RightPanel
+AIBetaBtn.BackgroundColor3 = Color3.fromRGB(80, 180, 255)
+AIBetaBtn.BorderSizePixel = 0
+AIBetaBtn.Position = UDim2.new(0, 10, 0, 230) -- Position below Weapon Mods button
+AIBetaBtn.Size = UDim2.new(1, -20, 0, 40)
+AIBetaBtn.Font = Enum.Font.GothamBold
+AIBetaBtn.Text = "AI BETA"
+AIBetaBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AIBetaBtn.TextSize = 14
+
+AIBetaBtnCorner.CornerRadius = UDim.new(0, 8)
+AIBetaBtnCorner.Parent = AIBetaBtn
+
+AIBetaGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 200, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 180, 255))
+}
+AIBetaGradient.Rotation = 45
+AIBetaGradient.Parent = AIBetaBtn
+
+-- Weapon Mods Panel
+local ModsPanel = Instance.new("Frame")
+local ModsPanelCorner = Instance.new("UICorner")
+local ModsPanelStroke = Instance.new("UIStroke")
+local ModsTopBar = Instance.new("Frame")
+local ModsTopBarCorner = Instance.new("UICorner")
+local ModsTitle = Instance.new("TextLabel")
+local ModsCloseBtn = Instance.new("TextButton")
+local ModsCloseBtnCorner = Instance.new("UICorner")
+local ModsContent = Instance.new("Frame")
+
+ModsPanel.Name = "ModsPanel"
+ModsPanel.Parent = Main
+ModsPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+ModsPanel.BorderSizePixel = 0
+ModsPanel.Position = UDim2.new(0.5, -150, 0.5, -120)
+ModsPanel.Size = UDim2.new(0, 300, 0, 240)
+ModsPanel.Active = true
+ModsPanel.Draggable = true
+ModsPanel.Visible = false
+
+ModsPanelCorner.CornerRadius = UDim.new(0, 12)
+ModsPanelCorner.Parent = ModsPanel
+
+ModsPanelStroke.Color = Color3.fromRGB(80, 80, 120)
+ModsPanelStroke.Thickness = 1
+ModsPanelStroke.Transparency = 0.7
+ModsPanelStroke.Parent = ModsPanel
+
+ModsTopBar.Name = "TopBar"
+ModsTopBar.Parent = ModsPanel
+ModsTopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+ModsTopBar.BorderSizePixel = 0
+ModsTopBar.Size = UDim2.new(1, 0, 0, 40)
+
+ModsTopBarCorner.CornerRadius = UDim.new(0, 12)
+ModsTopBarCorner.Parent = ModsTopBar
+
+local ModsTopBarFix = Instance.new("Frame")
+ModsTopBarFix.Parent = ModsTopBar
+ModsTopBarFix.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+ModsTopBarFix.BorderSizePixel = 0
+ModsTopBarFix.Position = UDim2.new(0, 0, 0.7, 0)
+ModsTopBarFix.Size = UDim2.new(1, 0, 0.3, 0)
+
+ModsTitle.Name = "Title"
+ModsTitle.Parent = ModsTopBar
+ModsTitle.BackgroundTransparency = 1
+ModsTitle.Position = UDim2.new(0, 15, 0, 0)
+ModsTitle.Size = UDim2.new(0.8, 0, 1, 0)
+ModsTitle.Font = Enum.Font.GothamBold
+ModsTitle.Text = "WEAPON MODS"
+ModsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+ModsTitle.TextSize = 16
+ModsTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+ModsCloseBtn.Name = "CloseBtn"
+ModsCloseBtn.Parent = ModsTopBar
+ModsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+ModsCloseBtn.BorderSizePixel = 0
+ModsCloseBtn.Position = UDim2.new(1, -32, 0.5, -12)
+ModsCloseBtn.Size = UDim2.new(0, 24, 0, 24)
+ModsCloseBtn.Font = Enum.Font.GothamBold
+ModsCloseBtn.Text = "×"
+ModsCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ModsCloseBtn.TextSize = 18
+
+ModsCloseBtnCorner.CornerRadius = UDim.new(0, 6)
+ModsCloseBtnCorner.Parent = ModsCloseBtn
+
+ModsContent.Name = "Content"
+ModsContent.Parent = ModsPanel
+ModsContent.BackgroundTransparency = 1
+ModsContent.Position = UDim2.new(0, 10, 0, 50)
+ModsContent.Size = UDim2.new(1, -20, 1, -60)
+
+-- Create weapon mod toggles
+local AmmoModToggle = CreateToggle("AmmoMod", "Infinite Ammo", ModsContent, 10)
+local FireRateToggle = CreateToggle("FireRate", "Fire Rate Mod", ModsContent, 55)
+local RecoilToggle = CreateToggle("Recoil", "No Recoil", ModsContent, 100)
+
+-- Settings Panel
+local SettingsPanel = Instance.new("Frame")
+local SettingsPanelCorner = Instance.new("UICorner")
+local SettingsPanelStroke = Instance.new("UIStroke")
+local SettingsTopBar = Instance.new("Frame")
+local SettingsTopBarCorner = Instance.new("UICorner")
+local SettingsTitle = Instance.new("TextLabel")
+local SettingsCloseBtn = Instance.new("TextButton")
+local SettingsCloseBtnCorner = Instance.new("UICorner")
+local SettingsContent = Instance.new("ScrollingFrame")
+
+SettingsPanel.Name = "SettingsPanel"
+SettingsPanel.Parent = Main
+SettingsPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+SettingsPanel.BorderSizePixel = 0
+SettingsPanel.Position = UDim2.new(0.5, -200, 0.5, -180)
+SettingsPanel.Size = UDim2.new(0, 400, 0, 360)
+SettingsPanel.Active = true
+SettingsPanel.Draggable = true
+SettingsPanel.Visible = false
+
+SettingsPanelCorner.CornerRadius = UDim.new(0, 12)
+SettingsPanelCorner.Parent = SettingsPanel
+
+SettingsPanelStroke.Color = Color3.fromRGB(80, 80, 120)
+SettingsPanelStroke.Thickness = 1
+SettingsPanelStroke.Transparency = 0.7
+SettingsPanelStroke.Parent = SettingsPanel
+
+SettingsTopBar.Name = "TopBar"
+SettingsTopBar.Parent = SettingsPanel
+SettingsTopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+SettingsTopBar.BorderSizePixel = 0
+SettingsTopBar.Size = UDim2.new(1, 0, 0, 45)
+
+SettingsTopBarCorner.CornerRadius = UDim.new(0, 12)
+SettingsTopBarCorner.Parent = SettingsTopBar
+
+local SettingsTopBarFix = Instance.new("Frame")
+SettingsTopBarFix.Parent = SettingsTopBar
+SettingsTopBarFix.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+SettingsTopBarFix.BorderSizePixel = 0
+SettingsTopBarFix.Position = UDim2.new(0, 0, 0.7, 0)
+SettingsTopBarFix.Size = UDim2.new(1, 0, 0.3, 0)
+
+SettingsTitle.Name = "Title"
+SettingsTitle.Parent = SettingsTopBar
+SettingsTitle.BackgroundTransparency = 1
+SettingsTitle.Position = UDim2.new(0, 20, 0, 0)
+SettingsTitle.Size = UDim2.new(0.8, 0, 1, 0)
+SettingsTitle.Font = Enum.Font.GothamBold
+SettingsTitle.Text = "SETTINGS"
+SettingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+SettingsTitle.TextSize = 18
+SettingsTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+SettingsCloseBtn.Name = "CloseBtn"
+SettingsCloseBtn.Parent = SettingsTopBar
+SettingsCloseBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+SettingsCloseBtn.BorderSizePixel = 0
+SettingsCloseBtn.Position = UDim2.new(1, -35, 0.5, -12)
+SettingsCloseBtn.Size = UDim2.new(0, 24, 0, 24)
+SettingsCloseBtn.Font = Enum.Font.GothamBold
+SettingsCloseBtn.Text = "×"
+SettingsCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SettingsCloseBtn.TextSize = 18
+
+SettingsCloseBtnCorner.CornerRadius = UDim.new(0, 6)
+SettingsCloseBtnCorner.Parent = SettingsCloseBtn
+
+SettingsContent.Name = "Content"
+SettingsContent.Parent = SettingsPanel
+SettingsContent.BackgroundTransparency = 1
+SettingsContent.Position = UDim2.new(0, 10, 0, 55)
+SettingsContent.Size = UDim2.new(1, -20, 1, -65)
+SettingsContent.ScrollBarThickness = 4
+SettingsContent.CanvasSize = UDim2.new(0, 0, 0, 500)
+SettingsContent.BorderSizePixel = 0
+
+-- UI Color Settings Section
+local ColorSection = Instance.new("Frame")
+local ColorSectionTitle = Instance.new("TextLabel")
+local ColorDivider = Instance.new("Frame")
+
+ColorSection.Name = "ColorSection"
+ColorSection.Parent = SettingsContent
+ColorSection.BackgroundTransparency = 1
+ColorSection.Position = UDim2.new(0, 0, 0, 10)
+ColorSection.Size = UDim2.new(1, 0, 0, 200)
+
+ColorSectionTitle.Name = "Title"
+ColorSectionTitle.Parent = ColorSection
+ColorSectionTitle.BackgroundTransparency = 1
+ColorSectionTitle.Size = UDim2.new(1, 0, 0, 30)
+ColorSectionTitle.Font = Enum.Font.GothamBold
+ColorSectionTitle.Text = "UI COLORS"
+ColorSectionTitle.TextColor3 = Color3.fromRGB(100, 150, 255)
+ColorSectionTitle.TextSize = 14
+ColorSectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+ColorDivider.Name = "Divider"
+ColorDivider.Parent = ColorSection
+ColorDivider.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+ColorDivider.BorderSizePixel = 0
+ColorDivider.Position = UDim2.new(0, 0, 0, 32)
+ColorDivider.Size = UDim2.new(1, 0, 0, 1)
+
+-- Function to create color preset button
+local function CreateColorPreset(name, color1, color2, color3, parent, posY)
+	local PresetBtn = Instance.new("TextButton")
+	local PresetBtnCorner = Instance.new("UICorner")
+	local ColorIndicator1 = Instance.new("Frame")
+	local ColorIndicator2 = Instance.new("Frame")
+	local ColorIndicator3 = Instance.new("Frame")
+	local Indicator1Corner = Instance.new("UICorner")
+	local Indicator2Corner = Instance.new("UICorner")
+	local Indicator3Corner = Instance.new("UICorner")
+	
+	PresetBtn.Name = name .. "Preset"
+	PresetBtn.Parent = parent
+	PresetBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+	PresetBtn.BorderSizePixel = 0
+	PresetBtn.Position = UDim2.new(0, 10, 0, posY)
+	PresetBtn.Size = UDim2.new(1, -20, 0, 45)
+	PresetBtn.Font = Enum.Font.Gotham
+	PresetBtn.Text = "  " .. name
+	PresetBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+	PresetBtn.TextSize = 12
+	PresetBtn.TextXAlignment = Enum.TextXAlignment.Left
+	
+	PresetBtnCorner.CornerRadius = UDim.new(0, 8)
+	PresetBtnCorner.Parent = PresetBtn
+	
+	ColorIndicator1.Name = "Color1"
+	ColorIndicator1.Parent = PresetBtn
+	ColorIndicator1.BackgroundColor3 = color1
+	ColorIndicator1.BorderSizePixel = 0
+	ColorIndicator1.Position = UDim2.new(1, -95, 0.5, -10)
+	ColorIndicator1.Size = UDim2.new(0, 20, 0, 20)
+	
+	Indicator1Corner.CornerRadius = UDim.new(0, 4)
+	Indicator1Corner.Parent = ColorIndicator1
+	
+	ColorIndicator2.Name = "Color2"
+	ColorIndicator2.Parent = PresetBtn
+	ColorIndicator2.BackgroundColor3 = color2
+	ColorIndicator2.BorderSizePixel = 0
+	ColorIndicator2.Position = UDim2.new(1, -65, 0.5, -10)
+	ColorIndicator2.Size = UDim2.new(0, 20, 0, 20)
+	
+	Indicator2Corner.CornerRadius = UDim.new(0, 4)
+	Indicator2Corner.Parent = ColorIndicator2
+	
+	ColorIndicator3.Name = "Color3"
+	ColorIndicator3.Parent = PresetBtn
+	ColorIndicator3.BackgroundColor3 = color3
+	ColorIndicator3.BorderSizePixel = 0
+	ColorIndicator3.Position = UDim2.new(1, -35, 0.5, -10)
+	ColorIndicator3.Size = UDim2.new(0, 20, 0, 20)
+	
+	Indicator3Corner.CornerRadius = UDim.new(0, 4)
+	Indicator3Corner.Parent = ColorIndicator3
+	
+	return {Button = PresetBtn, Colors = {color1, color2, color3}}
+end
+
+-- Color Presets
+local BluePreset = CreateColorPreset("Blue Purple", Color3.fromRGB(100, 100, 255), Color3.fromRGB(80, 100, 255), Color3.fromRGB(100, 150, 255), ColorSection, 45)
+local RedPreset = CreateColorPreset("Red Orange", Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 120, 60), Color3.fromRGB(255, 100, 100), ColorSection, 95)
+local GreenPreset = CreateColorPreset("Green Teal", Color3.fromRGB(80, 255, 120), Color3.fromRGB(60, 200, 150), Color3.fromRGB(100, 255, 180), ColorSection, 145)
+
+-- Hotkey Settings Section
+local HotkeySection = Instance.new("Frame")
+local HotkeySectionTitle = Instance.new("TextLabel")
+local HotkeyDivider = Instance.new("Frame")
+local HotkeyLabel = Instance.new("TextLabel")
+local HotkeyButton = Instance.new("TextButton")
+local HotkeyButtonCorner = Instance.new("UICorner")
+local HotkeyInfo = Instance.new("TextLabel")
+
+HotkeySection.Name = "HotkeySection"
+HotkeySection.Parent = SettingsContent
+HotkeySection.BackgroundTransparency = 1
+HotkeySection.Position = UDim2.new(0, 0, 0, 230)
+HotkeySection.Size = UDim2.new(1, 0, 0, 150)
+
+HotkeySectionTitle.Name = "Title"
+HotkeySectionTitle.Parent = HotkeySection
+HotkeySectionTitle.BackgroundTransparency = 1
+HotkeySectionTitle.Size = UDim2.new(1, 0, 0, 30)
+HotkeySectionTitle.Font = Enum.Font.GothamBold
+HotkeySectionTitle.Text = "MENU HOTKEY"
+HotkeySectionTitle.TextColor3 = Color3.fromRGB(100, 150, 255)
+HotkeySectionTitle.TextSize = 14
+HotkeySectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+HotkeyDivider.Name = "Divider"
+HotkeyDivider.Parent = HotkeySection
+HotkeyDivider.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+HotkeyDivider.BorderSizePixel = 0
+HotkeyDivider.Position = UDim2.new(0, 0, 0, 32)
+HotkeyDivider.Size = UDim2.new(1, 0, 0, 1)
+
+HotkeyLabel.Name = "Label"
+HotkeyLabel.Parent = HotkeySection
+HotkeyLabel.BackgroundTransparency = 1
+HotkeyLabel.Position = UDim2.new(0, 10, 0, 50)
+HotkeyLabel.Size = UDim2.new(0.5, -15, 0, 40)
+HotkeyLabel.Font = Enum.Font.Gotham
+HotkeyLabel.Text = "Toggle Menu Key:"
+HotkeyLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+HotkeyLabel.TextSize = 13
+HotkeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+HotkeyButton.Name = "HotkeyButton"
+HotkeyButton.Parent = HotkeySection
+HotkeyButton.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+HotkeyButton.BorderSizePixel = 0
+HotkeyButton.Position = UDim2.new(0.5, 5, 0, 50)
+HotkeyButton.Size = UDim2.new(0.5, -15, 0, 40)
+HotkeyButton.Font = Enum.Font.GothamBold
+HotkeyButton.Text = "RightShift"
+HotkeyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+HotkeyButton.TextSize = 14
+
+HotkeyButtonCorner.CornerRadius = UDim.new(0, 8)
+HotkeyButtonCorner.Parent = HotkeyButton
+
+HotkeyInfo.Name = "Info"
+HotkeyInfo.Parent = HotkeySection
+HotkeyInfo.BackgroundTransparency = 1
+HotkeyInfo.Position = UDim2.new(0, 10, 0, 100)
+HotkeyInfo.Size = UDim2.new(1, -20, 0, 40)
+HotkeyInfo.Font = Enum.Font.Gotham
+HotkeyInfo.Text = "Click the button above and press any key to rebind"
+HotkeyInfo.TextColor3 = Color3.fromRGB(150, 150, 170)
+HotkeyInfo.TextSize = 11
+HotkeyInfo.TextWrapped = true
+HotkeyInfo.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Notification Label
+local NotifLabel = Instance.new("TextLabel")
+NotifLabel.Name = "NotifLabel"
+NotifLabel.Parent = Main
+NotifLabel.BackgroundTransparency = 1
+NotifLabel.Position = UDim2.new(0.5, -200, 0, 20)
+NotifLabel.Size = UDim2.new(0, 400, 0, 50)
+NotifLabel.Font = Enum.Font.GothamBold
+NotifLabel.Text = "Press RightShift to toggle menu"
+NotifLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+NotifLabel.TextSize = 16
+NotifLabel.TextStrokeTransparency = 0.5
+NotifLabel.TextTransparency = 1
+
+-- Show main frame
+wait(0.5)
+MainFrame.Visible = true
+
+-- Toggle States
+local toggled = {
+	esp = false,
+	teamCheck = false,
+	fov = true,
+	infJump = false,
+	aimbot = false,
+	teamCheck2 = true,
+	silentAim = false,
+	speedHack = false,
+	ammoMod = false,
+	fireRate = false,
+	recoil = false
+}
+
+-- UI Settings
+local UISettings = {
+	MenuKey = Enum.KeyCode.RightShift,
+	PrimaryColor = Color3.fromRGB(100, 100, 255),
+	SecondaryColor = Color3.fromRGB(80, 100, 255),
+	AccentColor = Color3.fromRGB(100, 150, 255)
+}
+
+-- Aimbot Settings
+_G.sizeof = 55
+_G.AimOn = false
+_G.TeamCheckOn = true
+_G.Aimpart = "Head"
+_G.Sensitivity = 0.03
+_G.CircleSides = 64
+_G.CircleColor = UISettings.AccentColor
+_G.CircleVisible = true
+_G.fovTransparency = 0.5
+
+-- Function to update UI colors
+local function UpdateUIColors(color1, color2, color3)
+	UISettings.PrimaryColor = color1
+	UISettings.SecondaryColor = color2
+	UISettings.AccentColor = color3
+	_G.CircleColor = color3
+	
+	-- Update loader stroke
+	LoaderStroke.Color = color1
+	LoaderProgress.BackgroundColor3 = color1
+	LoaderProgressGradient.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, color1),
+		ColorSequenceKeypoint.new(1, color3)
+	}
+	
+	-- Update main UI
+	MainStroke.Color = Color3.fromRGB(color1.R * 80/100, color1.G * 80/100, color1.B * 80/100)
+	
+	-- Update settings button
+	SettingsBtn.BackgroundColor3 = color1
+	
+	-- Update weapon mods button
+	WeaponModsBtn.BackgroundColor3 = color2
+	WeaponModsGradient.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, color1),
+		ColorSequenceKeypoint.new(1, color2)
+	}
+	
+	-- Update AI Beta button
+	AIBetaBtn.BackgroundColor3 = color2
+	AIBetaGradient.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, color1),
+		ColorSequenceKeypoint.new(1, color2)
+	}
+	
+	-- Update section titles
+	ColorSectionTitle.TextColor3 = color3
+	HotkeySectionTitle.TextColor3 = color3
+	
+	-- Update ESP colors
+	name.TextColor3 = color3
+	box.ImageColor3 = color3
+	
+	-- Update FOV circle color
+	FovCircle.Color = color3
+end
+
+-- Function to animate toggle
+local function AnimateToggle(toggle, state)
+	local targetPos = state and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+	local targetColor = state and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(150, 150, 170)
+	local targetBgColor = state and Color3.fromRGB(50, 100, 50) or Color3.fromRGB(40, 40, 50)
+	
+	ts:Create(toggle.Indicator, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Position = targetPos, BackgroundColor3 = targetColor}):Play()
+	ts:Create(toggle.Button, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {BackgroundColor3 = targetBgColor}):Play()
+end
+
+-- ESP Toggle
+EspToggle.Button.MouseButton1Click:Connect(function()
+	toggled.esp = not toggled.esp
+	AnimateToggle(EspToggle, toggled.esp)
+end)
+
+-- Team Check Toggle
+TeamCheckToggle.Button.MouseButton1Click:Connect(function()
+	toggled.teamCheck = not toggled.teamCheck
+	AnimateToggle(TeamCheckToggle, toggled.teamCheck)
+end)
+
+-- FOV Toggle
+FovToggle.Button.MouseButton1Click:Connect(function()
+	_G.CircleVisible = not _G.CircleVisible
+	toggled.fov = _G.CircleVisible
+	AnimateToggle(FovToggle, toggled.fov)
+end)
+
+-- Infinite Jump Toggle
+InfJumpToggle.Button.MouseButton1Click:Connect(function()
+	toggled.infJump = not toggled.infJump
+	AnimateToggle(InfJumpToggle, toggled.infJump)
+	
+	if toggled.infJump then
+		local InfiniteJumpEnabled = true
+		game:GetService("UserInputService").JumpRequest:Connect(function()
+			if InfiniteJumpEnabled and toggled.infJump then
+				game:GetService("Players").LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+			end
+		end)
+	end
+end)
+
+-- Aimbot Toggle
+AimbotToggle.Button.MouseButton1Click:Connect(function()
+	_G.AimOn = not _G.AimOn
+	toggled.aimbot = _G.AimOn
+	_G.fovTransparency = _G.AimOn and 1 or 0.5
+	AnimateToggle(AimbotToggle, toggled.aimbot)
+end)
+
+-- Team Check 2 Toggle
+TeamCheck2Toggle.Button.MouseButton1Click:Connect(function()
+	_G.TeamCheckOn = not _G.TeamCheckOn
+	toggled.teamCheck2 = _G.TeamCheckOn
+	AnimateToggle(TeamCheck2Toggle, toggled.teamCheck2)
+end)
+
+-- Silent Aim Toggle
+SilentAimToggle.Button.MouseButton1Click:Connect(function()
+	toggled.silentAim = not toggled.silentAim
+	AnimateToggle(SilentAimToggle, toggled.silentAim)
+	
+	if toggled.silentAim then
+		function getplrsname()
+			for i,v in pairs(game:GetChildren()) do
+				if v.ClassName == "Players" then
+					return v.Name
+				end
+			end
+		end
+		local players = getplrsname()
+		local plr = game[players].LocalPlayer
+		coroutine.resume(coroutine.create(function()
+			while wait(1) and toggled.silentAim do
+				coroutine.resume(coroutine.create(function()
+					for _,v in pairs(game[players]:GetPlayers()) do
+						if v.Name ~= plr.Name and v.Character then
+							v.Character.RightUpperLeg.CanCollide = false
+							v.Character.RightUpperLeg.Transparency = 10
+							v.Character.RightUpperLeg.Size = Vector3.new(13,13,13)
+
+							v.Character.LeftUpperLeg.CanCollide = false
+							v.Character.LeftUpperLeg.Transparency = 10
+							v.Character.LeftUpperLeg.Size = Vector3.new(13,13,13)
+
+							v.Character.HeadHB.CanCollide = false
+							v.Character.HeadHB.Transparency = 10
+							v.Character.HeadHB.Size = Vector3.new(13,13,13)
+
+							v.Character.HumanoidRootPart.CanCollide = false
+							v.Character.HumanoidRootPart.Transparency = 10
+							v.Character.HumanoidRootPart.Size = Vector3.new(13,13,13)
+						end
+					end
+				end))
+			end
+		end))
+	end
+end)
+
+-- Speed Hack Toggle
+SpeedHackToggle.Button.MouseButton1Click:Connect(function()
+	toggled.speedHack = not toggled.speedHack
+	AnimateToggle(SpeedHackToggle, toggled.speedHack)
+	
+	if toggled.speedHack then
+		_G.WS = "100"
+		local Humanoid = game:GetService("Players").LocalPlayer.Character.Humanoid
+		Humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+			Humanoid.WalkSpeed = _G.WS
+		end)
+		Humanoid.WalkSpeed = _G.WS
+	end
+end)
+
+-- Weapon Mods Button
+WeaponModsBtn.MouseButton1Click:Connect(function()
+	ModsPanel.Visible = true
+end)
+
+-- AI Beta Button
+AIBetaBtn.MouseButton1Click:Connect(function()
+    -- Your provided AI script here
+    -- Bot Settings
+    getgenv().AimSens = 1/45; -- Aimbot sens
+    getgenv().LookSens = 1/80; -- Aim while walking sens
+    getgenv().PreAimDis = 55; -- if within 55 Studs then preaim
+    getgenv().KnifeOutDis = 85; -- if within 85 Studs then swap back to gun
+    getgenv().ReloadDis = 50; -- if over 50 Studs away then reload
+    getgenv().RecalDis = 15; -- if player moves over this many studs then recalculate path to them
+
+    -- Services
+    local PathfindingService = game:GetService("PathfindingService")
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local TweenService = game:GetService('TweenService');
+    local VIM = game:GetService("VirtualInputManager")
+    local UserInputService = game:GetService("UserInputService")
+
+    -- Local Plr
+    local Plr = Players.LocalPlayer
+    local Char = Plr.Character or Plr.CharacterAdded:Wait()
+    local Head = Char:WaitForChild("Head", 1337)
+    local Root = Char:WaitForChild("HumanoidRootPart", 1337)
+    local Humanoid = Char:WaitForChild("Humanoid", 1337)
+
+    -- error bypass
+    for i,v in pairs(getconnections(game:GetService("ScriptContext").Error)) do v:Disable() end
+
+    -- Simple ESP
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Babyhamsta/RBLX_Scripts/main/Universal/SimpleESP.lua", true))()
+
+    -- Aimbot Vars
+    local Camera = workspace.CurrentCamera;
+
+    -- Mouse
+    local Mouse = Plr:GetMouse();
+
+    -- Map Spawns
+    local Spawns = workspace:WaitForChild("Map", 1337):WaitForChild("Spawns", 1337)
+
+    -- Ignore
+    local Map = workspace:WaitForChild("Map", 1337)
+    local RayIgnore = workspace:WaitForChild("Ray_Ignore", 1337)
+    local MapIgnore = Map:WaitForChild("Ignore", 1337)
+
+    -- Temp Vars
+    local ClosestPlr;
+    local IsAiming;
+    local InitialPosition;
+    local CurrentEquipped = "Gun";
+    local WalkToObject;
+
+    -- Get Closest plr
+    local function getClosestPlr()
+        local nearestPlayer, nearestDistance
+        for _, player in pairs(Players:GetPlayers()) do
+            if player.TeamColor ~= Plr.TeamColor and player ~= Plr then
+                local character = player.Character
+                if character then
+                    local nroot = character:FindFirstChild("HumanoidRootPart")
+                    if character and nroot and character:FindFirstChild("Spawned") then
+                        local distance = Plr:DistanceFromCharacter(nroot.Position)
+                        if (nearestDistance and distance >= nearestDistance) then continue end
+                        nearestDistance = distance
+                        nearestPlayer = player
+                    end
+                end
+            end
+        end
+        return nearestPlayer
+    end
+
+    -- Wallcheck / Visible Check
+    local function IsVisible(target, ignorelist)
+        local obsParts = Camera:GetPartsObscuringTarget({target}, ignorelist);
+        
+        if #obsParts == 0 then
+            return true;
+        else
+            return false;
+        end
+    end
+
+    -- Aimbot/Triggerbot
+    local function Aimlock()
+        -- Temp Holder
+        local aimpart = nil;
+        
+        -- Detect first visible part
+        if ClosestPlr and ClosestPlr.Character then
+            for i,v in ipairs(ClosestPlr.Character:GetChildren()) do
+                if v and v:IsA("Part") then -- is part
+                    if IsVisible(v.Position,{Camera,Char,ClosestPlr.Character,RayIgnore,MapIgnore}) then -- is visible
+                        aimpart = v;
+                        break;
+                    end
+                end
+            end
+        end
+        
+        -- If visible aim and shoot
+        if aimpart then
+            IsAiming = true;
+            -- Aim at player
+            local tcamcframe = Camera.CFrame;
+            for i = 0, 1, AimSens do
+                if not aimpart then break; end
+                if (Head.Position.Y + aimpart.Position.Y) < 0 then break; end -- Stop bot from aiming at the ground
+                Camera.CFrame = tcamcframe:Lerp(CFrame.new(Camera.CFrame.p, aimpart.Position), i)
+                task.wait(0)
+            end
+            
+            -- Mouse down and back up
+            VIM:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, true, game, 1)
+            task.wait(0.25)
+            VIM:SendMouseButtonEvent(Mouse.X, Mouse.Y, 0, false, game, 1)
+        end
+        
+        IsAiming = false;
+    end
+
+    local function OnPathBlocked()
+       -- try again
+       warn("[AimmyAI] - Path was blocked, trying again.")
+       WalkToObject();
+    end
+
+    -- Pathfinding to Plr function
+    WalkToObject = function()
+        if ClosestPlr and ClosestPlr.Character then
+            -- RootPart
+            local CRoot = ClosestPlr.Character:FindFirstChild("HumanoidRootPart")
+            if CRoot then
+                -- Get start position
+                InitialPosition = CRoot.Position;
+                
+                -- Calculate path and waypoints
+                local currpath = PathfindingService:CreatePath({["WaypointSpacing"] = 4, ["AgentHeight"] = 5, ["AgentRadius"] = 3, ["AgentCanJump"] = true});
+                
+                -- Listen for block connect
+                currpath.Blocked:Connect(OnPathBlocked)
+                
+                local success, errorMessage = pcall(function()
+                    currpath:ComputeAsync(Root.Position, CRoot.Position)
+                end)
+                if success and currpath.Status == Enum.PathStatus.Success then
+                    local waypoints = currpath:GetWaypoints();
+                    
+                    -- Navigate to each waypoint
+                    for i, wap in pairs(waypoints) do
+                        -- Catcher
+                        if i == 1 then continue end -- skip first waypoint
+                        if not ClosestPlr or not ClosestPlr.Character or ClosestPlr ~= getClosestPlr() or not ClosestPlr.Character:FindFirstChild("Spawned") or not Char:FindFirstChild("Spawned") then
+                            ClosestPlr = nil;
+                            return;
+                        elseif (InitialPosition - CRoot.Position).Magnitude > RecalDis  then -- moved too far from start
+                            WalkToObject(); -- restart
+                            return;
+                        end
+
+                        -- Detect if needing to jump
+                        if wap.Action == Enum.PathWaypointAction.Jump then
+                            Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                        end
+
+                        -- Aim while walking (either path or plr)
+                        task.spawn(function()
+                            local primary = ClosestPlr.Character.PrimaryPart.Position;
+                            local studs = Plr:DistanceFromCharacter(primary)
+                            
+                            local tcamcframe = Camera.CFrame;
+                            for i = 0, 1, LookSens do
+                                if IsAiming then break; end
+                                if primary and studs then
+                                    -- If close aim at player
+                                    if math.floor(studs + 0.5) < PreAimDis then
+                                        if ClosestPlr and ClosestPlr.Character then
+                                            local CChar = ClosestPlr.Character;
+                                            if Char:FindFirstChild("Head") and CChar and CChar:FindFirstChild("Head") then
+                                                local MiddleAim = (Vector3.new(wap.Position.X,Char.Head.Position.Y,wap.Position.Z) + Vector3.new(CChar.Head.Position.X,CChar.Head.Position.Y,CChar.Head.Position.Z))/2;
+                                                Camera.CFrame = tcamcframe:Lerp(CFrame.new(Camera.CFrame.p, MiddleAim), i);
+                                            end
+                                        end
+                                    else -- else aim at waypoint
+                                        local mixedaim = (Camera.CFrame.p.Y + Char.Head.Position.Y)/2;
+                                        Camera.CFrame = tcamcframe:Lerp(CFrame.new(Camera.CFrame.p, Vector3.new(wap.Position.X,mixedaim,wap.Position.Z)), i);
+                                    end
+                                end
+                                task.wait(0)
+                            end
+                        end)
+                        
+                        -- Auto Knife out (for faster running and realism)
+                        task.spawn(function()
+                            local primary = ClosestPlr.Character.PrimaryPart.Position;
+                            local studs = Plr:DistanceFromCharacter(primary)
+                            
+                            if primary and studs then
+                                local arms = Camera:FindFirstChild("Arms");
+                                if arms then
+                                    arms = arms:FindFirstChild("Real");
+                                    if math.floor(studs + 0.5) > KnifeOutDis and not IsVisible(primary, {Camera,Char,ClosestPlr.Character,RayIgnore,MapIgnore}) then
+                                        if arms.Value ~= "Knife" and CurrentEquipped == "Gun" then
+                                            VIM:SendKeyEvent(true, Enum.KeyCode.Q, false, game);
+                                            CurrentEquipped = "Knife";
+                                        end
+                                    elseif arms.Value == "Knife" and CurrentEquipped ~= "Gun" then
+                                        VIM:SendKeyEvent(true, Enum.KeyCode.Q, false, game);
+                                        CurrentEquipped = "Gun";
+                                    end
+                                end
+                            end
+                        end)
+                        
+                        -- Move to Waypoint
+                        if Humanoid then
+                            Humanoid:MoveTo(wap.Position);
+                            Humanoid.MoveToFinished:Wait(); -- Wait for us to get to Waypoint
+                        end
+                    end
+                else
+                    -- Can't find path, move to a random spawn.
+                    warn("[AimmyAI] - Unable to calculate path!");
+                end
+            end
+        end
+    end
+
+    -- Walk to the Plr
+    local function WalkToPlr()
+        -- Get Closest Plr
+        ClosestPlr = getClosestPlr();
+        
+        -- Walk to Plr
+        if ClosestPlr and ClosestPlr.Character and ClosestPlr.Character:FindFirstChild("HumanoidRootPart") then
+            if Humanoid.WalkSpeed > 0 and Char:FindFirstChild("Spawned") and ClosestPlr.Character:FindFirstChild("Spawned") then
+                --Create ESP
+                local studs = Plr:DistanceFromCharacter(ClosestPlr.Character.PrimaryPart.Position)
+                SESP_Create(ClosestPlr.Character.Head, ClosestPlr.Name, "TempTrack", Color3.new(1, 0, 0), math.floor(studs + 0.5));
+                
+                -- Auto Reload (if next plr is far enough and out of site)
+                if math.floor(studs + 0.5) > ReloadDis and not IsVisible(ClosestPlr.Character.HumanoidRootPart.Position, {Camera,Char,ClosestPlr.Character,RayIgnore,MapIgnore}) then
+                    VIM:SendKeyEvent(true, Enum.KeyCode.R, false, game)
+                end
+                
+                -- AI Walk to Plr
+                WalkToObject(ClosestPlr.Character.HumanoidRootPart);
+            end
+        else
+            --RandomWalk();
+        end
+    end
+
+    -- Loop Pathfind
+    task.spawn(function()
+        while task.wait() do
+            if (ClosestPlr == nil or ClosestPlr ~= getClosestPlr()) then
+                SESP_Clear("TempTrack");
+                WalkToPlr();
+            end
+        end
+    end)
+
+    -- Loop Aimlock
+    task.spawn(function()
+        while task.wait() do
+            if ClosestPlr ~= nil and Camera then
+                if Char:FindFirstChild("Spawned") and Humanoid.WalkSpeed > 0 then
+                    Aimlock();
+                end
+            end
+        end
+    end)
+
+    -- Detect Stuck Bot
+    local stuckamt = 0;
+    Humanoid.Running:Connect(function(speed)
+        if speed < 3 and Char:FindFirstChild("Spawned") and Humanoid.WalkSpeed > 0 then
+            stuckamt = stuckamt + 1;
+            if stuckamt == 4 then
+                -- Double jump
+                Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            elseif stuckamt >= 10 then
+                stuckamt = 0;
+                -- Clear and redo path
+                SESP_Clear("TempTrack");
+                WalkToPlr();
+            end
+        end
+    end)
+    
+    -- Show notification that AI Beta has been activated
+    NotifLabel.Text = "AI Beta Activated - Experimental AI Bot Running"
+    ts:Create(NotifLabel, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+    wait(3)
+    ts:Create(NotifLabel, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+end)
+
+-- Ammo Mod Toggle
+AmmoModToggle.Button.MouseButton1Click:Connect(function()
+	toggled.ammoMod = not toggled.ammoMod
+	AnimateToggle(AmmoModToggle, toggled.ammoMod)
+	
+	if toggled.ammoMod then
+		spawn(function()
+			while wait() and toggled.ammoMod do
+				pcall(function()
+					game:GetService("Players").LocalPlayer.PlayerGui.GUI.Client.Variables.ammocount.Value = 999
+					game:GetService("Players").LocalPlayer.PlayerGui.GUI.Client.Variables.ammocount2.Value = 999
+				end)
+			end
+		end)
+	end
+end)
+
+-- Fire Rate Toggle
+FireRateToggle.Button.MouseButton1Click:Connect(function()
+	toggled.fireRate = not toggled.fireRate
+	AnimateToggle(FireRateToggle, toggled.fireRate)
+	
+	if toggled.fireRate then
+		spawn(function()
+			while wait(5) and toggled.fireRate do
+				pcall(function()
+					local replicationstorage = game.ReplicatedStorage
+					for i, v in pairs(replicationstorage.Weapons:GetDescendants()) do
+						if v.Name == "Auto" then
+							v.Value = true
+						end
+						if v.Name == "FireRate" then
+							v.Value = 0.02
+						end
+					end
+				end)
+			end
+		end)
+	end
+end)
+
+-- Recoil Toggle
+RecoilToggle.Button.MouseButton1Click:Connect(function()
+	toggled.recoil = not toggled.recoil
+	AnimateToggle(RecoilToggle, toggled.recoil)
+	
+	if toggled.recoil then
+		spawn(function()
+			while wait(5) and toggled.recoil do
+				pcall(function()
+					local replicationstorage = game.ReplicatedStorage
+					for i, v in pairs(replicationstorage.Weapons:GetDescendants()) do
+						if v.Name == "RecoilControl" then
+							v.Value = 0
+						end
+						if v.Name == "MaxSpread" then
+							v.Value = 0
+						end
+					end
+				end)
+			end
+		end)
+	end
+end)
+
+-- Close Buttons
+CloseBtn.MouseButton1Click:Connect(function()
+	MainFrame:Destroy()
+	ModsPanel:Destroy()
+	NotifLabel:Destroy()
+end)
+
+ModsCloseBtn.MouseButton1Click:Connect(function()
+	ModsPanel.Visible = false
+end)
+
+-- Settings Button
+SettingsBtn.MouseButton1Click:Connect(function()
+	SettingsPanel.Visible = true
+end)
+
+-- Settings Close Button
+SettingsCloseBtn.MouseButton1Click:Connect(function()
+	SettingsPanel.Visible = false
+end)
+
+-- Color Preset Buttons
+BluePreset.Button.MouseButton1Click:Connect(function()
+	UpdateUIColors(
+		Color3.fromRGB(100, 100, 255),
+		Color3.fromRGB(80, 100, 255),
+		Color3.fromRGB(100, 150, 255)
+	)
+end)
+
+RedPreset.Button.MouseButton1Click:Connect(function()
+	UpdateUIColors(
+		Color3.fromRGB(255, 80, 80),
+		Color3.fromRGB(255, 120, 60),
+		Color3.fromRGB(255, 100, 100)
+	)
+end)
+
+GreenPreset.Button.MouseButton1Click:Connect(function()
+	UpdateUIColors(
+		Color3.fromRGB(80, 255, 120),
+		Color3.fromRGB(60, 200, 150),
+		Color3.fromRGB(100, 255, 180)
+	)
+end)
+
+-- Hotkey Rebinding
+local rebinding = false
+
+HotkeyButton.MouseButton1Click:Connect(function()
+	if not rebinding then
+		rebinding = true
+		HotkeyButton.Text = "Press a key..."
+		HotkeyButton.BackgroundColor3 = Color3.fromRGB(255, 180, 60)
+		
+		local connection
+		connection = uis.InputBegan:Connect(function(input, gameProcessed)
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				UISettings.MenuKey = input.KeyCode
+				HotkeyButton.Text = input.KeyCode.Name
+				HotkeyButton.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+				rebinding = false
+				connection:Disconnect()
+			end
+		end)
+	end
+end)
+
+-- Minimize Button
+local MenuIsToggled = true
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+	MainFrame.Visible = false
+	MenuIsToggled = false
+	
+	ts:Create(NotifLabel, TweenInfo.new(0.5), {TextTransparency = 0}):Play()
+	wait(3)
+	ts:Create(NotifLabel, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+end)
+
+-- Toggle Menu with RightShift
+uis.InputBegan:Connect(function(input)
+	if input.KeyCode == UISettings.MenuKey then
+		if MenuIsToggled == false then
+			MainFrame.Visible = true
+			MenuIsToggled = true
+		end
+	end
+end)
+
+-- ESP System
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local esp = Instance.new("BillboardGui")
+local name = Instance.new("TextLabel")
+local mainesp = Instance.new("BillboardGui")
+local box = Instance.new("ImageLabel")
+
+esp.Name = "esp"
+esp.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+esp.Active = true
+esp.AlwaysOnTop = true
+esp.LightInfluence = 1.000
+esp.Size = UDim2.new(0, 300, 0, 30)
+esp.StudsOffset = Vector3.new(0, 3, 0)
+
+name.Name = "name"
+name.Parent = esp
+name.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+name.BackgroundTransparency = 1.000
+name.BorderSizePixel = 0
+name.Size = UDim2.new(1, 0, 1, 0)
+name.Font = Enum.Font.GothamBold
+name.TextColor3 = Color3.fromRGB(100, 200, 255)
+name.TextSize = 12
+name.TextStrokeTransparency = 0.000
+name.TextWrapped = true
+name.TextTransparency = 1
+
+mainesp.Name = "mainesp"
+mainesp.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+mainesp.Active = true
+mainesp.AlwaysOnTop = true
+mainesp.LightInfluence = 1.000
+mainesp.MaxDistance = 999999.000
+mainesp.Size = UDim2.new(4, 0, 6, 0)
+
+box.Name = "box"
+box.Parent = mainesp
+box.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+box.BackgroundTransparency = 1.000
+box.BorderSizePixel = 0
+box.Size = UDim2.new(1, 0, 1, 0)
+box.Image = "http://www.roblox.com/asset/?id=16946608585"
+box.ImageColor3 = Color3.fromRGB(100, 200, 255)
+box.ImageTransparency = 1
+
+RunService.RenderStepped:Connect(function()
+	for i, v in pairs(Players:GetChildren()) do
+		if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") then
+			if not v.Character.Head:FindFirstChild("esp") then
+				local nameClone = esp:Clone()
+				local espClone = mainesp:Clone()
+				nameClone.Parent = v.Character:FindFirstChild("Head")
+				nameClone:FindFirstChild("name").Text = v.Name
+				if v.Character:FindFirstChild("HumanoidRootPart") then
+					espClone.Parent = v.Character:FindFirstChild("HumanoidRootPart")
+				end
+			end
+		end
+	end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function(character)
+		wait(0.5)
+		if player ~= LocalPlayer and character:FindFirstChild("Head") then
+			local nameClone = esp:Clone()
+			local espClone = mainesp:Clone()
+			nameClone.Parent = character:FindFirstChild("Head")
+			nameClone:FindFirstChild("name").Text = player.Name
+			if character:FindFirstChild("HumanoidRootPart") then
+				espClone.Parent = character:FindFirstChild("HumanoidRootPart")
+			end
+		end
+	end)
+end)
+
+-- Team Check ESP Logic
+RunService.RenderStepped:Connect(function()
+	for i, v in pairs(Players:GetChildren()) do
+		if v ~= LocalPlayer and v.Character then
+			if toggled.teamCheck and v.Team == LocalPlayer.Team then
+				if v.Character:FindFirstChild("Head") and v.Character.Head:FindFirstChild("esp") then
+					v.Character.Head:FindFirstChild("esp"):Destroy()
+				end
+				if v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("mainesp") then
+					v.Character.HumanoidRootPart:FindFirstChild("mainesp"):Destroy()
+				end
+			end
+		end
+	end
+end)
+
+-- ESP Visibility Toggle
+RunService.RenderStepped:Connect(function()
+	for i, v in pairs(Players:GetChildren()) do
+		if v.Character and v.Character:FindFirstChild("Head") then
+			if v.Character.Head:FindFirstChild("esp") then
+				v.Character.Head:FindFirstChild("esp").name.TextTransparency = toggled.esp and 0 or 1
+			end
+			if v.Character:FindFirstChild("HumanoidRootPart") and v.Character.HumanoidRootPart:FindFirstChild("mainesp") then
+				v.Character.HumanoidRootPart:FindFirstChild("mainesp").box.ImageTransparency = toggled.esp and 0.43 or 1
+			end
+		end
+	end
+end)
+
+-- Aimbot System
+local Holding = false
+
+local FovCircle = Drawing.new("Circle")
+FovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+FovCircle.Radius = _G.sizeof
+FovCircle.Color = _G.CircleColor
+FovCircle.Visible = _G.CircleVisible
+FovCircle.NumSides = _G.CircleSides
+FovCircle.Filled = false
+FovCircle.Transparency = _G.fovTransparency
+FovCircle.Thickness = 2
+
+local function GetClosestPlayer()
+	local Target = nil
+	local MaxDistance = _G.sizeof
+
+	for i, v in next, Players:GetChildren() do
+		if v.Name ~= LocalPlayer.Name then
+			if _G.TeamCheckOn == true then
+				if v.Team ~= LocalPlayer.Team then
+					if v.Character ~= nil then
+						if v.Character:FindFirstChild("HumanoidRootPart") ~= nil then
+							if v.Character:FindFirstChild("Humanoid") ~= nil then
+								if v.Character:FindFirstChild("Humanoid").Health ~= 0 then
+									local ScreenPoint = Camera:WorldToScreenPoint(v.Character:WaitForChild("HumanoidRootPart", math.huge).Position)
+									local VectorDistance = (Vector2.new(uis:GetMouseLocation().X, uis:GetMouseLocation().Y) - Vector2.new(ScreenPoint.X, ScreenPoint.Y)).Magnitude
+
+									if VectorDistance < MaxDistance then
+										Target = v
+									end
+								end
+							end
+						end
+					end
+				end
+			else
+				if v.Character ~= nil then
+					if v.Character:FindFirstChild("HumanoidRootPart") ~= nil then
+						if v.Character:FindFirstChild("Humanoid") ~= nil then
+							if v.Character:FindFirstChild("Humanoid").Health ~= 0 then
+								local ScreenPoint = Camera:WorldToScreenPoint(v.Character:WaitForChild("HumanoidRootPart", math.huge).Position)
+								local VectorDistance = (Vector2.new(uis:GetMouseLocation().X, uis:GetMouseLocation().Y) - Vector2.new(ScreenPoint.X, ScreenPoint.Y)).Magnitude
+
+								if VectorDistance < MaxDistance then
+									Target = v
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return Target
+end
+
+uis.InputBegan:Connect(function(Input)
+	if Input.UserInputType == Enum.UserInputType.MouseButton2 then
+		Holding = true
+	end
+end)
+
+uis.InputEnded:Connect(function(Input)
+	if Input.UserInputType == Enum.UserInputType.MouseButton2 then
+		Holding = false
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	FovCircle.Position = Vector2.new(uis:GetMouseLocation().X, uis:GetMouseLocation().Y)
+	FovCircle.Radius = _G.sizeof
+	FovCircle.Color = _G.CircleColor
+	FovCircle.Visible = _G.CircleVisible
+	FovCircle.NumSides = _G.CircleSides
+	FovCircle.Filled = false
+	FovCircle.Transparency = _G.fovTransparency
+	FovCircle.Thickness = 2
+
+	if Holding == true and _G.AimOn == true then
+		local target = GetClosestPlayer()
+		if target and target.Character and target.Character:FindFirstChild(_G.Aimpart) then
+			ts:Create(Camera, TweenInfo.new(_G.Sensitivity, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(Camera.CFrame.Position, target.Character[_G.Aimpart].Position)}):Play()
+		end
+	end
+end)
+
+AnimateToggle(FovToggle, true)
+AnimateToggle(TeamCheck2Toggle, true)
