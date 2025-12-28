@@ -1,48 +1,61 @@
---------------------------------------------------
--- SERVICES
---------------------------------------------------
-local Players = game:GetService("Players")
+--// Spike Circle Placer UI with Hotkeys + Enhanced Compass System
 local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local camera = workspace.CurrentCamera
 local Workspace = game:GetService("Workspace")
 
-local player = Players.LocalPlayer
+--// Settings
+local settings = {
+	selfSpike = {
+		enabled = true,
+		hotkey = Enum.KeyCode.Q,
+		spikeCount = 4,
+		radius = 6,
+		height = 0,
+		placeDelay = 0
+	},
+	targetSpike = {
+		enabled = true,
+		hotkey = Enum.KeyCode.R,
+		maxDistance = 18,
+		spikeCount = 4,
+		radius = 6,
+		groundOffset = 0.15,
+		placeDelay = 0
+	},
+	compass = {
+		enabled = false,
+		teamCheck = true,
+		searchEnabled = false,
+		searchQuery = "",
+		showChests = true,
+		showCows = true
+	}
+}
 
---------------------------------------------------
--- SETTINGS
---------------------------------------------------
-local HOTKEY = Enum.KeyCode.R
-local MAX_DISTANCE = 36          -- max target detection range
-local SPIKE_COUNT = 6            -- number of spikes in circle
-local RADIUS = 5                 -- circle size
-local GROUND_OFFSET = 0.15       -- prevents placement rejection
-
---------------------------------------------------
--- HELPERS
---------------------------------------------------
+--// Helper Functions
 local function randomId()
 	return tostring(math.random(100000, 999999))
 end
 
 local function getHRP(plr)
-	return plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+	local char = plr.Character
+	if char then
+		return char:FindFirstChild("HumanoidRootPart")
+	end
 end
 
--- 🔥 SUPER SPIKES TOOL
-local function getSuperSpikesTool()
-	return player.Backpack:FindFirstChild("Super Spikes")
-		or (player.Character and player.Character:FindFirstChild("Super Spikes"))
-end
-
---------------------------------------------------
--- FIND CLOSEST PLAYER
---------------------------------------------------
-local function getClosestPlayer()
+local function getNearestPlayerInRange()
 	local myHRP = getHRP(player)
 	if not myHRP then return end
-
+	
 	local closestHRP
-	local closestDist = MAX_DISTANCE
-
+	local closestDist = settings.targetSpike.maxDistance
+	
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= player then
 			local hrp = getHRP(plr)
@@ -55,68 +68,551 @@ local function getClosestPlayer()
 			end
 		end
 	end
-
+	
 	return closestHRP
 end
 
---------------------------------------------------
--- PLACE SPIKE CIRCLE AROUND TARGET
---------------------------------------------------
-local function placeSpikeCircleOnTarget()
-	local spikesTool = getSuperSpikesTool()
+--// Object Search Functions
+local function findObjects()
+	local objects = {}
+	
+	-- Find all players
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player then
+			local hrp = getHRP(plr)
+			if hrp then
+				table.insert(objects, {
+					Name = plr.Name,
+					Type = "Player",
+					Part = hrp,
+					Color = Color3.fromRGB(255, 100, 100)
+				})
+			end
+		end
+	end
+	
+	-- Find chests if enabled
+	if settings.compass.showChests then
+		local treasureFolder = Workspace:FindFirstChild("Treasure")
+		if treasureFolder then
+			for _, chest in ipairs(treasureFolder:GetChildren()) do
+				if chest:IsA("Model") and chest.Name == "Chest" then
+					local primaryPart = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
+					if primaryPart then
+						table.insert(objects, {
+							Name = "Chest",
+							Type = "Chest",
+							Part = primaryPart,
+							Color = Color3.fromRGB(255, 215, 0) -- Gold color
+						})
+					end
+				end
+			end
+		end
+	end
+	
+	-- Find cows if enabled
+	if settings.compass.showCows then
+		local charactersFolder = Workspace:FindFirstChild("Characters")
+		if charactersFolder then
+			for _, cow in ipairs(charactersFolder:GetChildren()) do
+				if cow:IsA("Model") and cow.Name == "Cow" then
+					local primaryPart = cow.PrimaryPart or cow:FindFirstChildWhichIsA("BasePart")
+					if primaryPart then
+						table.insert(objects, {
+							Name = "Cow",
+							Type = "Cow",
+							Part = primaryPart,
+							Color = Color3.fromRGB(139, 69, 19) -- Brown color
+						})
+					end
+				end
+			end
+		end
+	end
+	
+	return objects
+end
+
+local function getNearestObject()
+	local myChar = player.Character
+	if not myChar then return nil, nil, nil, nil end
+	local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+	if not myHRP then return nil, nil, nil, nil end
+	
+	local allObjects = findObjects()
+	local nearestObject = nil
+	local nearestPart = nil
+	local nearestDist = math.huge
+	local nearestType = nil
+	
+	for _, obj in ipairs(allObjects) do
+		-- Team check for players
+		if obj.Type == "Player" then
+			local targetPlayer = Players:FindFirstChild(obj.Name)
+			if targetPlayer and settings.compass.teamCheck and targetPlayer.Team == player.Team then
+				continue
+			end
+			
+			-- Search filter
+			if settings.compass.searchEnabled and settings.compass.searchQuery ~= "" then
+				local lowerName = string.lower(obj.Name)
+				local lowerQuery = string.lower(settings.compass.searchQuery)
+				if not string.find(lowerName, lowerQuery) then
+					continue
+				end
+			end
+		else
+			-- Search filter for objects
+			if settings.compass.searchEnabled and settings.compass.searchQuery ~= "" then
+				local lowerName = string.lower(obj.Name)
+				local lowerQuery = string.lower(settings.compass.searchQuery)
+				if not string.find(lowerName, lowerQuery) then
+					continue
+				end
+			end
+		end
+		
+		local dist = (myHRP.Position - obj.Part.Position).Magnitude
+		if dist < nearestDist then
+			nearestDist = dist
+			nearestObject = obj
+			nearestPart = obj.Part
+			nearestType = obj.Type
+		end
+	end
+	
+	return nearestObject, nearestPart, nearestDist, nearestType
+end
+
+--// Spike Functions
+local function placeSelfSpikeCircle()
+	if not settings.selfSpike.enabled then return end
+	
+	local char = player.Character
+	if not char then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	
+	local spikesTool = player.Backpack:FindFirstChild("Super Spikes")
 	if not spikesTool then return end
-
-	local targetHRP = getClosestPlayer()
-	if not targetHRP then return end
-
-	local buildRemote = spikesTool
-		:WaitForChild("StructureScripts")
-		:WaitForChild("Build")
-
-	local rayParams = RaycastParams.new()
-	rayParams.FilterDescendantsInstances = { player.Character }
-	rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-
-	for i = 1, SPIKE_COUNT do
-		local angle = math.rad((i - 1) * (360 / SPIKE_COUNT))
+	
+	local buildRemote = spikesTool:WaitForChild("StructureScripts"):WaitForChild("Build")
+	
+	for i = 1, settings.selfSpike.spikeCount do
+		local angle = math.rad((i - 1) * (360 / settings.selfSpike.spikeCount))
 		local offset = Vector3.new(
-			math.cos(angle) * RADIUS,
-			0,
-			math.sin(angle) * RADIUS
+			math.cos(angle) * settings.selfSpike.radius,
+			settings.selfSpike.height,
+			math.sin(angle) * settings.selfSpike.radius
 		)
-
-		local testPos = targetHRP.Position + offset
-
-		local ray = Workspace:Raycast(
-			testPos + Vector3.new(0, 6, 0),
-			Vector3.new(0, -20, 0),
-			rayParams
-		)
-
-		if ray then
-			local cf =
-				CFrame.new(ray.Position + Vector3.new(0, GROUND_OFFSET, 0))
-				* CFrame.Angles(0, math.rad(math.random(0, 360)), 0)
-
-			buildRemote:InvokeServer(
-				spikesTool,
-				cf,
-				randomId(),
-				randomId(),
-				math.random(200, 300)
-			)
+		
+		local spikeCFrame = CFrame.new(root.Position + offset)
+		spikeCFrame = spikeCFrame * CFrame.Angles(0, math.rad(math.random(0,360)), 0)
+		
+		local args = {
+			spikesTool,
+			spikeCFrame,
+			randomId(),
+			randomId(),
+			math.random(200, 300)
+		}
+		
+		buildRemote:InvokeServer(unpack(args))
+		
+		if settings.selfSpike.placeDelay > 0 then
+			task.wait(settings.selfSpike.placeDelay)
 		end
 	end
 end
 
---------------------------------------------------
--- HOTKEY
---------------------------------------------------
-UIS.InputBegan:Connect(function(input, gpe)
-	if gpe then return end
-	if input.KeyCode == HOTKEY then
-		placeSpikeCircleOnTarget()
+local function placeTargetSpikeCircle()
+	if not settings.targetSpike.enabled then return end
+	
+	local spikesTool = player.Backpack:FindFirstChild("Super Spikes")
+	if not spikesTool then return end
+	
+	local buildRemote = spikesTool:WaitForChild("StructureScripts"):WaitForChild("Build")
+	local targetHRP = getNearestPlayerInRange()
+	if not targetHRP then return end
+	
+	local rayParams = RaycastParams.new()
+	rayParams.FilterDescendantsInstances = { player.Character }
+	rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+	
+	for i = 1, settings.targetSpike.spikeCount do
+		local angle = math.rad((i - 1) * (360 / settings.targetSpike.spikeCount))
+		local offset = Vector3.new(
+			math.cos(angle) * settings.targetSpike.radius,
+			0,
+			math.sin(angle) * settings.targetSpike.radius
+		)
+		
+		local testPos = targetHRP.Position + offset
+		local rayResult = workspace:Raycast(
+			testPos + Vector3.new(0, 5, 0),
+			Vector3.new(0, -15, 0),
+			rayParams
+		)
+		
+		if rayResult then
+			local spikeCFrame = CFrame.new(rayResult.Position + Vector3.new(0, settings.targetSpike.groundOffset, 0))
+			spikeCFrame = spikeCFrame * CFrame.Angles(0, math.rad(math.random(0, 360)), 0)
+			
+			local args = {
+				spikesTool,
+				spikeCFrame,
+				randomId(),
+				randomId(),
+				math.random(200, 300)
+			}
+			
+			buildRemote:InvokeServer(unpack(args))
+		end
+		
+		if settings.targetSpike.placeDelay > 0 then
+			task.wait(settings.targetSpike.placeDelay)
+		end
+	end
+end
+
+--// UI Creation
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SpikeCircleUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 420, 0, 550)
+mainFrame.Position = UDim2.new(0.5, -210, 0.5, -275)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 12)
+uiCorner.Parent = mainFrame
+
+local uiStroke = Instance.new("UIStroke")
+uiStroke.Color = Color3.fromRGB(60, 60, 80)
+uiStroke.Thickness = 2
+uiStroke.Parent = mainFrame
+
+--// Title
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, -40, 0, 40)
+title.Position = UDim2.new(0, 20, 0, 15)
+title.BackgroundTransparency = 1
+title.Text = "FEATHER HUB"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 20
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = mainFrame
+
+--// Self Spike Section
+local selfSection = Instance.new("Frame")
+selfSection.Name = "SelfSection"
+selfSection.Size = UDim2.new(1, -40, 0, 80)
+selfSection.Position = UDim2.new(0, 20, 0, 65)
+selfSection.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+selfSection.BorderSizePixel = 0
+selfSection.Parent = mainFrame
+
+local selfCorner = Instance.new("UICorner")
+selfCorner.CornerRadius = UDim.new(0, 8)
+selfCorner.Parent = selfSection
+
+local selfLabel = Instance.new("TextLabel")
+selfLabel.Size = UDim2.new(1, -20, 0, 25)
+selfLabel.Position = UDim2.new(0, 10, 0, 8)
+selfLabel.BackgroundTransparency = 1
+selfLabel.Text = "Self Spike Circle"
+selfLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+selfLabel.TextSize = 16
+selfLabel.Font = Enum.Font.GothamBold
+selfLabel.TextXAlignment = Enum.TextXAlignment.Left
+selfLabel.Parent = selfSection
+
+local selfButton = Instance.new("TextButton")
+selfButton.Name = "SelfButton"
+selfButton.Size = UDim2.new(0, 120, 0, 35)
+selfButton.Position = UDim2.new(0, 10, 0, 38)
+selfButton.BackgroundColor3 = Color3.fromRGB(75, 100, 255)
+selfButton.BorderSizePixel = 0
+selfButton.Text = "Execute"
+selfButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+selfButton.TextSize = 14
+selfButton.Font = Enum.Font.GothamBold
+selfButton.Parent = selfSection
+
+local selfBtnCorner = Instance.new("UICorner")
+selfBtnCorner.CornerRadius = UDim.new(0, 6)
+selfBtnCorner.Parent = selfButton
+
+local selfHotkeyButton = Instance.new("TextButton")
+selfHotkeyButton.Name = "HotkeyButton"
+selfHotkeyButton.Size = UDim2.new(0, 90, 0, 35)
+selfHotkeyButton.Position = UDim2.new(0, 140, 0, 38)
+selfHotkeyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+selfHotkeyButton.BorderSizePixel = 0
+selfHotkeyButton.Text = "Key: Q"
+selfHotkeyButton.TextColor3 = Color3.fromRGB(200, 200, 255)
+selfHotkeyButton.TextSize = 13
+selfHotkeyButton.Font = Enum.Font.GothamMedium
+selfHotkeyButton.Parent = selfSection
+
+local selfHotkeyCorner = Instance.new("UICorner")
+selfHotkeyCorner.CornerRadius = UDim.new(0, 6)
+selfHotkeyCorner.Parent = selfHotkeyButton
+
+local selfToggle = Instance.new("TextButton")
+selfToggle.Name = "Toggle"
+selfToggle.Size = UDim2.new(0, 90, 0, 35)
+selfToggle.Position = UDim2.new(0, 240, 0, 38)
+selfToggle.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+selfToggle.BorderSizePixel = 0
+selfToggle.Text = "Enabled"
+selfToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+selfToggle.TextSize = 13
+selfToggle.Font = Enum.Font.GothamBold
+selfToggle.Parent = selfSection
+
+local selfToggleCorner = Instance.new("UICorner")
+selfToggleCorner.CornerRadius = UDim.new(0, 6)
+selfToggleCorner.Parent = selfToggle
+
+--// Target Spike Section
+local targetSection = Instance.new("Frame")
+targetSection.Name = "TargetSection"
+targetSection.Size = UDim2.new(1, -40, 0, 80)
+targetSection.Position = UDim2.new(0, 20, 0, 155)
+targetSection.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+targetSection.BorderSizePixel = 0
+targetSection.Parent = mainFrame
+
+local targetCorner = Instance.new("UICorner")
+targetCorner.CornerRadius = UDim.new(0, 8)
+targetCorner.Parent = targetSection
+
+local targetLabel = Instance.new("TextLabel")
+targetLabel.Size = UDim2.new(1, -20, 0, 25)
+targetLabel.Position = UDim2.new(0, 10, 0, 8)
+targetLabel.BackgroundTransparency = 1
+targetLabel.Text = "Enemy Spike Circle"
+targetLabel.TextColor3 = Color3.fromRGB(255, 150, 150)
+targetLabel.TextSize = 16
+targetLabel.Font = Enum.Font.GothamBold
+targetLabel.TextXAlignment = Enum.TextXAlignment.Left
+targetLabel.Parent = targetSection
+
+local targetButton = Instance.new("TextButton")
+targetButton.Name = "TargetButton"
+targetButton.Size = UDim2.new(0, 120, 0, 35)
+targetButton.Position = UDim2.new(0, 10, 0, 38)
+targetButton.BackgroundColor3 = Color3.fromRGB(255, 75, 100)
+targetButton.BorderSizePixel = 0
+targetButton.Text = "Execute"
+targetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+targetButton.TextSize = 14
+targetButton.Font = Enum.Font.GothamBold
+targetButton.Parent = targetSection
+
+local targetBtnCorner = Instance.new("UICorner")
+targetBtnCorner.CornerRadius = UDim.new(0, 6)
+targetBtnCorner.Parent = targetButton
+
+local targetHotkeyButton = Instance.new("TextButton")
+targetHotkeyButton.Name = "HotkeyButton"
+targetHotkeyButton.Size = UDim2.new(0, 90, 0, 35)
+targetHotkeyButton.Position = UDim2.new(0, 140, 0, 38)
+targetHotkeyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+targetHotkeyButton.BorderSizePixel = 0
+targetHotkeyButton.Text = "Key: R"
+targetHotkeyButton.TextColor3 = Color3.fromRGB(255, 200, 200)
+targetHotkeyButton.TextSize = 13
+targetHotkeyButton.Font = Enum.Font.GothamMedium
+targetHotkeyButton.Parent = targetSection
+
+local targetHotkeyCorner = Instance.new("UICorner")
+targetHotkeyCorner.CornerRadius = UDim.new(0, 6)
+targetHotkeyCorner.Parent = targetHotkeyButton
+
+local targetToggle = Instance.new("TextButton")
+targetToggle.Name = "Toggle"
+targetToggle.Size = UDim2.new(0, 90, 0, 35)
+targetToggle.Position = UDim2.new(0, 240, 0, 38)
+targetToggle.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+targetToggle.BorderSizePixel = 0
+targetToggle.Text = "Enabled"
+targetToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+targetToggle.TextSize = 13
+targetToggle.Font = Enum.Font.GothamBold
+targetToggle.Parent = targetSection
+
+local targetToggleCorner = Instance.new("UICorner")
+targetToggleCorner.CornerRadius = UDim.new(0, 6)
+targetToggleCorner.Parent = targetToggle
+
+--// Close Button
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"
+closeButton.Size = UDim2.new(0, 30, 0, 30)
+closeButton.Position = UDim2.new(1, -40, 0, 15)
+closeButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+closeButton.BorderSizePixel = 0
+closeButton.Text = ""
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.TextSize = 18
+closeButton.Font = Enum.Font.GothamBold
+closeButton.Parent = mainFrame
+
+local closeBtnCorner = Instance.new("UICorner")
+closeBtnCorner.CornerRadius = UDim.new(0, 6)
+closeBtnCorner.Parent = closeButton
+
+--// Drag Functionality
+local dragging
+local dragInput
+local dragStart
+local startPos
+
+local function update(input)
+	local delta = input.Position - dragStart
+	mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+mainFrame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = mainFrame.Position
+		
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
 	end
 end)
 
-print("✅ Super Spikes target circle loaded (R)")
+mainFrame.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		dragInput = input
+	end
+end)
+
+UIS.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		update(input)
+	end
+end)
+
+--// Button Animations
+local function animateButton(button)
+	local originalSize = button.Size
+	local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	
+	button.MouseButton1Down:Connect(function()
+		local tween = TweenService:Create(button, tweenInfo, {Size = UDim2.new(originalSize.X.Scale, originalSize.X.Offset - 4, originalSize.Y.Scale, originalSize.Y.Offset - 4)})
+		tween:Play()
+	end)
+	
+	button.MouseButton1Up:Connect(function()
+		local tween = TweenService:Create(button, tweenInfo, {Size = originalSize})
+		tween:Play()
+	end)
+end
+
+animateButton(selfButton)
+animateButton(targetButton)
+animateButton(closeButton)
+
+
+--// Button Functionality
+selfButton.MouseButton1Click:Connect(function()
+	placeSelfSpikeCircle()
+end)
+
+targetButton.MouseButton1Click:Connect(function()
+	placeTargetSpikeCircle()
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+	screenGui:Destroy()
+end)
+
+--// Toggle Functionality
+selfToggle.MouseButton1Click:Connect(function()
+	settings.selfSpike.enabled = not settings.selfSpike.enabled
+	if settings.selfSpike.enabled then
+		selfToggle.Text = "Enabled"
+		selfToggle.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+	else
+		selfToggle.Text = "Disabled"
+		selfToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	end
+end)
+
+targetToggle.MouseButton1Click:Connect(function()
+	settings.targetSpike.enabled = not settings.targetSpike.enabled
+	if settings.targetSpike.enabled then
+		targetToggle.Text = "Enabled"
+		targetToggle.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+	else
+		targetToggle.Text = "Disabled"
+		targetToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	end
+end)
+
+--// Hotkey Binding
+local bindingSelf = false
+local bindingTarget = false
+
+selfHotkeyButton.MouseButton1Click:Connect(function()
+	bindingSelf = true
+	selfHotkeyButton.Text = "Press key..."
+	selfHotkeyButton.BackgroundColor3 = Color3.fromRGB(100, 100, 150)
+end)
+
+targetHotkeyButton.MouseButton1Click:Connect(function()
+	bindingTarget = true
+	targetHotkeyButton.Text = "Press key..."
+	targetHotkeyButton.BackgroundColor3 = Color3.fromRGB(150, 100, 100)
+end)
+
+UIS.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	
+	if bindingSelf then
+		bindingSelf = false
+		settings.selfSpike.hotkey = input.KeyCode
+		selfHotkeyButton.Text = "Key: " .. input.KeyCode.Name
+		selfHotkeyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+	elseif bindingTarget then
+		bindingTarget = false
+		settings.targetSpike.hotkey = input.KeyCode
+		targetHotkeyButton.Text = "Key: " .. input.KeyCode.Name
+		targetHotkeyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+	elseif input.KeyCode == settings.selfSpike.hotkey then
+		placeSelfSpikeCircle()
+	elseif input.KeyCode == settings.targetSpike.hotkey then
+		placeTargetSpikeCircle()
+	end
+end)
+
+
+		
+		
+	
+	
+	
+
+	
+
+
+
+
