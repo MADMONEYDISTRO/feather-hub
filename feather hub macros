@@ -1,0 +1,122 @@
+--------------------------------------------------
+-- SERVICES
+--------------------------------------------------
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+
+--------------------------------------------------
+-- SETTINGS
+--------------------------------------------------
+local HOTKEY = Enum.KeyCode.R
+local MAX_DISTANCE = 36          -- max target detection range
+local SPIKE_COUNT = 6            -- number of spikes in circle
+local RADIUS = 5                 -- circle size
+local GROUND_OFFSET = 0.15       -- prevents placement rejection
+
+--------------------------------------------------
+-- HELPERS
+--------------------------------------------------
+local function randomId()
+	return tostring(math.random(100000, 999999))
+end
+
+local function getHRP(plr)
+	return plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+end
+
+-- 🔥 SUPER SPIKES TOOL
+local function getSuperSpikesTool()
+	return player.Backpack:FindFirstChild("Super Spikes")
+		or (player.Character and player.Character:FindFirstChild("Super Spikes"))
+end
+
+--------------------------------------------------
+-- FIND CLOSEST PLAYER
+--------------------------------------------------
+local function getClosestPlayer()
+	local myHRP = getHRP(player)
+	if not myHRP then return end
+
+	local closestHRP
+	local closestDist = MAX_DISTANCE
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player then
+			local hrp = getHRP(plr)
+			if hrp then
+				local dist = (myHRP.Position - hrp.Position).Magnitude
+				if dist < closestDist then
+					closestDist = dist
+					closestHRP = hrp
+				end
+			end
+		end
+	end
+
+	return closestHRP
+end
+
+--------------------------------------------------
+-- PLACE SPIKE CIRCLE AROUND TARGET
+--------------------------------------------------
+local function placeSpikeCircleOnTarget()
+	local spikesTool = getSuperSpikesTool()
+	if not spikesTool then return end
+
+	local targetHRP = getClosestPlayer()
+	if not targetHRP then return end
+
+	local buildRemote = spikesTool
+		:WaitForChild("StructureScripts")
+		:WaitForChild("Build")
+
+	local rayParams = RaycastParams.new()
+	rayParams.FilterDescendantsInstances = { player.Character }
+	rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+	for i = 1, SPIKE_COUNT do
+		local angle = math.rad((i - 1) * (360 / SPIKE_COUNT))
+		local offset = Vector3.new(
+			math.cos(angle) * RADIUS,
+			0,
+			math.sin(angle) * RADIUS
+		)
+
+		local testPos = targetHRP.Position + offset
+
+		local ray = Workspace:Raycast(
+			testPos + Vector3.new(0, 6, 0),
+			Vector3.new(0, -20, 0),
+			rayParams
+		)
+
+		if ray then
+			local cf =
+				CFrame.new(ray.Position + Vector3.new(0, GROUND_OFFSET, 0))
+				* CFrame.Angles(0, math.rad(math.random(0, 360)), 0)
+
+			buildRemote:InvokeServer(
+				spikesTool,
+				cf,
+				randomId(),
+				randomId(),
+				math.random(200, 300)
+			)
+		end
+	end
+end
+
+--------------------------------------------------
+-- HOTKEY
+--------------------------------------------------
+UIS.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == HOTKEY then
+		placeSpikeCircleOnTarget()
+	end
+end)
+
+print("✅ Super Spikes target circle loaded (R)")
