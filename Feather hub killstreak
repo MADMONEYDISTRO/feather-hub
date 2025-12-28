@@ -1,0 +1,849 @@
+-- Configuration
+local CLICK_INTERVAL = 0.1
+local ROTATION_SPEED = 5 -- Degrees per frame
+local LOW_HP_THRESHOLD = 15
+local TELEPORT_CFRAME = CFrame.new(
+    Vector3.new(998.1488, 27.6000, 8.6352),
+    Vector3.new(0.9661, 0.0000, -0.2580)
+)
+
+-- Variables
+local toggle = false
+local safezoneToggle = false
+local connection, clickConnection, safezoneConnection
+local player = game.Players.LocalPlayer
+local mouse = player:GetMouse()
+
+-- Store UI position for persistence
+local uiPosition = {
+    X = 0.5,
+    Y = 0.5
+}
+
+-- UI Theme Configuration
+local UI_THEMES = {
+    Dark = {
+        Background = Color3.fromRGB(25, 25, 35),
+        Secondary = Color3.fromRGB(35, 35, 45),
+        Accent = Color3.fromRGB(0, 120, 215),
+        Text = Color3.fromRGB(240, 240, 240),
+        Success = Color3.fromRGB(60, 180, 100),
+        Warning = Color3.fromRGB(255, 180, 50),
+        Danger = Color3.fromRGB(220, 60, 60)
+    },
+    Light = {
+        Background = Color3.fromRGB(245, 245, 245),
+        Secondary = Color3.fromRGB(230, 230, 230),
+        Accent = Color3.fromRGB(0, 120, 215),
+        Text = Color3.fromRGB(30, 30, 30),
+        Success = Color3.fromRGB(60, 180, 100),
+        Warning = Color3.fromRGB(255, 140, 0),
+        Danger = Color3.fromRGB(220, 60, 60)
+    },
+    Purple = {
+        Background = Color3.fromRGB(35, 25, 45),
+        Secondary = Color3.fromRGB(45, 35, 55),
+        Accent = Color3.fromRGB(160, 100, 220),
+        Text = Color3.fromRGB(240, 240, 240),
+        Success = Color3.fromRGB(100, 200, 100),
+        Warning = Color3.fromRGB(255, 180, 50),
+        Danger = Color3.fromRGB(220, 60, 60)
+    }
+}
+
+local currentTheme = "Dark"
+local uiHotkey = Enum.KeyCode.RightShift
+local mobileMode = false
+local uiVisible = true
+
+-- Create UI with persistence
+local function createUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "RotationUIV2"
+    screenGui.ResetOnSpawn = false -- This keeps UI after respawn
+    screenGui.Parent = player:WaitForChild("PlayerGui")
+
+    -- Mobile Icon (only visible when minimized and mobile mode is on)
+    local mobileIcon = Instance.new("ImageButton")
+    mobileIcon.Name = "MobileIcon"
+    mobileIcon.Size = UDim2.new(0, 50, 0, 50)
+    mobileIcon.Position = UDim2.new(0, 20, 0.5, -25)
+    mobileIcon.BackgroundColor3 = UI_THEMES[currentTheme].Accent
+    mobileIcon.Image = "rbxassetid://7072718263" -- Gear icon
+    mobileIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    mobileIcon.Visible = false
+    mobileIcon.Parent = screenGui
+
+    local mobileIconCorner = Instance.new("UICorner")
+    mobileIconCorner.CornerRadius = UDim.new(1, 0)
+    mobileIconCorner.Parent = mobileIcon
+
+    -- Main Container
+    local mainContainer = Instance.new("Frame")
+    mainContainer.Name = "MainContainer"
+    mainContainer.Size = UDim2.new(0, 320, 0, 400)
+    mainContainer.Position = UDim2.new(uiPosition.X, -160, uiPosition.Y, -200)
+    mainContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+    mainContainer.BackgroundColor3 = UI_THEMES[currentTheme].Background
+    mainContainer.BackgroundTransparency = 0.05
+    mainContainer.Visible = uiVisible
+    mainContainer.Parent = screenGui
+
+    local containerCorner = Instance.new("UICorner")
+    containerCorner.CornerRadius = UDim.new(0, 12)
+    containerCorner.Parent = mainContainer
+
+    local containerShadow = Instance.new("ImageLabel")
+    containerShadow.Name = "Shadow"
+    containerShadow.Size = UDim2.new(1, 10, 1, 10)
+    containerShadow.Position = UDim2.new(0, -5, 0, -5)
+    containerShadow.BackgroundTransparency = 1
+    containerShadow.Image = "rbxassetid://5554236805"
+    containerShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    containerShadow.ImageTransparency = 0.8
+    containerShadow.ScaleType = Enum.ScaleType.Slice
+    containerShadow.SliceCenter = Rect.new(10, 10, 118, 118)
+    containerShadow.Parent = mainContainer
+
+    -- Title Bar (for dragging)
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainContainer
+
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 12)
+    titleCorner.Parent = titleBar
+
+    local titleText = Instance.new("TextLabel")
+    titleText.Name = "TitleText"
+    titleText.Size = UDim2.new(1, -80, 1, 0)
+    titleText.Position = UDim2.new(0, 15, 0, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "FEATHER HUB"
+    titleText.TextColor3 = UI_THEMES[currentTheme].Text
+    titleText.TextSize = 18
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextXAlignment = Enum.TextXAlignment.Left
+    titleText.Parent = titleBar
+
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0, 15, 0, 15)
+    closeButton.Position = UDim2.new(1, -20, 0.5, 0)
+    closeButton.AnchorPoint = Vector2.new(0.5, 0.5)
+    closeButton.BackgroundColor3 = UI_THEMES[currentTheme].Danger
+    closeButton.Text = ""
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 20
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Parent = titleBar
+
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(1, 0)
+    closeCorner.Parent = closeButton
+
+    -- Content Frame
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Name = "ContentFrame"
+    contentFrame.Size = UDim2.new(1, -20, 1, -60)
+    contentFrame.Position = UDim2.new(0, 10, 0, 50)
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.Parent = mainContainer
+
+    -- Rotation Section
+    local rotationSection = Instance.new("Frame")
+    rotationSection.Name = "RotationSection"
+    rotationSection.Size = UDim2.new(1, 0, 0, 120)
+    rotationSection.BackgroundTransparency = 1
+    rotationSection.Parent = contentFrame
+
+    local rotationTitle = Instance.new("TextLabel")
+    rotationTitle.Name = "RotationTitle"
+    rotationTitle.Size = UDim2.new(1, 0, 0, 30)
+    rotationTitle.BackgroundTransparency = 1
+    rotationTitle.Text = "KILLAURA/ROTS"
+    rotationTitle.TextColor3 = UI_THEMES[currentTheme].Text
+    rotationTitle.TextSize = 14
+    rotationTitle.Font = Enum.Font.GothamSemibold
+    rotationTitle.TextXAlignment = Enum.TextXAlignment.Left
+    rotationTitle.Parent = rotationSection
+
+    local rotationStatus = Instance.new("TextLabel")
+    rotationStatus.Name = "RotationStatus"
+    rotationStatus.Size = UDim2.new(1, 0, 0, 25)
+    rotationStatus.Position = UDim2.new(0, 0, 0, 30)
+    rotationStatus.BackgroundTransparency = 1
+    rotationStatus.Text = "Status: Disabled"
+    rotationStatus.TextColor3 = UI_THEMES[currentTheme].Danger
+    rotationStatus.TextSize = 14
+    rotationTitle.Font = Enum.Font.Gotham
+    rotationStatus.TextXAlignment = Enum.TextXAlignment.Left
+    rotationStatus.Parent = rotationSection
+
+    local rotationToggle = Instance.new("TextButton")
+    rotationToggle.Name = "RotationToggle"
+    rotationToggle.Size = UDim2.new(1, 0, 0, 40)
+    rotationToggle.Position = UDim2.new(0, 0, 0, 60)
+    rotationToggle.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+    rotationToggle.Text = "ENABLE ROTATION"
+    rotationToggle.TextColor3 = UI_THEMES[currentTheme].Text
+    rotationToggle.TextSize = 14
+    rotationToggle.Font = Enum.Font.GothamSemibold
+    rotationToggle.Parent = rotationSection
+
+    local rotationToggleCorner = Instance.new("UICorner")
+    rotationToggleCorner.CornerRadius = UDim.new(0, 8)
+    rotationToggleCorner.Parent = rotationToggle
+
+    -- Safezone Section
+    local safezoneSection = Instance.new("Frame")
+    safezoneSection.Name = "SafezoneSection"
+    safezoneSection.Size = UDim2.new(1, 0, 0, 120)
+    safezoneSection.Position = UDim2.new(0, 0, 0, 130)
+    safezoneSection.BackgroundTransparency = 1
+    safezoneSection.Parent = contentFrame
+
+    local safezoneTitle = Instance.new("TextLabel")
+    safezoneTitle.Name = "SafezoneTitle"
+    safezoneTitle.Size = UDim2.new(1, 0, 0, 30)
+    safezoneTitle.BackgroundTransparency = 1
+    safezoneTitle.Text = "AUTO SAFEZONE"
+    safezoneTitle.TextColor3 = UI_THEMES[currentTheme].Text
+    safezoneTitle.TextSize = 14
+    safezoneTitle.Font = Enum.Font.GothamSemibold
+    safezoneTitle.TextXAlignment = Enum.TextXAlignment.Left
+    safezoneTitle.Parent = safezoneSection
+
+    local healthStatus = Instance.new("TextLabel")
+    healthStatus.Name = "HealthStatus"
+    healthStatus.Size = UDim2.new(1, 0, 0, 25)
+    healthStatus.Position = UDim2.new(0, 0, 0, 30)
+    healthStatus.BackgroundTransparency = 1
+    healthStatus.Text = "Health: Full (100%)"
+    healthStatus.TextColor3 = UI_THEMES[currentTheme].Success
+    healthStatus.TextSize = 14
+    healthStatus.Font = Enum.Font.Gotham
+    healthStatus.TextXAlignment = Enum.TextXAlignment.Left
+    healthStatus.Parent = safezoneSection
+
+    local safezoneToggleBtn = Instance.new("TextButton")
+    safezoneToggleBtn.Name = "SafezoneToggle"
+    safezoneToggleBtn.Size = UDim2.new(1, 0, 0, 40)
+    safezoneToggleBtn.Position = UDim2.new(0, 0, 0, 60)
+    safezoneToggleBtn.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+    safezoneToggleBtn.Text = "SAFEZONE IF LOW"
+    safezoneToggleBtn.TextColor3 = UI_THEMES[currentTheme].Text
+    safezoneToggleBtn.TextSize = 14
+    safezoneToggleBtn.Font = Enum.Font.GothamSemibold
+    safezoneToggleBtn.Parent = safezoneSection
+
+    local safezoneToggleCorner = Instance.new("UICorner")
+    safezoneToggleCorner.CornerRadius = UDim.new(0, 8)
+    safezoneToggleCorner.Parent = safezoneToggleBtn
+
+    -- Settings Button
+    local settingsButton = Instance.new("TextButton")
+    settingsButton.Name = "SettingsButton"
+    settingsButton.Size = UDim2.new(1, 0, 0, 40)
+    settingsButton.Position = UDim2.new(0, 0, 0, 260)
+    settingsButton.BackgroundColor3 = UI_THEMES[currentTheme].Accent
+    settingsButton.Text = "SETTINGS"
+    settingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    settingsButton.TextSize = 14
+    settingsButton.Font = Enum.Font.GothamSemibold
+    settingsButton.Parent = contentFrame
+
+    local settingsButtonCorner = Instance.new("UICorner")
+    settingsButtonCorner.CornerRadius = UDim.new(0, 8)
+    settingsButtonCorner.Parent = settingsButton
+
+    -- Settings Panel (initially hidden)
+    local settingsPanel = Instance.new("Frame")
+    settingsPanel.Name = "SettingsPanel"
+    settingsPanel.Size = UDim2.new(1, 0, 1, 0)
+    settingsPanel.Position = UDim2.new(0, 0, 0, 0)
+    settingsPanel.BackgroundColor3 = UI_THEMES[currentTheme].Background
+    settingsPanel.Visible = false
+    settingsPanel.Parent = mainContainer
+
+    local settingsCorner = Instance.new("UICorner")
+    settingsCorner.CornerRadius = UDim.new(0, 12)
+    settingsCorner.Parent = settingsPanel
+
+    local settingsTitle = Instance.new("TextLabel")
+    settingsTitle.Name = "SettingsTitle"
+    settingsTitle.Size = UDim2.new(1, 0, 0, 40)
+    settingsTitle.BackgroundTransparency = 1
+    settingsTitle.Text = "SETTINGS"
+    settingsTitle.TextColor3 = UI_THEMES[currentTheme].Text
+    settingsTitle.TextSize = 18
+    settingsTitle.Font = Enum.Font.GothamBold
+    settingsTitle.Parent = settingsPanel
+
+    local backButton = Instance.new("TextButton")
+    backButton.Name = "BackButton"
+    backButton.Size = UDim2.new(0, 40, 0, 40)
+    backButton.Position = UDim2.new(0, 10, 0, 0)
+    backButton.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+    backButton.Text = "←"
+    backButton.TextColor3 = UI_THEMES[currentTheme].Text
+    backButton.TextSize = 20
+    backButton.Font = Enum.Font.GothamBold
+    backButton.Parent = settingsPanel
+
+    local backCorner = Instance.new("UICorner")
+    backCorner.CornerRadius = UDim.new(0, 8)
+    backCorner.Parent = backButton
+
+    -- Theme Selection
+    local themeFrame = Instance.new("Frame")
+    themeFrame.Name = "ThemeFrame"
+    themeFrame.Size = UDim2.new(1, -20, 0, 100)
+    themeFrame.Position = UDim2.new(0, 10, 0, 50)
+    themeFrame.BackgroundTransparency = 1
+    themeFrame.Parent = settingsPanel
+
+    local themeTitle = Instance.new("TextLabel")
+    themeTitle.Name = "ThemeTitle"
+    themeTitle.Size = UDim2.new(1, 0, 0, 25)
+    themeTitle.BackgroundTransparency = 1
+    themeTitle.Text = "UI Theme:"
+    themeTitle.TextColor3 = UI_THEMES[currentTheme].Text
+    themeTitle.TextSize = 14
+    themeTitle.Font = Enum.Font.GothamSemibold
+    themeTitle.TextXAlignment = Enum.TextXAlignment.Left
+    themeTitle.Parent = themeFrame
+
+    -- Create theme buttons
+    local themeButtons = {}
+    local themeNames = {"Dark", "Light", "Purple"}
+
+    for i, themeName in ipairs(themeNames) do
+        local themeButton = Instance.new("TextButton")
+        themeButton.Name = themeName .. "Theme"
+        themeButton.Size = UDim2.new(0.3, -5, 0, 40)
+        themeButton.Position = UDim2.new((i-1) * 0.33, 0, 0, 30)
+        themeButton.BackgroundColor3 = UI_THEMES[themeName].Accent
+        themeButton.Text = themeName
+        themeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        themeButton.TextSize = 12
+        themeButton.Font = Enum.Font.Gotham
+        themeButton.Parent = themeFrame
+        
+        local themeCorner = Instance.new("UICorner")
+        themeCorner.CornerRadius = UDim.new(0, 6)
+        themeCorner.Parent = themeButton
+        
+        themeButtons[themeName] = themeButton
+    end
+
+    -- Hotkey Selection
+    local hotkeyFrame = Instance.new("Frame")
+    hotkeyFrame.Name = "HotkeyFrame"
+    hotkeyFrame.Size = UDim2.new(1, -20, 0, 80)
+    hotkeyFrame.Position = UDim2.new(0, 10, 0, 160)
+    hotkeyFrame.BackgroundTransparency = 1
+    hotkeyFrame.Parent = settingsPanel
+
+    local hotkeyTitle = Instance.new("TextLabel")
+    hotkeyTitle.Name = "HotkeyTitle"
+    hotkeyTitle.Size = UDim2.new(1, 0, 0, 25)
+    hotkeyTitle.BackgroundTransparency = 1
+    hotkeyTitle.Text = "UI Hotkey: RightShift"
+    hotkeyTitle.TextColor3 = UI_THEMES[currentTheme].Text
+    hotkeyTitle.TextSize = 14
+    hotkeyTitle.Font = Enum.Font.GothamSemibold
+    hotkeyTitle.TextXAlignment = Enum.TextXAlignment.Left
+    hotkeyTitle.Parent = hotkeyFrame
+
+    local changeHotkeyBtn = Instance.new("TextButton")
+    changeHotkeyBtn.Name = "ChangeHotkey"
+    changeHotkeyBtn.Size = UDim2.new(1, 0, 0, 40)
+    changeHotkeyBtn.Position = UDim2.new(0, 0, 0, 30)
+    changeHotkeyBtn.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+    changeHotkeyBtn.Text = "CHANGE HOTKEY"
+    changeHotkeyBtn.TextColor3 = UI_THEMES[currentTheme].Text
+    changeHotkeyBtn.TextSize = 14
+    changeHotkeyBtn.Font = Enum.Font.GothamSemibold
+    changeHotkeyBtn.Parent = hotkeyFrame
+
+    local hotkeyCorner = Instance.new("UICorner")
+    hotkeyCorner.CornerRadius = UDim.new(0, 8)
+    hotkeyCorner.Parent = changeHotkeyBtn
+
+    -- Mobile Mode Toggle
+    local mobileFrame = Instance.new("Frame")
+    mobileFrame.Name = "MobileFrame"
+    mobileFrame.Size = UDim2.new(1, -20, 0, 60)
+    mobileFrame.Position = UDim2.new(0, 10, 0, 250)
+    mobileFrame.BackgroundTransparency = 1
+    mobileFrame.Parent = settingsPanel
+
+    local mobileToggle = Instance.new("TextButton")
+    mobileToggle.Name = "MobileToggle"
+    mobileToggle.Size = UDim2.new(1, 0, 1, 0)
+    mobileToggle.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+    mobileToggle.Text = "Mobile Mode: OFF"
+    mobileToggle.TextColor3 = UI_THEMES[currentTheme].Text
+    mobileToggle.TextSize = 14
+    mobileToggle.Font = Enum.Font.GothamSemibold
+    mobileToggle.Parent = mobileFrame
+
+    local mobileToggleCorner = Instance.new("UICorner")
+    mobileToggleCorner.CornerRadius = UDim.new(0, 8)
+    mobileToggleCorner.Parent = mobileToggle
+
+    -- Return UI elements for external access
+    return {
+        screenGui = screenGui,
+        mainContainer = mainContainer,
+        titleBar = titleBar,
+        titleText = titleText,
+        closeButton = closeButton,
+        mobileIcon = mobileIcon,
+        rotationToggle = rotationToggle,
+        rotationStatus = rotationStatus,
+        safezoneToggleBtn = safezoneToggleBtn,
+        healthStatus = healthStatus,
+        settingsButton = settingsButton,
+        backButton = backButton,
+        contentFrame = contentFrame,
+        settingsPanel = settingsPanel,
+        themeButtons = themeButtons,
+        changeHotkeyBtn = changeHotkeyBtn,
+        hotkeyTitle = hotkeyTitle,
+        mobileToggle = mobileToggle
+    }
+end
+
+-- Create initial UI
+local UI = createUI()
+
+-- UI Functions
+function updateTheme()
+    local theme = UI_THEMES[currentTheme]
+    
+    -- Update main container
+    UI.mainContainer.BackgroundColor3 = theme.Background
+    
+    -- Update title bar
+    UI.titleBar.BackgroundColor3 = theme.Secondary
+    UI.titleText.TextColor3 = theme.Text
+    
+    -- Update buttons
+    UI.closeButton.BackgroundColor3 = theme.Danger
+    UI.settingsButton.BackgroundColor3 = theme.Accent
+    
+    -- Update settings panel
+    UI.settingsPanel.BackgroundColor3 = theme.Background
+    UI.settingsPanel:FindFirstChild("SettingsTitle").TextColor3 = theme.Text
+    UI.backButton.BackgroundColor3 = theme.Secondary
+    UI.backButton.TextColor3 = theme.Text
+    
+    -- Update theme buttons
+    for themeName, button in pairs(UI.themeButtons) do
+        button.BackgroundColor3 = UI_THEMES[themeName].Accent
+    end
+    
+    -- Update other settings elements
+    UI.changeHotkeyBtn.BackgroundColor3 = theme.Secondary
+    UI.changeHotkeyBtn.TextColor3 = theme.Text
+    UI.hotkeyTitle.TextColor3 = theme.Text
+    UI.mobileToggle.BackgroundColor3 = theme.Secondary
+    UI.mobileToggle.TextColor3 = theme.Text
+end
+
+function toggleUIVisibility()
+    uiVisible = not uiVisible
+    UI.mainContainer.Visible = uiVisible
+    
+    if mobileMode and not uiVisible then
+        UI.mobileIcon.Visible = true
+    else
+        UI.mobileIcon.Visible = false
+    end
+end
+
+function showSettings()
+    UI.contentFrame.Visible = false
+    UI.settingsPanel.Visible = true
+end
+
+function hideSettings()
+    UI.contentFrame.Visible = true
+    UI.settingsPanel.Visible = false
+end
+
+function toggleMobileMode()
+    mobileMode = not mobileMode
+    UI.mobileToggle.Text = "Mobile Mode: " .. (mobileMode and "ON" or "OFF")
+    
+    if mobileMode then
+        UI.mobileToggle.BackgroundColor3 = UI_THEMES[currentTheme].Success
+    else
+        UI.mobileToggle.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+        UI.mobileIcon.Visible = false
+    end
+end
+
+-- Draggable UI functionality
+local dragging = false
+local dragStart = Vector2.new(0, 0)
+local startPosition = UDim2.new(0, 0, 0, 0)
+
+-- Start dragging when mouse is pressed on title bar
+UI.titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = Vector2.new(input.Position.X, input.Position.Y)
+        startPosition = UI.mainContainer.Position
+        
+        -- Change cursor to indicate dragging
+        game:GetService("UserInputService").MouseIcon = ""
+    end
+end)
+
+-- Stop dragging when mouse is released
+UI.titleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+        -- Restore default cursor
+        game:GetService("UserInputService").MouseIcon = ""
+        
+        -- Save UI position for persistence
+        local pos = UI.mainContainer.Position
+        uiPosition.X = pos.X.Scale
+        uiPosition.Y = pos.Y.Scale
+    end
+end)
+
+-- Update UI position while dragging
+game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = Vector2.new(
+            input.Position.X - dragStart.X,
+            input.Position.Y - dragStart.Y
+        )
+        
+        -- Calculate new position in screen coordinates
+        local screenSize = UI.screenGui.AbsoluteSize
+        local newX = (startPosition.X.Offset + delta.X) / screenSize.X
+        local newY = (startPosition.Y.Offset + delta.Y) / screenSize.Y
+        
+        -- Clamp position to screen boundaries
+        newX = math.clamp(newX, 0, 1)
+        newY = math.clamp(newY, 0, 1)
+        
+        -- Update UI position
+        UI.mainContainer.Position = UDim2.new(newX, 0, newY, 0)
+    end
+end)
+
+-- UI Event Handlers
+UI.closeButton.MouseButton1Click:Connect(function()
+    toggleUIVisibility()
+end)
+
+UI.mobileIcon.MouseButton1Click:Connect(function()
+    toggleUIVisibility()
+end)
+
+UI.rotationToggle.MouseButton1Click:Connect(function()
+    toggleRotation()
+end)
+
+UI.settingsButton.MouseButton1Click:Connect(showSettings)
+UI.backButton.MouseButton1Click:Connect(hideSettings)
+
+UI.mobileToggle.MouseButton1Click:Connect(toggleMobileMode)
+
+-- Theme button handlers
+for themeName, button in pairs(UI.themeButtons) do
+    button.MouseButton1Click:Connect(function()
+        currentTheme = themeName
+        updateTheme()
+    end
+    )
+end
+
+-- Hotkey changing
+local waitingForKey = false
+UI.changeHotkeyBtn.MouseButton1Click:Connect(function()
+    if waitingForKey then return end
+    
+    waitingForKey = true
+    UI.changeHotkeyBtn.Text = "Press any key..."
+    UI.changeHotkeyBtn.BackgroundColor3 = UI_THEMES[currentTheme].Warning
+    
+    local connection
+    connection = game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode ~= Enum.KeyCode.Unknown then
+            uiHotkey = input.KeyCode
+            UI.hotkeyTitle.Text = "UI Hotkey: " .. tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
+            
+            waitingForKey = false
+            UI.changeHotkeyBtn.Text = "CHANGE HOTKEY"
+            UI.changeHotkeyBtn.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+            
+            if connection then
+                connection:Disconnect()
+            end
+        end
+    end)
+end)
+
+-- Hotkey to toggle UI
+game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == uiHotkey then
+        toggleUIVisibility()
+    end
+end)
+
+-- Initialize theme
+updateTheme()
+
+-- Rotation Functions
+function getClosestPlayer()
+    local closestPlayer = nil
+    local closestDistance = math.huge
+    local character = player.Character
+    local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+    
+    if not humanoidRootPart then return nil end
+    
+    for _, otherPlayer in pairs(game.Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if otherRoot then
+                local distance = (humanoidRootPart.Position - otherRoot.Position).Magnitude
+                if distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = otherPlayer
+                end
+            end
+        end
+    end
+    
+    return closestPlayer
+end
+
+function performClick()
+    local closestPlayer = getClosestPlayer()
+    if closestPlayer and closestPlayer.Character then
+        local targetChar = closestPlayer.Character
+        local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
+        
+        if humanoidRootPart then
+            local function simulateClick()
+                if mouse.Button1Down then
+                    mouse.Button1Down:Fire()
+                end
+                
+                task.wait(0.05)
+                
+                if mouse.Button1Up then
+                    mouse.Button1Up:Fire()
+                end
+                
+                for _, part in pairs(targetChar:GetChildren()) do
+                    local clickDetector = part:FindFirstChildOfClass("ClickDetector")
+                    if clickDetector then
+                        clickDetector.MouseClick:Fire(player)
+                        break
+                    end
+                end
+            end
+            
+            pcall(simulateClick)
+        end
+    end
+end
+
+function sendMouseInput()
+    local VIM = game:GetService("VirtualInputManager")
+    if VIM then
+        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+        task.wait(0.05)
+        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+        return
+    end
+    
+    performClick()
+end
+
+function rotateAroundTarget(targetChar, character)
+    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    
+    if not targetRoot or not humanoidRootPart then return end
+    
+    local lookAtPos = targetRoot.Position
+    humanoidRootPart.CFrame = CFrame.new(humanoidRootPart.Position, 
+        Vector3.new(lookAtPos.X, humanoidRootPart.Position.Y, lookAtPos.Z))
+    
+    local radius = 2.5
+    local angle = tick() * ROTATION_SPEED
+    local offset = Vector3.new(
+        math.cos(angle) * radius,
+        3,
+        math.sin(angle) * radius
+    )
+    
+    humanoidRootPart.CFrame = CFrame.new(targetRoot.Position + offset, lookAtPos)
+end
+
+-- Updated toggle function with UI updates
+function toggleRotation()
+    toggle = not toggle
+    
+    if toggle then
+        UI.rotationStatus.Text = "Status: Active"
+        UI.rotationStatus.TextColor3 = UI_THEMES[currentTheme].Success
+        UI.rotationToggle.Text = "DISABLE ROTATION"
+        UI.rotationToggle.BackgroundColor3 = UI_THEMES[currentTheme].Danger
+        
+        connection = game:GetService("RunService").Heartbeat:Connect(function()
+            local character = player.Character
+            local closestPlayer = getClosestPlayer()
+            
+            if character and closestPlayer and closestPlayer.Character then
+                rotateAroundTarget(closestPlayer.Character, character)
+            end
+        end)
+        
+        local lastClick = tick()
+        clickConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            local now = tick()
+            if now - lastClick >= CLICK_INTERVAL then
+                sendMouseInput()
+                lastClick = now
+            end
+        end)
+        
+    else
+        UI.rotationStatus.Text = "Status: Disabled"
+        UI.rotationStatus.TextColor3 = UI_THEMES[currentTheme].Danger
+        UI.rotationToggle.Text = "ENABLE ROTATION"
+        UI.rotationToggle.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+        
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+        
+        if clickConnection then
+            clickConnection:Disconnect()
+            clickConnection = nil
+        end
+    end
+end
+
+-- Safezone Functions
+function getPlayerHealth()
+    local character = player.Character
+    if not character then return nil end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+    
+    return humanoid.Health, humanoid.MaxHealth
+end
+
+function teleportToSafezone()
+    local character = player.Character
+    if not character then return false end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return false end
+    
+    humanoidRootPart.CFrame = TELEPORT_CFRAME
+    return true
+end
+
+function updateHealthStatus()
+    local health, maxHealth = getPlayerHealth()
+    if not health or not maxHealth then
+        UI.healthStatus.Text = "Health: No character"
+        UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Warning
+        return
+    end
+    
+    local percent = (health / maxHealth) * 100
+    
+    if percent >= 75 then
+        UI.healthStatus.Text = string.format("Health: Full (%.0f%%)", percent)
+        UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Success
+    elseif percent > 25 then
+        UI.healthStatus.Text = string.format("Health: Moderate (%.0f%%)", percent)
+        UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Warning
+    else
+        UI.healthStatus.Text = string.format("Health: Low (%.0f%%)", percent)
+        UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Danger
+    end
+    
+    if safezoneToggle and health <= LOW_HP_THRESHOLD then
+        local success = teleportToSafezone()
+        if success then
+            UI.healthStatus.Text = "SAFE ZONE TELEPORTED!"
+            UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Accent
+            
+            task.wait(1)
+        end
+    end
+end
+
+function toggleSafezone()
+    safezoneToggle = not safezoneToggle
+    
+    if safezoneToggle then
+        UI.safezoneToggleBtn.Text = "DISABLE SAFEZONE"
+        UI.safezoneToggleBtn.BackgroundColor3 = UI_THEMES[currentTheme].Success
+        
+        if not safezoneConnection then
+            safezoneConnection = game:GetService("RunService").Heartbeat:Connect(function()
+                updateHealthStatus()
+            end)
+        end
+    else
+        UI.safezoneToggleBtn.Text = "ENABLE SAFEZONE"
+        UI.safezoneToggleBtn.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
+        
+        if safezoneConnection then
+            safezoneConnection:Disconnect()
+            safezoneConnection = nil
+        end
+    end
+end
+
+UI.safezoneToggleBtn.MouseButton1Click:Connect(toggleSafezone)
+
+-- Handle player respawns to maintain UI
+player.CharacterAdded:Connect(function(character)
+    task.wait(1) -- Wait for character to fully load
+    updateHealthStatus()
+    
+    -- The UI persists automatically due to ResetOnSpawn = false
+    -- But we need to make sure all connections are still working
+    print("Character respawned - UI maintained")
+end)
+
+-- Handle character removal
+player.CharacterRemoving:Connect(function()
+    UI.healthStatus.Text = "Health: Respawning..."
+    UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Warning
+end)
+
+print("Feather Hub UI Loaded!")
+print("Hotkey: " .. tostring(uiHotkey))
+print("Features:")
+print("- Draggable UI window (drag the title bar)")
+print("- UI persists after respawn")
+print("- Rotation around closest player with auto-clicking")
+print("- Auto safezone teleport at low HP")
+print("- Customizable UI theme")
+print("- Mobile mode with icon when minimized")
+print("- Settings panel for customization")
