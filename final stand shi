@@ -1,0 +1,84 @@
+
+getgenv().FOV = 350
+local UserInputService = game:GetService("UserInputService")
+local circle = Drawing.new("Circle")
+local Players = game:GetService("Players")
+local Client = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local camera = workspace.CurrentCamera
+setthreadidentity(2)
+local bb = require(Client.PlayerScripts.LocalManager.NetworkManager)
+setthreadidentity(8)
+local Zombies = workspace.Zombies
+local SSCoreFunctions = {}
+do
+    local _container = SSCoreFunctions
+    local rayParams = RaycastParams.new()
+    _container.current_target = nil
+    local function GetClosestTarget()
+        local bestTarget = nil
+        local max_dist = -math.huge
+        local mousePos = UserInputService:GetMouseLocation()
+        local function checkCharacter(char)
+            local part = char:FindFirstChild("Head")
+            if not part then return end
+            local position = part.Position
+            local viewportPoint, _ = camera:WorldToViewportPoint(position)
+            if viewportPoint.Z < 0 then return end
+            local screenDistance = (Vector2.new(viewportPoint.X, viewportPoint.Y) - mousePos).Magnitude
+            if screenDistance > FOV then return end
+            local prio = 1e3 - screenDistance
+            if prio > max_dist then
+                bestTarget = part
+                max_dist = prio
+            end
+        end
+        for _, v in ipairs(Zombies:GetChildren()) do
+            if v then
+                checkCharacter(v)
+            end
+        end
+        return bestTarget
+    end
+    _container.GetClosestTarget = GetClosestTarget
+    local function innit()
+        RunService.RenderStepped:Connect(function()
+            _container.current_target = GetClosestTarget()
+            if _container.current_target then
+                circle.Color = Color3.fromRGB(255, 0, 0)
+            else
+                circle.Color = Color3.fromRGB(232, 173, 56)
+            end
+            local mousePos = UserInputService:GetMouseLocation()
+            circle.Position = mousePos
+            circle.Thickness = 1
+            circle.NumSides = 16
+            circle.Radius = FOV
+            circle.Visible = true
+            circle.Filled = false
+        end)
+    end
+    _container.innit = innit
+end
+local old; old = hookfunction(bb.PassData, function(...)
+    local arguments = {...}
+    if arguments[2] == "WeaponAttack" then
+        table.foreach(arguments, warn)
+        if rawget(arguments[3][3], "3247E18F") ~= nil then
+            rawset(arguments[3][3], "3247E18F", nil)
+        end
+    end
+    return old(unpack(arguments))
+end)
+local __namecall; __namecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local arguments = {...} -- fellow scripters, please dont name your arguments to something like "args" because some shit ass executor will kill themselves
+    if method == "FindPartOnRayWithIgnoreList" and typeof(arguments[1]) == "Ray" then
+        local target = SSCoreFunctions.current_target
+        if target then
+            arguments[1] = Ray.new(camera.CFrame.Position, (target.Position - camera.CFrame.Position).Unit * 10000)
+        end
+    end
+    return __namecall(self, unpack(arguments))
+end)
+SSCoreFunctions.innit()
