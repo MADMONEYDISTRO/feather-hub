@@ -1,4 +1,4 @@
---// Spike Circle Placer UI with Hotkeys + Enhanced Compass System
+--// Spike Circle Placer UI with Hotkeys + Enhanced Compass System + Boost Pad
 local UIS = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -26,6 +26,14 @@ local settings = {
 		radius = 6,
 		groundOffset = 0.15,
 		placeDelay = 0
+	},
+	boostPad = {
+		enabled = true,
+		hotkey = Enum.KeyCode.F,
+		padCount = 5,
+		startDistance = 3,
+		distanceIncrement = 1.5,
+		placeDelay = 0.1
 	},
 	compass = {
 		enabled = false,
@@ -276,6 +284,53 @@ local function placeTargetSpikeCircle()
 	end
 end
 
+--// Boost Pad Function
+local function placeBoostPads()
+	if not settings.boostPad.enabled then return end
+	
+	local character = player.Character
+	if not character then return end
+	
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	
+	local backpack = player:WaitForChild("Backpack")
+	local boostPad = backpack:FindFirstChild("Boost Pad")
+	if not boostPad then
+		warn("Boost Pad not found")
+		return
+	end
+	
+	for i = 1, settings.boostPad.padCount do
+		task.spawn(function()
+			local distance = settings.boostPad.startDistance + (i - 1) * settings.boostPad.distanceIncrement
+			local frontPosition = hrp.CFrame * CFrame.new(0, 0, -distance)
+			
+			local args = {
+				boostPad,
+				frontPosition,
+				tostring(math.random(100000000, 999999999)),
+				tostring(math.random(100000000, 999999999)),
+				math.random(1000, 5000)
+			}
+			
+			boostPad
+				:WaitForChild("StructureScripts")
+				:WaitForChild("Build")
+				:InvokeServer(unpack(args))
+			
+			if settings.boostPad.placeDelay > 0 then
+				task.wait(settings.boostPad.placeDelay)
+			end
+		end)
+	end
+end
+
+-- Update character on respawn
+player.CharacterAdded:Connect(function(char)
+	character = char
+end)
+
 --// UI Creation
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SpikeCircleUI"
@@ -285,8 +340,8 @@ screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 420, 0, 550)
-mainFrame.Position = UDim2.new(0.5, -210, 0.5, -275)
+mainFrame.Size = UDim2.new(0, 420, 0, 630) -- Increased height for boost pad section
+mainFrame.Position = UDim2.new(0.5, -210, 0.5, -315)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
@@ -457,6 +512,78 @@ local targetToggleCorner = Instance.new("UICorner")
 targetToggleCorner.CornerRadius = UDim.new(0, 6)
 targetToggleCorner.Parent = targetToggle
 
+--// Boost Pad Section
+local boostSection = Instance.new("Frame")
+boostSection.Name = "BoostSection"
+boostSection.Size = UDim2.new(1, -40, 0, 80)
+boostSection.Position = UDim2.new(0, 20, 0, 245)
+boostSection.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+boostSection.BorderSizePixel = 0
+boostSection.Parent = mainFrame
+
+local boostCorner = Instance.new("UICorner")
+boostCorner.CornerRadius = UDim.new(0, 8)
+boostCorner.Parent = boostSection
+
+local boostLabel = Instance.new("TextLabel")
+boostLabel.Size = UDim2.new(1, -20, 0, 25)
+boostLabel.Position = UDim2.new(0, 10, 0, 8)
+boostLabel.BackgroundTransparency = 1
+boostLabel.Text = "Boost Pad Line"
+boostLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+boostLabel.TextSize = 16
+boostLabel.Font = Enum.Font.GothamBold
+boostLabel.TextXAlignment = Enum.TextXAlignment.Left
+boostLabel.Parent = boostSection
+
+local boostButton = Instance.new("TextButton")
+boostButton.Name = "BoostButton"
+boostButton.Size = UDim2.new(0, 120, 0, 35)
+boostButton.Position = UDim2.new(0, 10, 0, 38)
+boostButton.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+boostButton.BorderSizePixel = 0
+boostButton.Text = "Execute"
+boostButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+boostButton.TextSize = 14
+boostButton.Font = Enum.Font.GothamBold
+boostButton.Parent = boostSection
+
+local boostBtnCorner = Instance.new("UICorner")
+boostBtnCorner.CornerRadius = UDim.new(0, 6)
+boostBtnCorner.Parent = boostButton
+
+local boostHotkeyButton = Instance.new("TextButton")
+boostHotkeyButton.Name = "HotkeyButton"
+boostHotkeyButton.Size = UDim2.new(0, 90, 0, 35)
+boostHotkeyButton.Position = UDim2.new(0, 140, 0, 38)
+boostHotkeyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+boostHotkeyButton.BorderSizePixel = 0
+boostHotkeyButton.Text = "Key: F"
+boostHotkeyButton.TextColor3 = Color3.fromRGB(150, 255, 200)
+boostHotkeyButton.TextSize = 13
+boostHotkeyButton.Font = Enum.Font.GothamMedium
+boostHotkeyButton.Parent = boostSection
+
+local boostHotkeyCorner = Instance.new("UICorner")
+boostHotkeyCorner.CornerRadius = UDim.new(0, 6)
+boostHotkeyCorner.Parent = boostHotkeyButton
+
+local boostToggle = Instance.new("TextButton")
+boostToggle.Name = "Toggle"
+boostToggle.Size = UDim2.new(0, 90, 0, 35)
+boostToggle.Position = UDim2.new(0, 240, 0, 38)
+boostToggle.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+boostToggle.BorderSizePixel = 0
+boostToggle.Text = "Enabled"
+boostToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+boostToggle.TextSize = 13
+boostToggle.Font = Enum.Font.GothamBold
+boostToggle.Parent = boostSection
+
+local boostToggleCorner = Instance.new("UICorner")
+boostToggleCorner.CornerRadius = UDim.new(0, 6)
+boostToggleCorner.Parent = boostToggle
+
 --// Close Button
 local closeButton = Instance.new("TextButton")
 closeButton.Name = "CloseButton"
@@ -529,8 +656,8 @@ end
 
 animateButton(selfButton)
 animateButton(targetButton)
+animateButton(boostButton)
 animateButton(closeButton)
-
 
 --// Button Functionality
 selfButton.MouseButton1Click:Connect(function()
@@ -539,6 +666,10 @@ end)
 
 targetButton.MouseButton1Click:Connect(function()
 	placeTargetSpikeCircle()
+end)
+
+boostButton.MouseButton1Click:Connect(function()
+	placeBoostPads()
 end)
 
 closeButton.MouseButton1Click:Connect(function()
@@ -568,9 +699,21 @@ targetToggle.MouseButton1Click:Connect(function()
 	end
 end)
 
+boostToggle.MouseButton1Click:Connect(function()
+	settings.boostPad.enabled = not settings.boostPad.enabled
+	if settings.boostPad.enabled then
+		boostToggle.Text = "Enabled"
+		boostToggle.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+	else
+		boostToggle.Text = "Disabled"
+		boostToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	end
+end)
+
 --// Hotkey Binding
 local bindingSelf = false
 local bindingTarget = false
+local bindingBoost = false
 
 selfHotkeyButton.MouseButton1Click:Connect(function()
 	bindingSelf = true
@@ -582,6 +725,12 @@ targetHotkeyButton.MouseButton1Click:Connect(function()
 	bindingTarget = true
 	targetHotkeyButton.Text = "Press key..."
 	targetHotkeyButton.BackgroundColor3 = Color3.fromRGB(150, 100, 100)
+end)
+
+boostHotkeyButton.MouseButton1Click:Connect(function()
+	bindingBoost = true
+	boostHotkeyButton.Text = "Press key..."
+	boostHotkeyButton.BackgroundColor3 = Color3.fromRGB(100, 150, 100)
 end)
 
 UIS.InputBegan:Connect(function(input, gpe)
@@ -597,22 +746,16 @@ UIS.InputBegan:Connect(function(input, gpe)
 		settings.targetSpike.hotkey = input.KeyCode
 		targetHotkeyButton.Text = "Key: " .. input.KeyCode.Name
 		targetHotkeyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+	elseif bindingBoost then
+		bindingBoost = false
+		settings.boostPad.hotkey = input.KeyCode
+		boostHotkeyButton.Text = "Key: " .. input.KeyCode.Name
+		boostHotkeyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
 	elseif input.KeyCode == settings.selfSpike.hotkey then
 		placeSelfSpikeCircle()
 	elseif input.KeyCode == settings.targetSpike.hotkey then
 		placeTargetSpikeCircle()
+	elseif input.KeyCode == settings.boostPad.hotkey then
+		placeBoostPads()
 	end
 end)
-
-
-		
-		
-	
-	
-	
-
-	
-
-
-
-
