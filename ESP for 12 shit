@@ -1,0 +1,339 @@
+--[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+]]
+	Aimbot & ESP
+	- Hold right mouse button to aimbot
+	- Works in Bodycam and similar games
+    - 绿表锁红表不
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+local HighlightedNPCs = {}
+local TargetNPC = nil
+local Locked = false
+local FOVCircle = nil
+
+-- 参数
+local Config = {
+
+    ESP_Enabled = true,
+    ESP_Color = Color3.fromRGB(255, 50, 50),
+    ESP_OutlineColor = Color3.fromRGB(255, 255, 255),
+    ESP_Transparency = 0.3,
+    
+    AimKey = Enum.UserInputType.MouseButton2,  -- 右键
+    LockPart = "Head",  -- 锁定部位
+    MaxDistance = 300,  -- 最大距离
+    FOV = 80,  -- 自瞄范围
+    Prediction = true,  -- 移动预测
+    PredictionAmount = 0.1,  -- 预测量
+    DeathDetection = true,  -- 死亡检测
+    
+    ShowFOV = true,  
+    FOVColor = Color3.fromRGB(255, 0, 0)  
+}
+
+while not LocalPlayer do
+    Players.PlayerAdded:Wait()
+    LocalPlayer = Players.LocalPlayer
+end
+-- 创建成功
+print("Win loaded aimbot")
+
+if Config.ShowFOV then
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Visible = true
+    FOVCircle.Color = Config.FOVColor
+    FOVCircle.Thickness = 2
+    FOVCircle.NumSides = 64
+    FOVCircle.Radius = Config.FOV
+    FOVCircle.Filled = false
+    FOVCircle.Transparency = 1
+end
+
+local function UpdateFOVCircle()
+    if FOVCircle then
+        local mousePos = UserInputService:GetMouseLocation()
+        FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+    end
+end
+
+local function IsNPCAlive(npcModel)
+    if not Config.DeathDetection then return true end
+    
+    local humanoid = npcModel:FindFirstChild("Humanoid")
+    if not humanoid then return false end
+    
+    return humanoid.Health > 0
+end
+
+local function IsPlayerAlive()
+    if not LocalPlayer.Character then return false end
+    local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+    return humanoid and humanoid.Health > 0
+end
+
+local function GetTargetPart(npcModel)
+    if Config.LockPart == "Head" then
+        return npcModel:FindFirstChild("Head") or npcModel:FindFirstChild("HumanoidRootPart")
+    elseif Config.LockPart == "Torso" then
+        return npcModel:FindFirstChild("UpperTorso") or npcModel:FindFirstChild("Torso") or npcModel:FindFirstChild("HumanoidRootPart")
+    elseif Config.LockPart == "LowerTorso" then
+        return npcModel:FindFirstChild("LowerTorso") or npcModel:FindFirstChild("HumanoidRootPart")
+    else
+        return npcModel:FindFirstChild("HumanoidRootPart")
+    end
+end
+
+local function HighlightNPC(npcModel)
+    if not npcModel or HighlightedNPCs[npcModel] or npcModel:FindFirstChild("HumanoidRootPart") == nil then
+        return
+    end
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Parent = npcModel
+    highlight.Adornee = npcModel
+    highlight.FillColor = Config.ESP_Color
+    highlight.OutlineColor = Config.ESP_OutlineColor
+    highlight.FillTransparency = Config.ESP_Transparency
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Name = "NPC_AutoAim_Highlight"
+    
+    HighlightedNPCs[npcModel] = highlight
+    
+    npcModel.AncestryChanged:Connect(function(_, parent)
+        if not parent or npcModel:IsDescendantOf(game) == false then
+            if HighlightedNPCs[npcModel] then
+                HighlightedNPCs[npcModel]:Destroy()
+                HighlightedNPCs[npcModel] = nil
+            end
+        end
+    end)
+end
+
+local function FindAndHighlightNPCs()
+    for _, npc in ipairs(Workspace:GetDescendants()) do
+        if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc:FindFirstChild("HumanoidRootPart") then
+            -- 排除玩家
+            local isPlayer = false
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player.Character == npc then
+                    isPlayer = true
+                    break
+                end
+            end
+            
+            if not isPlayer and IsNPCAlive(npc) then
+                HighlightNPC(npc)
+            end
+        end
+    end
+end
+
+local function CleanupHighlights()
+    for npcModel, highlight in pairs(HighlightedNPCs) do
+        if highlight then
+            highlight:Destroy()
+        end
+    end
+    HighlightedNPCs = {}
+end
+
+-- 计算预测位置
+local function CalculatePrediction(targetPart, velocity)
+    if not Config.Prediction then
+        return targetPart.Position
+    end
+    
+    local bulletSpeed = 500
+    local distance = (targetPart.Position - Camera.CFrame.Position).Magnitude
+    local travelTime = distance / bulletSpeed
+    
+    local predictedPosition = targetPart.Position + (velocity * travelTime * Config.PredictionAmount)
+    return predictedPosition
+end
+
+local function FindClosestNPC()
+    local closestNPC = nil
+    local closestDistance = Config.MaxDistance
+    local smallestAngle = math.huge
+    
+    local cameraPos = Camera.CFrame.Position
+    local mousePos = UserInputService:GetMouseLocation()
+    local cameraCF = Camera.CFrame
+    
+    for _, npc in ipairs(Workspace:GetDescendants()) do
+        if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc:FindFirstChild("HumanoidRootPart") then
+            local isPlayer = false
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player.Character == npc then
+                    isPlayer = true
+                    break
+                end
+            end
+            
+            if not isPlayer and IsNPCAlive(npc) then
+                local targetPart = GetTargetPart(npc)
+                if targetPart then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                    
+                    if onScreen then
+                        local screenPoint = Vector2.new(screenPos.X, screenPos.Y)
+                        local distanceToMouse = (screenPoint - mousePos).Magnitude
+                        local distanceToPlayer = (targetPart.Position - cameraPos).Magnitude
+                        
+                        local directionToTarget = (targetPart.Position - cameraPos).Unit
+                        local lookVector = cameraCF.LookVector
+                        local angle = math.deg(math.acos(directionToTarget:Dot(lookVector)))
+                        
+                        if distanceToMouse <= Config.FOV and 
+                           distanceToPlayer <= Config.MaxDistance and
+                           angle < smallestAngle then
+                            smallestAngle = angle
+                            closestDistance = distanceToPlayer
+                            closestNPC = npc
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return closestNPC
+end
+
+-- 自瞄函数
+local function AimAtTarget(target)
+    if not target or not IsNPCAlive(target) then
+        return false
+    end
+    
+    local targetPart = GetTargetPart(target)
+    if not targetPart then
+        return false
+    end
+    
+    local cameraPos = Camera.CFrame.Position
+    
+    -- 计算预测位置
+    local velocity = Vector3.new(0, 0, 0)
+    if targetPart:IsA("BasePart") then
+        velocity = targetPart.Velocity
+    end
+    
+    local predictedPosition = CalculatePrediction(targetPart, velocity)
+    
+    -- 接锁死直
+    Camera.CFrame = CFrame.new(cameraPos, predictedPosition)
+    
+    return true
+end
+
+-- 主循环es
+task.spawn(function()
+    while Config.ESP_Enabled do
+        FindAndHighlightNPCs()
+        task.wait(3)  -- 每3秒刷新一次
+    end
+end)
+
+-- 主循环Aim
+task.spawn(function()
+    while true do
+        if Config.ShowFOV then
+            UpdateFOVCircle()
+        end
+        
+        if UserInputService:IsMouseButtonPressed(Config.AimKey) then
+            if not IsPlayerAlive() then
+                Locked = false
+                TargetNPC = nil
+                if FOVCircle then
+                    FOVCircle.Color = Config.FOVColor
+                end
+                task.wait()
+                continue
+            end
+            
+            local target = FindClosestNPC()
+            
+            if target and IsNPCAlive(target) then
+                TargetNPC = target
+                Locked = true
+                
+                if AimAtTarget(target) then
+                    if FOVCircle then
+                        FOVCircle.Color = Color3.fromRGB(0, 255, 0)
+                    end
+                else
+                    if FOVCircle then
+                        FOVCircle.Color = Config.FOVColor
+                    end
+                end
+            else
+                Locked = false
+                TargetNPC = nil
+                if FOVCircle then
+                    FOVCircle.Color = Config.FOVColor
+                end
+            end
+        else
+            Locked = false
+            TargetNPC = nil
+            if FOVCircle then
+                FOVCircle.Color = Config.FOVColor
+            end
+        end
+        
+        task.wait()
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if Locked and TargetNPC and IsNPCAlive(TargetNPC) then
+        AimAtTarget(TargetNPC)
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    if Config.ESP_Enabled then
+        FindAndHighlightNPCs()
+    end
+end)
+
+print("成功注入，Enjoy")
+
+local PseudoMonitor = {
+    _internalCache = {},
+    _callCount = 0,
+    _lastUpdate = tick()
+}
+
+local function performPseudoCleanup()
+    PseudoMonitor._callCount = PseudoMonitor._callCount + 1
+    for key, _ in pairs(PseudoMonitor._internalCache) do
+    end
+    PseudoMonitor._lastUpdate = tick()
+    return true
+end
+
+local function generateWatermarkSeed()
+    local wordSegments = {"scr", "ipt", "gen", "er", "at", "ed"}
+    local combined = table.concat(wordSegments)
+    local authorTag = string.sub(combined, 1, 1) .. "y" .. string.sub(combined, 3, 3) .. " " .. "j" .. string.sub(combined, 5, 5) .. "e"
+    local unusedMarker = authorTag .. " @ internal"
+    return unusedMarker
+end
+
+task.spawn(function()
+    local watermarkSeed = generateWatermarkSeed()
+    while true do
+        performPseudoCleanup()
+        task.wait(30)
+    end
+end)
