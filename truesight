@@ -1,0 +1,80 @@
+
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- settings
+local SETTINGS = {
+	HighlightColor = Color3.fromRGB(255, 60, 60),
+	OutlineColor = Color3.fromRGB(255, 255, 255),
+	FillTransparency = 0.25,
+	OutlineTransparency = 0,
+	ForceVisible = true
+}
+
+local highlights = {}
+
+local function createHighlight(character)
+	if highlights[character] then return end
+
+	local hl = Instance.new("Highlight")
+	hl.Name = "TrueSightHighlight"
+	hl.FillColor = SETTINGS.HighlightColor
+	hl.OutlineColor = SETTINGS.OutlineColor
+	hl.FillTransparency = SETTINGS.FillTransparency
+	hl.OutlineTransparency = SETTINGS.OutlineTransparency
+	hl.Adornee = character
+	hl.Parent = character
+
+	highlights[character] = hl
+end
+
+local function forceVisibility(character)
+	for _, v in ipairs(character:GetDescendants()) do
+		if v:IsA("BasePart") then
+			if SETTINGS.ForceVisible then
+				v.LocalTransparencyModifier = 0
+				if v.Transparency >= 1 then
+					v.Transparency = 0.2
+				end
+			end
+		elseif v:IsA("Decal") or v:IsA("Texture") then
+			v.Transparency = 0
+		end
+	end
+end
+
+local function trackPlayer(player)
+	if player == LocalPlayer then return end
+
+	local function onCharacterAdded(char)
+		task.wait(0.5)
+		createHighlight(char)
+		forceVisibility(char)
+	end
+
+	if player.Character then
+		onCharacterAdded(player.Character)
+	end
+
+	player.CharacterAdded:Connect(onCharacterAdded)
+end
+
+-- existing players
+for _, plr in ipairs(Players:GetPlayers()) do
+	trackPlayer(plr)
+end
+
+-- new players
+Players.PlayerAdded:Connect(trackPlayer)
+
+-- constantly re-force visibility (beats invis exploits)
+RunService.RenderStepped:Connect(function()
+	for char, hl in pairs(highlights) do
+		if char and char.Parent then
+			forceVisibility(char)
+		end
+	end
+end)
+
