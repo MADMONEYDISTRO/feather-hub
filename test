@@ -1,0 +1,899 @@
+local FLIGHT_HEIGHT = 300 
+local HOVER_SPEED = 75
+local HOVER_DISTANCE = 700
+local W_KEY_HOLD = true 
+local ACTIVATION_KEY = Enum.KeyCode.F 
+local START_CFRAME = CFrame.new(0, 50, 0) 
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+repeat task.wait() until Players.LocalPlayer
+local player = Players.LocalPlayer
+local username = player.Name
+
+-- ══════════════════════════════════════════
+--  THEME COLORS (Trapware Style)
+-- ══════════════════════════════════════════
+
+local colors = {
+    background   = Color3.fromRGB(22, 22, 26),
+    dragBar      = Color3.fromRGB(30, 30, 35),
+    accent       = Color3.fromRGB(0, 120, 215),
+    accent2      = Color3.fromRGB(147, 112, 219), -- Purple accent
+    text         = Color3.fromRGB(220, 220, 220),
+    border       = Color3.fromRGB(50, 50, 55),
+    buttonBg     = Color3.fromRGB(45, 45, 50),
+    buttonHover  = Color3.fromRGB(60, 60, 65),
+    success      = Color3.fromRGB(46, 204, 113),
+    error        = Color3.fromRGB(231, 76, 60),
+    warning      = Color3.fromRGB(241, 196, 15),
+    disabled     = Color3.fromRGB(55, 55, 60),
+    disabledText = Color3.fromRGB(90, 90, 95),
+    glow         = Color3.fromRGB(0, 150, 255),
+}
+
+-- ══════════════════════════════════════════
+--  VARIABLES
+-- ══════════════════════════════════════════
+
+local isFlying = false
+local currentVehicle = nil
+local originalPosition = nil
+local hoverConnection = nil
+local wKeyHeld = false
+local hoverDirection = 1
+local startCFrame = START_CFRAME
+local flightUI = nil
+
+-- ══════════════════════════════════════════
+--  HELPERS
+-- ══════════════════════════════════════════
+
+local function ti(t, style, dir)
+    return TweenInfo.new(t or 0.3, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+end
+
+local function animateButton(btn, hover, normal)
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, ti(), {BackgroundColor3 = hover}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, ti(), {BackgroundColor3 = normal}):Play()
+    end)
+end
+
+-- ══════════════════════════════════════════
+--  NOTIFICATION SYSTEM
+-- ══════════════════════════════════════════
+
+local function createNotification(title, message, notifType)
+    if not flightUI or not flightUI.Parent then return end
+    
+    local notifColor = colors.accent
+    if notifType == "success" then notifColor = colors.success
+    elseif notifType == "error"   then notifColor = colors.error
+    elseif notifType == "warning" then notifColor = colors.warning
+    end
+
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 0, 0, 60)
+    notif.Position = UDim2.new(1, -10, 0.95, -70)
+    notif.AnchorPoint = Vector2.new(1, 1)
+    notif.BackgroundColor3 = colors.background
+    notif.BorderSizePixel = 0
+    notif.Parent = flightUI
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(0, 4, 1, 0)
+    bar.BackgroundColor3 = notifColor
+    bar.BorderSizePixel = 0
+    bar.Parent = notif
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 8)
+
+    local t1 = Instance.new("TextLabel")
+    t1.Size = UDim2.new(1, -16, 0, 20)
+    t1.Position = UDim2.new(0, 12, 0, 8)
+    t1.Text = title
+    t1.Font = Enum.Font.GothamBold
+    t1.TextSize = 12
+    t1.TextColor3 = colors.text
+    t1.TextXAlignment = Enum.TextXAlignment.Left
+    t1.BackgroundTransparency = 1
+    t1.Parent = notif
+
+    local t2 = Instance.new("TextLabel")
+    t2.Size = UDim2.new(1, -16, 0, 24)
+    t2.Position = UDim2.new(0, 12, 0, 28)
+    t2.Text = message
+    t2.Font = Enum.Font.Gotham
+    t2.TextSize = 10
+    t2.TextColor3 = colors.text
+    t2.TextTransparency = 0.3
+    t2.TextXAlignment = Enum.TextXAlignment.Left
+    t2.TextWrapped = true
+    t2.BackgroundTransparency = 1
+    t2.Parent = notif
+
+    TweenService:Create(notif, ti(), {Size = UDim2.new(0, 280, 0, 60)}):Play()
+
+    task.delay(3, function()
+        TweenService:Create(notif, ti(), {Size = UDim2.new(0, 0, 0, 60), BackgroundTransparency = 1}):Play()
+        task.wait(0.3)
+        notif:Destroy()
+    end)
+end
+
+-- ══════════════════════════════════════════
+--  FLIGHT FUNCTIONS
+-- ══════════════════════════════════════════
+
+function findPlayerCar()
+    local carsFolder = workspace:FindFirstChild("Cars")
+    if not carsFolder then
+        warn(" Cars folder not found")
+        return nil
+    end
+    
+    print(" Searching for car owned by: " .. username)
+    
+    for _, carModel in pairs(carsFolder:GetChildren()) do
+        if carModel:IsA("Model") then
+            local ownerValue = carModel:FindFirstChild("Owner")
+            if ownerValue and type(ownerValue.Value) == "string" then
+                if ownerValue.Value == username then
+                    print(" Found car by Owner: " .. carModel.Name)
+                    return carModel
+                end
+            end
+            
+            local currentDriver = carModel:FindFirstChild("CurrentDriver")
+            if currentDriver and type(currentDriver.Value) == "string" then
+                if currentDriver.Value == username then
+                    print(" Found car by CurrentDriver: " .. carModel.Name)
+                    return carModel
+                end
+            end
+        end
+    end
+    
+    warn(" No owned car found for: " .. username)
+    return nil
+end
+
+function getPlayerVehicle()
+    local character = player.Character
+    if not character then return nil, nil end
+    
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return nil, nil end
+    
+    if humanoid.SeatPart then
+        local seat = humanoid.SeatPart
+        
+        if seat.Parent and seat.Parent.Name == "Seats" then
+            local carModel = seat.Parent.Parent
+            if carModel and carModel:IsA("Model") then
+                return carModel, seat
+            end
+        end
+        
+        local vehicleModel = seat:FindFirstAncestorOfClass("Model")
+        if vehicleModel then
+            return vehicleModel, seat
+        end
+        
+        return seat, seat
+    end
+    
+    return nil, nil
+end
+
+function holdWKey()
+    if not W_KEY_HOLD then return end
+    
+    wKeyHeld = true
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.W, false, nil)
+        print(" Holding W key...")
+    end)
+end
+
+function releaseWKey()
+    if not W_KEY_HOLD or not wKeyHeld then return end
+    
+    wKeyHeld = false
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.W, false, nil)
+        print(" Released W key")
+    end)
+end
+
+function startHover(vehicle)
+    if not vehicle or not vehicle:IsA("Model") then return end
+    
+    local primaryPart = vehicle.PrimaryPart
+    if not primaryPart then
+        warn(" Vehicle has no PrimaryPart")
+        return
+    end
+    
+    originalPosition = primaryPart.Position
+    
+    local moveToStartTweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local moveToStartTween = TweenService:Create(primaryPart, moveToStartTweenInfo, {Position = startCFrame.Position})
+    
+    moveToStartTween:Play()
+    moveToStartTween.Completed:Wait()
+    
+    print(" Car moved to start position: " .. tostring(startCFrame.Position))
+    createNotification("Hover Started", "Vehicle moved to start position", "success")
+    
+    holdWKey()
+    
+    local startPos = primaryPart.Position
+    hoverConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        if not vehicle or not vehicle.PrimaryPart then
+            if hoverConnection then hoverConnection:Disconnect() end
+            return
+        end
+        
+        local time = tick() * HOVER_SPEED
+        local oscillation = math.sin(time) * HOVER_DISTANCE
+        
+        local newPosition = Vector3.new(
+            startPos.X + (oscillation * hoverDirection),
+            startPos.Y + (math.sin(time * 0.5) * 2),
+            startPos.Z
+        )
+        
+        vehicle:PivotTo(CFrame.new(newPosition) * CFrame.Angles(0, math.rad(oscillation * 0.5), 0))
+    end)
+    
+    print(" Hover animation started from specified CFrame")
+end
+
+function stopHover(vehicle)
+    if hoverConnection then
+        hoverConnection:Disconnect()
+        hoverConnection = nil
+    end
+    
+    releaseWKey()
+    
+    if vehicle and vehicle:IsA("Model") and vehicle.PrimaryPart then
+        if originalPosition then
+            local returnTweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+            local returnTween = TweenService:Create(vehicle.PrimaryPart, returnTweenInfo, {Position = originalPosition})
+            
+            returnTween:Play()
+            returnTween.Completed:Wait()
+            
+            vehicle:PivotTo(CFrame.new(originalPosition))
+        end
+        
+        print(" Car returned to ground")
+        createNotification("Hover Stopped", "Vehicle returned to ground", "warning")
+    end
+end
+
+function toggleFlight()
+    local ownedCar = findPlayerCar()
+    local currentVehicle, seat = getPlayerVehicle()
+    local vehicleToUse = ownedCar or currentVehicle
+    
+    if not vehicleToUse then
+        createNotification("No Vehicle", "Get in a car or own one first", "error")
+        return
+    end
+    
+    if not isFlying then
+        print(" Starting hover flight...")
+        isFlying = true
+        currentVehicle = vehicleToUse
+        startHover(vehicleToUse)
+        updateUI()
+        return true
+    else
+        print(" Stopping hover flight...")
+        isFlying = false
+        stopHover(currentVehicle)
+        currentVehicle = nil
+        updateUI()
+        return false
+    end
+end
+
+-- ══════════════════════════════════════════
+--  UI UPDATE FUNCTION
+-- ══════════════════════════════════════════
+
+function updateUI()
+    if not flightUI or not flightUI.Parent then return end
+    
+    local mainFrame = flightUI:FindFirstChild("MainFrame")
+    if not mainFrame then return end
+    
+    local statusIcon = mainFrame:FindFirstChild("StatusIcon", true)
+    local statusLabel = mainFrame:FindFirstChild("StatusLabel", true)
+    local statusSub = mainFrame:FindFirstChild("StatusSub", true)
+    local flightButton = mainFrame:FindFirstChild("FlightButton", true)
+    local buttonText = flightButton and flightButton:FindFirstChild("ButtonText")
+    local buttonGradient = flightButton and flightButton:FindFirstChild("UIGradient")
+    
+    if isFlying then
+        if statusIcon then
+            statusIcon.Text = "🟢"
+            statusIcon.TextColor3 = colors.success
+        end
+        if statusLabel then
+            statusLabel.Text = "SYSTEM: ACTIVE"
+            statusLabel.TextColor3 = colors.success
+        end
+        if statusSub then
+            statusSub.Text = "ALT: " .. FLIGHT_HEIGHT .. "m"
+        end
+        if buttonText then
+            buttonText.Text = "DISENGAGE FLIGHT"
+        end
+        if buttonGradient then
+            buttonGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, colors.error),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 0, 50))
+            })
+        end
+    else
+        if statusIcon then
+            statusIcon.Text = ""
+            statusIcon.TextColor3 = colors.warning
+        end
+        if statusLabel then
+            statusLabel.Text = "SYSTEM: STANDBY"
+            statusLabel.TextColor3 = colors.warning
+        end
+        if statusSub then
+            statusSub.Text = "Press F to activate"
+        end
+        if buttonText then
+            buttonText.Text = "AUTO FARM"
+        end
+        if buttonGradient then
+            buttonGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, colors.accent),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 100, 200))
+            })
+        end
+    end
+end
+
+-- ══════════════════════════════════════════
+--  CREATE FLIGHT UI (Trapware Style)
+-- ══════════════════════════════════════════
+
+function createFlightUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "TrapwareFlightSystem"
+    screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.DisplayOrder = 999999999
+    screenGui.Parent = playerGui
+    
+    -- ══════════════════════════════════════════
+    --  MAIN FRAME
+    -- ══════════════════════════════════════════
+    
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 400, 0, 340)
+    mainFrame.Position = UDim2.new(0.5, -200, 0.5, -170)
+    mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    mainFrame.BackgroundColor3 = colors.background
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = screenGui
+    Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+    
+    local shadow = Instance.new("ImageLabel")
+    shadow.Image = "rbxassetid://1316045217"
+    shadow.ScaleType = Enum.ScaleType.Slice
+    shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+    shadow.ImageColor3 = Color3.new(0, 0, 0)
+    shadow.ImageTransparency = 0.7
+    shadow.Size = UDim2.new(1, 20, 1, 20)
+    shadow.Position = UDim2.new(0, -10, 0, -10)
+    shadow.BackgroundTransparency = 1
+    shadow.ZIndex = 0
+    shadow.Parent = mainFrame
+    
+    -- ══════════════════════════════════════════
+    --  DRAG BAR
+    -- ══════════════════════════════════════════
+    
+    local dragBar = Instance.new("Frame")
+    dragBar.Size = UDim2.new(1, 0, 0, 40)
+    dragBar.BackgroundColor3 = colors.dragBar
+    dragBar.BorderSizePixel = 0
+    dragBar.ZIndex = 2
+    dragBar.Parent = mainFrame
+    Instance.new("UICorner", dragBar).CornerRadius = UDim.new(0, 12)
+    
+    local dragCover = Instance.new("Frame")
+    dragCover.Size = UDim2.new(1, 0, 0, 12)
+    dragCover.Position = UDim2.new(0, 0, 1, -12)
+    dragCover.BackgroundColor3 = colors.dragBar
+    dragCover.BorderSizePixel = 0
+    dragCover.ZIndex = 2
+    dragCover.Parent = dragBar
+    
+    local logoFrame = Instance.new("Frame")
+    logoFrame.Size = UDim2.new(0, 28, 0, 28)
+    logoFrame.Position = UDim2.new(0, 8, 0, 6)
+    logoFrame.BackgroundColor3 = colors.accent2
+    logoFrame.BorderSizePixel = 0
+    logoFrame.ZIndex = 3
+    logoFrame.Parent = dragBar
+    Instance.new("UICorner", logoFrame).CornerRadius = UDim.new(0, 6)
+    
+    local logoText = Instance.new("TextLabel")
+    logoText.Size = UDim2.new(1, 0, 1, 0)
+    logoText.Text = ""
+    logoText.Font = Enum.Font.GothamBold
+    logoText.TextSize = 16
+    logoText.TextColor3 = Color3.new(1, 1, 1)
+    logoText.BackgroundTransparency = 1
+    logoText.ZIndex = 4
+    logoText.Parent = logoFrame
+    
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, -120, 1, 0)
+    titleLabel.Position = UDim2.new(0, 44, 0, 0)
+    titleLabel.Text = "Hover Flight System"
+    titleLabel.Font = Enum.Font.GothamSemibold
+    titleLabel.TextSize = 15
+    titleLabel.TextColor3 = colors.text
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.ZIndex = 3
+    titleLabel.Parent = dragBar
+    
+    local versionBadge = Instance.new("TextLabel")
+    versionBadge.Size = UDim2.new(0, 58, 0, 20)
+    versionBadge.Position = UDim2.new(1, -94, 0, 10)
+    versionBadge.Text = "v2.0.0"
+    versionBadge.Font = Enum.Font.GothamMedium
+    versionBadge.TextSize = 10
+    versionBadge.TextColor3 = colors.text
+    versionBadge.BackgroundColor3 = colors.buttonBg
+    versionBadge.BorderSizePixel = 0
+    versionBadge.ZIndex = 3
+    versionBadge.Parent = dragBar
+    Instance.new("UICorner", versionBadge).CornerRadius = UDim.new(0, 4)
+    
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0, 28, 0, 28)
+    closeButton.Position = UDim2.new(1, -36, 0, 6)
+    closeButton.Text = "×"
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.TextSize = 20
+    closeButton.TextColor3 = colors.text
+    closeButton.BackgroundColor3 = colors.buttonBg
+    closeButton.BorderSizePixel = 0
+    closeButton.AutoButtonColor = false
+    closeButton.ZIndex = 3
+    closeButton.Parent = dragBar
+    Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
+    
+    closeButton.MouseEnter:Connect(function()
+        TweenService:Create(closeButton, ti(), {BackgroundColor3 = Color3.fromRGB(220, 50, 50), TextColor3 = Color3.new(1,1,1)}):Play()
+    end)
+    closeButton.MouseLeave:Connect(function()
+        TweenService:Create(closeButton, ti(), {BackgroundColor3 = colors.buttonBg, TextColor3 = colors.text}):Play()
+    end)
+    closeButton.MouseButton1Click:Connect(function()
+        TweenService:Create(mainFrame, ti(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.new(0,0,0,0)}):Play()
+        task.wait(0.25)
+        screenGui:Destroy()
+    end)
+    
+    -- Drag functionality
+    local dragging, dragInput, dragStart, startPos
+    dragBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    dragBar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    -- ══════════════════════════════════════════
+    --  CONTENT FRAME
+    -- ══════════════════════════════════════════
+    
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Size = UDim2.new(1, -32, 1, -56)
+    contentFrame.Position = UDim2.new(0, 16, 0, 48)
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.Parent = mainFrame
+    
+    -- User Info Card
+    local userCard = Instance.new("Frame")
+    userCard.Size = UDim2.new(1, 0, 0, 50)
+    userCard.BackgroundColor3 = colors.dragBar
+    userCard.BorderSizePixel = 0
+    userCard.Parent = contentFrame
+    Instance.new("UICorner", userCard).CornerRadius = UDim.new(0, 8)
+    
+    local userAvatar = Instance.new("Frame")
+    userAvatar.Size = UDim2.new(0, 32, 0, 32)
+    userAvatar.Position = UDim2.new(0, 10, 0.5, -16)
+    userAvatar.BackgroundColor3 = colors.accent2
+    userAvatar.BackgroundTransparency = 0.8
+    userAvatar.BorderSizePixel = 0
+    userAvatar.Parent = userCard
+    Instance.new("UICorner", userAvatar).CornerRadius = UDim.new(0, 6)
+    
+    local userIcon = Instance.new("TextLabel")
+    userIcon.Size = UDim2.new(1, 0, 1, 0)
+    userIcon.Text = "👤"
+    userIcon.TextSize = 16
+    userIcon.BackgroundTransparency = 1
+    userIcon.Parent = userAvatar
+    
+    local userName = Instance.new("TextLabel")
+    userName.Size = UDim2.new(1, -110, 0, 18)
+    userName.Position = UDim2.new(0, 52, 0, 8)
+    userName.Text = username
+    userName.Font = Enum.Font.GothamSemibold
+    userName.TextSize = 14
+    userName.TextColor3 = colors.text
+    userName.TextXAlignment = Enum.TextXAlignment.Left
+    userName.BackgroundTransparency = 1
+    userName.Parent = userCard
+    
+    local userBadge = Instance.new("TextLabel")
+    userBadge.Size = UDim2.new(0, 60, 0, 18)
+    userBadge.Position = UDim2.new(1, -70, 0, 8)
+    userBadge.Text = "PREMIUM"
+    userBadge.Font = Enum.Font.GothamBold
+    userBadge.TextSize = 9
+    userBadge.TextColor3 = Color3.new(1, 1, 1)
+    userBadge.BackgroundColor3 = colors.accent2
+    userBadge.BorderSizePixel = 0
+    userBadge.Parent = userCard
+    Instance.new("UICorner", userBadge).CornerRadius = UDim.new(0, 4)
+    
+    local userId = Instance.new("TextLabel")
+    userId.Size = UDim2.new(1, -110, 0, 16)
+    userId.Position = UDim2.new(0, 52, 0, 26)
+    userId.Text = "ID: " .. player.UserId
+    userId.Font = Enum.Font.Gotham
+    userId.TextSize = 10
+    userId.TextColor3 = colors.text
+    userId.TextTransparency = 0.4
+    userId.TextXAlignment = Enum.TextXAlignment.Left
+    userId.BackgroundTransparency = 1
+    userId.Parent = userCard
+    
+    -- Status Card
+    local statusCard = Instance.new("Frame")
+    statusCard.Size = UDim2.new(1, 0, 0, 70)
+    statusCard.Position = UDim2.new(0, 0, 0, 60)
+    statusCard.BackgroundColor3 = colors.dragBar
+    statusCard.BorderSizePixel = 0
+    statusCard.Parent = contentFrame
+    Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 8)
+    
+    -- Animated status indicator
+    local statusIcon = Instance.new("TextLabel")
+    statusIcon.Name = "StatusIcon"
+    statusIcon.Size = UDim2.new(0, 30, 1, 0)
+    statusIcon.Position = UDim2.new(0, 15, 0, 0)
+    statusIcon.BackgroundTransparency = 1
+    statusIcon.Text = ""
+    statusIcon.TextColor3 = colors.warning
+    statusIcon.Font = Enum.Font.GothamBold
+    statusIcon.TextSize = 20
+    statusIcon.Parent = statusCard
+    
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "StatusLabel"
+    statusLabel.Size = UDim2.new(1, -60, 0, 20)
+    statusLabel.Position = UDim2.new(0, 55, 0, 12)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "SYSTEM: STANDBY"
+    statusLabel.TextColor3 = colors.warning
+    statusLabel.Font = Enum.Font.GothamBold
+    statusLabel.TextSize = 14
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.Parent = statusCard
+    
+    local statusSub = Instance.new("TextLabel")
+    statusSub.Name = "StatusSub"
+    statusSub.Size = UDim2.new(1, -60, 0, 16)
+    statusSub.Position = UDim2.new(0, 55, 0, 34)
+    statusSub.BackgroundTransparency = 1
+    statusSub.Text = "Press F to activate"
+    statusSub.TextColor3 = colors.text
+    statusSub.TextTransparency = 0.4
+    statusSub.Font = Enum.Font.Gotham
+    statusSub.TextSize = 10
+    statusSub.TextXAlignment = Enum.TextXAlignment.Left
+    statusSub.Parent = statusCard
+    
+    -- Stats grid
+    local statsGrid = Instance.new("Frame")
+    statsGrid.Size = UDim2.new(1, 0, 0, 60)
+    statsGrid.Position = UDim2.new(0, 0, 0, 140)
+    statsGrid.BackgroundTransparency = 1
+    statsGrid.Parent = contentFrame
+    
+    -- Height stat
+    local heightCard = Instance.new("Frame")
+    heightCard.Size = UDim2.new(0.32, -4, 1, 0)
+    heightCard.BackgroundColor3 = colors.dragBar
+    heightCard.BorderSizePixel = 0
+    heightCard.Parent = statsGrid
+    Instance.new("UICorner", heightCard).CornerRadius = UDim.new(0, 8)
+    
+    local heightIcon = Instance.new("TextLabel")
+    heightIcon.Size = UDim2.new(1, 0, 0, 20)
+    heightIcon.Position = UDim2.new(0, 0, 0, 8)
+    heightIcon.Text = ""
+    heightIcon.TextSize = 16
+    heightIcon.BackgroundTransparency = 1
+    heightIcon.Parent = heightCard
+    
+    local heightValue = Instance.new("TextLabel")
+    heightValue.Size = UDim2.new(1, 0, 0, 18)
+    heightValue.Position = UDim2.new(0, 0, 0, 28)
+    heightValue.Text = FLIGHT_HEIGHT .. "m"
+    heightValue.Font = Enum.Font.GothamBold
+    heightValue.TextSize = 14
+    heightValue.TextColor3 = colors.accent
+    heightValue.BackgroundTransparency = 1
+    heightValue.Parent = heightCard
+    
+    local heightLabel = Instance.new("TextLabel")
+    heightLabel.Size = UDim2.new(1, 0, 0, 14)
+    heightLabel.Position = UDim2.new(0, 0, 0, 46)
+    heightLabel.Text = "HEIGHT"
+    heightLabel.Font = Enum.Font.Gotham
+    heightLabel.TextSize = 8
+    heightLabel.TextColor3 = colors.text
+    heightLabel.TextTransparency = 0.5
+    heightLabel.BackgroundTransparency = 1
+    heightLabel.Parent = heightCard
+    
+    -- Speed stat
+    local speedCard = Instance.new("Frame")
+    speedCard.Size = UDim2.new(0.32, -4, 1, 0)
+    speedCard.Position = UDim2.new(0.34, 0, 0, 0)
+    speedCard.BackgroundColor3 = colors.dragBar
+    speedCard.BorderSizePixel = 0
+    speedCard.Parent = statsGrid
+    Instance.new("UICorner", speedCard).CornerRadius = UDim.new(0, 8)
+    
+    local speedIcon = Instance.new("TextLabel")
+    speedIcon.Size = UDim2.new(1, 0, 0, 20)
+    speedIcon.Position = UDim2.new(0, 0, 0, 8)
+    speedIcon.Text = ""
+    speedIcon.TextSize = 16
+    speedIcon.BackgroundTransparency = 1
+    speedIcon.Parent = speedCard
+    
+    local speedValue = Instance.new("TextLabel")
+    speedValue.Size = UDim2.new(1, 0, 0, 18)
+    speedValue.Position = UDim2.new(0, 0, 0, 28)
+    speedValue.Text = HOVER_SPEED
+    speedValue.Font = Enum.Font.GothamBold
+    speedValue.TextSize = 14
+    speedValue.TextColor3 = colors.success
+    speedValue.BackgroundTransparency = 1
+    speedValue.Parent = speedCard
+    
+    local speedLabel = Instance.new("TextLabel")
+    speedLabel.Size = UDim2.new(1, 0, 0, 14)
+    speedLabel.Position = UDim2.new(0, 0, 0, 46)
+    speedLabel.Text = "SPEED"
+    speedLabel.Font = Enum.Font.Gotham
+    speedLabel.TextSize = 8
+    speedLabel.TextColor3 = colors.text
+    speedLabel.TextTransparency = 0.5
+    speedLabel.BackgroundTransparency = 1
+    speedLabel.Parent = speedCard
+    
+    -- Distance stat
+    local distCard = Instance.new("Frame")
+    distCard.Size = UDim2.new(0.32, -4, 1, 0)
+    distCard.Position = UDim2.new(0.68, 0, 0, 0)
+    distCard.BackgroundColor3 = colors.dragBar
+    distCard.BorderSizePixel = 0
+    distCard.Parent = statsGrid
+    Instance.new("UICorner", distCard).CornerRadius = UDim.new(0, 8)
+    
+    local distIcon = Instance.new("TextLabel")
+    distIcon.Size = UDim2.new(1, 0, 0, 20)
+    distIcon.Position = UDim2.new(0, 0, 0, 8)
+    distIcon.Text = ""
+    distIcon.TextSize = 16
+    distIcon.BackgroundTransparency = 1
+    distIcon.Parent = distCard
+    
+    local distValue = Instance.new("TextLabel")
+    distValue.Size = UDim2.new(1, 0, 0, 18)
+    distValue.Position = UDim2.new(0, 0, 0, 28)
+    distValue.Text = HOVER_DISTANCE .. "m"
+    distValue.Font = Enum.Font.GothamBold
+    distValue.TextSize = 14
+    distValue.TextColor3 = colors.warning
+    distValue.BackgroundTransparency = 1
+    distValue.Parent = distCard
+    
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Size = UDim2.new(1, 0, 0, 14)
+    distLabel.Position = UDim2.new(0, 0, 0, 46)
+    distLabel.Text = "RANGE"
+    distLabel.Font = Enum.Font.Gotham
+    distLabel.TextSize = 8
+    distLabel.TextColor3 = colors.text
+    distLabel.TextTransparency = 0.5
+    distLabel.BackgroundTransparency = 1
+    distLabel.Parent = distCard
+    
+    -- Flight Button
+    local flightButton = Instance.new("TextButton")
+    flightButton.Name = "FlightButton"
+    flightButton.Size = UDim2.new(1, 0, 0, 50)
+    flightButton.Position = UDim2.new(0, 0, 1, -50)
+    flightButton.Text = ""
+    flightButton.BackgroundColor3 = colors.buttonBg
+    flightButton.BorderSizePixel = 0
+    flightButton.AutoButtonColor = false
+    flightButton.Parent = contentFrame
+    Instance.new("UICorner", flightButton).CornerRadius = UDim.new(0, 8)
+    
+    -- Button gradient
+    local buttonGradient = Instance.new("UIGradient")
+    buttonGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, colors.accent),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 100, 200))
+    })
+    buttonGradient.Parent = flightButton
+    
+    local buttonText = Instance.new("TextLabel")
+    buttonText.Name = "ButtonText"
+    buttonText.Size = UDim2.new(1, 0, 0, 30)
+    buttonText.Position = UDim2.new(0, 0, 0, 4)
+    buttonText.Text = "Auto Farm"
+    buttonText.Font = Enum.Font.GothamBlack
+    buttonText.TextSize = 16
+    buttonText.TextColor3 = Color3.new(1, 1, 1)
+    buttonText.BackgroundTransparency = 1
+    buttonText.Parent = flightButton
+    
+    local buttonSubText = Instance.new("TextLabel")
+    buttonSubText.Name = "ButtonSubText"
+    buttonSubText.Size = UDim2.new(1, 0, 0, 14)
+    buttonSubText.Position = UDim2.new(0, 0, 0, 32)
+    buttonSubText.Text = "Press F or click to toggle"
+    buttonSubText.Font = Enum.Font.Gotham
+    buttonSubText.TextSize = 9
+    buttonSubText.TextColor3 = colors.text
+    buttonSubText.TextTransparency = 0.3
+    buttonSubText.BackgroundTransparency = 1
+    buttonSubText.Parent = flightButton
+    
+    -- Button animations
+    flightButton.MouseEnter:Connect(function()
+        if not isFlying then
+            buttonGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 180, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 130, 220))
+            })
+        else
+            buttonGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 100)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(220, 20, 60))
+            })
+        end
+    end)
+    
+    flightButton.MouseLeave:Connect(function()
+        updateUI()
+    end)
+    
+    flightButton.MouseButton1Click:Connect(function()
+        local success = toggleFlight()
+        if success ~= nil then
+            flightButton.BackgroundTransparency = 0.5
+            task.wait(0.1)
+            flightButton.BackgroundTransparency = 0
+        end
+    end)
+    
+    -- Key binding indicator
+    local keyIndicator = Instance.new("Frame")
+    keyIndicator.Size = UDim2.new(0, 80, 0, 24)
+    keyIndicator.Position = UDim2.new(1, -90, 1, -34)
+    keyIndicator.BackgroundColor3 = colors.accent
+    keyIndicator.BackgroundTransparency = 0.7
+    keyIndicator.BorderSizePixel = 0
+    keyIndicator.Parent = contentFrame
+    Instance.new("UICorner", keyIndicator).CornerRadius = UDim.new(0, 6)
+    
+    local keyText = Instance.new("TextLabel")
+    keyText.Size = UDim2.new(1, 0, 1, 0)
+    keyText.Text = "KEY: F"
+    keyText.Font = Enum.Font.GothamBold
+    keyText.TextSize = 11
+    keyText.TextColor3 = colors.text
+    keyText.BackgroundTransparency = 1
+    keyText.Parent = keyIndicator
+    
+    -- Animated border glow
+    local glowStroke = Instance.new("UIStroke")
+    glowStroke.Color = colors.glow
+    glowStroke.Thickness = 1
+    glowStroke.Transparency = 0.7
+    glowStroke.Parent = mainFrame
+    
+    
+    -- Opening animation
+    mainFrame.Size = UDim2.new(0, 0, 0, 0)
+    mainFrame.BackgroundTransparency = 1
+    glowStroke.Transparency = 1
+    
+    TweenService:Create(mainFrame, ti(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 400, 0, 340),
+        BackgroundTransparency = 0
+    }):Play()
+    
+    TweenService:Create(glowStroke, ti(0.4), {Transparency = 0.7}):Play()
+    
+    task.wait(0.5)
+    createNotification("System Ready", "Press F to toggle flight mode", "success")
+    
+    return screenGui
+end
+
+-- ══════════════════════════════════════════
+--  KEY BINDING
+-- ══════════════════════════════════════════
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == ACTIVATION_KEY then
+        local success = toggleFlight()
+        if success ~= nil then
+            print(isFlying and "Flight activated" or "Flight deactivated")
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════
+--  INITIALIZE UI
+-- ══════════════════════════════════════════
+
+flightUI = createFlightUI()
