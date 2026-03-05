@@ -1,0 +1,1447 @@
+--[[
+ _____ _____ _____ _____ _   _ _____ _____
+|  ___|  ___|  _  |_   _| | | |  ___|  _  |
+| |_  | |_  | | | | | | | |_| | |_  | |_| |
+|  _| |  _| | |_| | | | |  _  |  _| |    /
+| |   | |___|  _  | | | | | | | |___|  |\ \
+|_|   |_____|_| |_| |_| |_| |_|_____|_| \_|
+
+    Feather  —  99 Nights in the Forest
+    Version : v0.1
+    Hub     : Feather
+--]]
+
+-- ══════════════════════════════════════════════════════════════
+--  SERVICES
+-- ══════════════════════════════════════════════════════════════
+
+local Players          = game:GetService("Players")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui          = game:GetService("CoreGui")
+
+-- ══════════════════════════════════════════════════════════════
+--  PLAYER REFS
+-- ══════════════════════════════════════════════════════════════
+
+local LocalPlayer  = Players.LocalPlayer
+
+-- Wait for the game world to fully load before referencing any folders
+if not game:IsLoaded() then game.Loaded:Wait() end
+task.wait(1)
+
+local character    = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local rootPart     = character:WaitForChild("HumanoidRootPart")
+
+-- ══════════════════════════════════════════════════════════════
+--  GAME REFS
+-- ══════════════════════════════════════════════════════════════
+
+local itemsFolder   = workspace:WaitForChild("Items", 30)
+local remoteEvents  = ReplicatedStorage:WaitForChild("RemoteEvents", 30)
+local remoteConsume = remoteEvents:WaitForChild("RequestConsumeItem", 30)
+
+-- ══════════════════════════════════════════════════════════════
+--  SAFE ZONE BASEPLATES  (9-grid, transparent by default)
+-- ══════════════════════════════════════════════════════════════
+
+local safezoneBaseplates = {}
+local baseplateSize = Vector3.new(2048, 1, 2048)
+local baseY = 100
+local centerPos = Vector3.new(0, baseY, 0)
+
+for dx = -1, 1 do
+    for dz = -1, 1 do
+        local pos = centerPos + Vector3.new(dx * baseplateSize.X, 0, dz * baseplateSize.Z)
+        local bp = Instance.new("Part")
+        bp.Name         = "SafeZoneBaseplate"
+        bp.Size         = baseplateSize
+        bp.Position     = pos
+        bp.Anchored     = true
+        bp.CanCollide   = true
+        bp.Transparency = 1
+        bp.Color        = Color3.fromRGB(255, 255, 255)
+        bp.Parent       = workspace
+        table.insert(safezoneBaseplates, bp)
+    end
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  UTILITY FUNCTIONS
+-- ══════════════════════════════════════════════════════════════
+
+local function stringToCFrame(str)
+    local x, y, z = str:match("([^,]+),%s*([^,]+),%s*([^,]+)")
+    return CFrame.new(tonumber(x), tonumber(y), tonumber(z))
+end
+
+local function teleportToTarget(cf, duration)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if duration and duration > 0 then
+        local info = TweenInfo.new(duration, Enum.EasingStyle.Linear)
+        TweenService:Create(hrp, info, { CFrame = cf }):Play()
+    else
+        hrp.CFrame = cf
+    end
+end
+
+local function moveItemToPos(item, position)
+    if not item or not item:IsDescendantOf(workspace) then return end
+    local part = item.PrimaryPart
+        or item:FindFirstChildWhichIsA("BasePart")
+        or item:FindFirstChild("Handle")
+    if not part then return end
+    if not item.PrimaryPart then
+        pcall(function() item.PrimaryPart = part end)
+    end
+    pcall(function()
+        remoteEvents.RequestStartDraggingItem:FireServer(item)
+        task.wait(0.05)
+        item:SetPrimaryPartCFrame(CFrame.new(position))
+        task.wait(0.05)
+        remoteEvents.StopDraggingItem:FireServer(item)
+    end)
+end
+
+local function findTeleportablePart(item)
+    for _, d in ipairs(item:GetDescendants()) do
+        if d:IsA("BasePart") then return d end
+    end
+    return nil
+end
+
+local function applyWalkSpeed(humanoid, speed)
+    if not humanoid then return end
+    humanoid.WalkSpeed = speed
+    humanoid.Changed:Connect(function(prop)
+        if prop == "WalkSpeed" and humanoid.WalkSpeed ~= _G.FeatherWalkSpeed then
+            humanoid.WalkSpeed = _G.FeatherWalkSpeed
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  KILL AURA STATE
+-- ══════════════════════════════════════════════════════════════
+
+local killAuraToggle = false
+local killAuraRadius = 200
+
+local toolsDamageIDs = {
+    ["Old Axe"]   = "1_8982038982",
+    ["Good Axe"]  = "112_8982038982",
+    ["Strong Axe"]= "116_8982038982",
+    ["Chainsaw"]  = "647_8992824875",
+    ["Spear"]     = "196_8999010016"
+}
+
+local function getAnyToolWithDamageID()
+    for toolName, damageID in pairs(toolsDamageIDs) do
+        local tool = LocalPlayer.Inventory:FindFirstChild(toolName)
+        if tool then return tool, damageID end
+    end
+    return nil, nil
+end
+
+local function equipTool(tool)
+    if tool then remoteEvents.EquipItemHandle:FireServer("FireAllClients", tool) end
+end
+
+local function unequipTool(tool)
+    if tool then remoteEvents.UnequipItemHandle:FireServer("FireAllClients", tool) end
+end
+
+local function killAuraLoop()
+    while killAuraToggle do
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local tool, damageID = getAnyToolWithDamageID()
+            if tool and damageID then
+                equipTool(tool)
+                for _, mob in ipairs(workspace.Characters:GetChildren()) do
+                    if mob:IsA("Model") then
+                        local part = mob:FindFirstChildWhichIsA("BasePart")
+                        if part and (part.Position - hrp.Position).Magnitude <= killAuraRadius then
+                            pcall(function()
+                                remoteEvents.ToolDamageObject:InvokeServer(mob, tool, damageID, CFrame.new(part.Position))
+                            end)
+                        end
+                    end
+                end
+                task.wait(0.1)
+            else
+                task.wait(1)
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  AUTO FARM STATE
+-- ══════════════════════════════════════════════════════════════
+
+local campfireDropPos  = Vector3.new(0, 19, 0)
+local machineDropPos   = Vector3.new(21, 16, -5)
+
+local campfireFuelItems  = {"Log","Coal","Fuel Canister","Oil Barrel","Biofuel"}
+local autocookItems      = {"Morsel","Steak"}
+local autoGrindItems     = {"UFO Junk","UFO Component","Old Car Engine","Broken Fan","Old Microwave","Bolt","Log","Cultist Gem","Sheet Metal","Old Radio","Tyre","Washing Machine","Cultist Experiment","Cultist Component","Gem of the Forest Fragment","Broken Microwave"}
+local autoEatFoods       = {"Cooked Steak","Cooked Morsel","Berry","Carrot","Apple"}
+local biofuelItems       = {"Carrot","Cooked Morsel","Morsel","Steak","Cooked Steak","Log"}
+
+local alwaysFeedEnabled  = {}
+local autoFuelEnabled    = {}
+local autoCookEnabled    = {}
+local autoGrindEnabled   = {}
+local autoEatEnabled     = false
+local autoEatHPEnabled   = false
+local autoBiofuelEnabled = {}
+
+-- ── Background coroutines ──
+
+coroutine.wrap(function()
+    while true do
+        for itemName, on in pairs(alwaysFeedEnabled) do
+            if on then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if item.Name == itemName then moveItemToPos(item, campfireDropPos) end
+                end
+            end
+        end
+        task.wait(2)
+    end
+end)()
+
+coroutine.wrap(function()
+    local campfire = workspace:WaitForChild("Map"):WaitForChild("Campground"):WaitForChild("MainFire")
+    local fillFrame = campfire.Center.BillboardGui.Frame.Background.Fill
+    while true do
+        local hp = fillFrame.Size.X.Scale
+        if hp < 0.7 then
+            repeat
+                for itemName, on in pairs(autoFuelEnabled) do
+                    if on then
+                        for _, item in ipairs(itemsFolder:GetChildren()) do
+                            if item.Name == itemName then moveItemToPos(item, campfireDropPos) end
+                        end
+                    end
+                end
+                task.wait(0.5)
+                hp = fillFrame.Size.X.Scale
+            until hp >= 1
+        end
+        task.wait(2)
+    end
+end)()
+
+coroutine.wrap(function()
+    while true do
+        for itemName, on in pairs(autoCookEnabled) do
+            if on then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if item.Name == itemName then moveItemToPos(item, campfireDropPos) end
+                end
+            end
+        end
+        task.wait(2.5)
+    end
+end)()
+
+coroutine.wrap(function()
+    while true do
+        for itemName, on in pairs(autoGrindEnabled) do
+            if on then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if item.Name == itemName then moveItemToPos(item, machineDropPos) end
+                end
+            end
+        end
+        task.wait(2.5)
+    end
+end)()
+
+coroutine.wrap(function()
+    while true do
+        if autoEatEnabled then
+            local available = {}
+            for _, item in ipairs(itemsFolder:GetChildren()) do
+                if table.find(autoEatFoods, item.Name) then table.insert(available, item) end
+            end
+            if #available > 0 then
+                pcall(function() remoteConsume:InvokeServer(available[math.random(1,#available)]) end)
+            end
+        end
+        task.wait(3)
+    end
+end)()
+
+coroutine.wrap(function()
+    local hungerBar = LocalPlayer:WaitForChild("PlayerGui")
+        :WaitForChild("Interface"):WaitForChild("StatBars")
+        :WaitForChild("HungerBar"):WaitForChild("Bar")
+    while true do
+        if autoEatHPEnabled and hungerBar.Size.X.Scale <= 0.5 then
+            repeat
+                local available = {}
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if table.find(autoEatFoods, item.Name) then table.insert(available, item) end
+                end
+                if #available > 0 then
+                    pcall(function() remoteConsume:InvokeServer(available[math.random(1,#available)]) end)
+                else break end
+                task.wait(1)
+            until hungerBar.Size.X.Scale >= 0.99 or not autoEatHPEnabled
+        end
+        task.wait(3)
+    end
+end)()
+
+coroutine.wrap(function()
+    local biofuelPos
+    while true do
+        if not biofuelPos then
+            local s = workspace:FindFirstChild("Structures")
+            local p = s and s:FindFirstChild("Biofuel Processor")
+            local part = p and p:FindFirstChild("Part")
+            if part then biofuelPos = part.Position + Vector3.new(0,5,0) end
+        end
+        if biofuelPos then
+            for itemName, on in pairs(autoBiofuelEnabled) do
+                if on then
+                    for _, item in ipairs(itemsFolder:GetChildren()) do
+                        if item.Name == itemName then moveItemToPos(item, biofuelPos) end
+                    end
+                end
+            end
+        end
+        task.wait(2)
+    end
+end)()
+
+-- ── Tree system ──
+
+local originalTreeCFrames = {}
+local treesBrought = false
+
+local function getAllSmallTrees()
+    local trees = {}
+    local map = workspace:FindFirstChild("Map")
+    if map then
+        for _, folder in ipairs({map:FindFirstChild("Foliage"), map:FindFirstChild("Landmarks")}) do
+            if folder then
+                for _, obj in ipairs(folder:GetChildren()) do
+                    if obj:IsA("Model") and obj.Name == "Small Tree" then
+                        table.insert(trees, obj)
+                    end
+                end
+            end
+        end
+    end
+    return trees
+end
+
+local function findTrunk(tree)
+    for _, part in ipairs(tree:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name == "Trunk" then return part end
+    end
+end
+
+local function bringAllTrees()
+    local target = CFrame.new(rootPart.Position + rootPart.CFrame.LookVector * 10)
+    for _, tree in ipairs(getAllSmallTrees()) do
+        local trunk = findTrunk(tree)
+        if trunk then
+            if not originalTreeCFrames[tree] then originalTreeCFrames[tree] = trunk.CFrame end
+            tree.PrimaryPart = trunk
+            trunk.Anchored = false; trunk.CanCollide = false
+            task.wait()
+            tree:SetPrimaryPartCFrame(target + Vector3.new(math.random(-5,5), 0, math.random(-5,5)))
+            trunk.Anchored = true
+        end
+    end
+    treesBrought = true
+end
+
+local function restoreTrees()
+    for tree, cf in pairs(originalTreeCFrames) do
+        local trunk = findTrunk(tree)
+        if trunk then
+            tree.PrimaryPart = trunk
+            tree:SetPrimaryPartCFrame(cf)
+            trunk.Anchored = true; trunk.CanCollide = true
+        end
+    end
+    originalTreeCFrames = {}; treesBrought = false
+end
+
+-- ── ESP system ──
+
+local customFont    = Font.new("rbxassetid://16658246179", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+local BillboardESPs = {}
+local ChamsESPs     = {}
+local ESPConns      = {}
+local ESPEnabled    = false
+local ChamsEnabled  = false
+
+local function createBillboardESP(plr)
+    if BillboardESPs[plr] or plr == LocalPlayer then return end
+    if not plr.Character or not plr.Character:FindFirstChild("Head") then return end
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "Feather_ESP"; gui.Adornee = plr.Character.Head
+    gui.Parent = plr.Character.Head; gui.Size = UDim2.new(0,100,0,40)
+    gui.AlwaysOnTop = true; gui.StudsOffset = Vector3.new(0,2,0)
+    local label = Instance.new("TextLabel", gui)
+    label.Size = UDim2.new(1,0,1,0); label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1,1,1); label.TextStrokeTransparency = 0.5
+    label.TextScaled = true; label.FontFace = customFont
+    local conn
+    conn = RunService.RenderStepped:Connect(function()
+        if not plr.Character or not plr.Character:FindFirstChild("Humanoid") then
+            gui:Destroy(); if conn then conn:Disconnect() end
+            BillboardESPs[plr] = nil; ESPConns[plr] = nil; return
+        end
+        local hp = math.floor(plr.Character.Humanoid.Health / plr.Character.Humanoid.MaxHealth * 100)
+        label.Text = plr.Name .. " | " .. hp .. "%"
+    end)
+    BillboardESPs[plr] = gui; ESPConns[plr] = conn
+end
+
+local function createChamsESP(plr)
+    if ChamsESPs[plr] or plr == LocalPlayer then return end
+    if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then return end
+    local folder = Instance.new("Folder"); folder.Name = "Feather_Chams"; folder.Parent = CoreGui
+    ChamsESPs[plr] = folder
+    for _, part in pairs(plr.Character:GetChildren()) do
+        if part:IsA("BasePart") then
+            local box = Instance.new("BoxHandleAdornment")
+            box.Adornee = part; box.AlwaysOnTop = true; box.ZIndex = 10
+            box.Size = part.Size; box.Transparency = 0.4
+            box.Color = BrickColor.new(plr.TeamColor == LocalPlayer.TeamColor and "Bright green" or "Bright red")
+            box.Parent = folder
+        end
+    end
+end
+
+local function cleanupBillboard()
+    for _, g in pairs(BillboardESPs) do if g then g:Destroy() end end
+    for _, c in pairs(ESPConns) do if c then c:Disconnect() end end
+    BillboardESPs = {}; ESPConns = {}
+end
+
+local function cleanupChams()
+    for _, f in pairs(ChamsESPs) do if f then f:Destroy() end end
+    ChamsESPs = {}
+end
+
+local function handlePlayerESP(plr)
+    if ESPEnabled then createBillboardESP(plr) end
+    if ChamsEnabled then createChamsESP(plr) end
+    plr.CharacterAdded:Connect(function()
+        task.wait(1)
+        if ESPEnabled then createBillboardESP(plr) end
+        if ChamsEnabled then createChamsESP(plr) end
+    end)
+end
+
+for _, plr in pairs(Players:GetPlayers()) do
+    if plr ~= LocalPlayer then handlePlayerESP(plr) end
+end
+Players.PlayerAdded:Connect(function(plr) handlePlayerESP(plr) end)
+
+-- FOV Circle
+local FOVCircle   = Drawing.new("Circle")
+FOVCircle.Visible = false; FOVCircle.Color = Color3.fromRGB(255,255,255)
+FOVCircle.Transparency = 1; FOVCircle.Thickness = 1
+FOVCircle.Filled = false; FOVCircle.ZIndex = 2; FOVCircle.Radius = 100
+
+RunService.RenderStepped:Connect(function()
+    if FOVCircle.Visible then
+        FOVCircle.Position = UserInputService:GetMouseLocation()
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  FEATHER UI
+-- ══════════════════════════════════════════════════════════════
+
+local C = {
+    bg      = Color3.fromRGB(10,  10,  13),
+    panel   = Color3.fromRGB(17,  17,  22),
+    bar     = Color3.fromRGB(22,  22,  28),
+    darker  = Color3.fromRGB(14,  14,  18),
+    -- white/silver accent palette
+    accent  = Color3.fromRGB(220, 220, 230),
+    accentD = Color3.fromRGB(160, 160, 175),
+    accentG = Color3.fromRGB(100, 100, 115),
+    text    = Color3.fromRGB(225, 225, 235),
+    muted   = Color3.fromRGB(100, 100, 115),
+    dim     = Color3.fromRGB(28,  28,  35),
+    green   = Color3.fromRGB(52,  211, 153),
+    red     = Color3.fromRGB(248, 113, 113),
+    yellow  = Color3.fromRGB(251, 191,  36),
+    sep     = Color3.fromRGB(35,  35,  44),
+}
+
+local function ti(t, style, dir)
+    return TweenInfo.new(t or 0.2, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+end
+
+-- ── ScreenGui ──────────────────────────────────────────────
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "FeatherHub"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 1000
+-- Executors require CoreGui, not PlayerGui
+local guiOk = pcall(function() sg.Parent = CoreGui end)
+if not guiOk then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+-- ── Window dimensions ──────────────────────────────────────
+
+local WIN_W, WIN_H = 560, 400
+local TAB_W        = 110
+local CONTENT_X    = TAB_W + 1
+local CONTENT_W    = WIN_W - TAB_W - 1
+
+-- ── Main window ────────────────────────────────────────────
+
+local win = Instance.new("Frame")
+win.Name = "Feather"; win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = C.bg; win.BorderSizePixel = 0; win.Parent = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 10)
+
+-- (border handled via background contrast)
+
+-- ── Top bar ────────────────────────────────────────────────
+
+local topBar = Instance.new("Frame")
+topBar.Size = UDim2.new(1, 0, 0, 38); topBar.Position = UDim2.new(0,0,0,0)
+topBar.BackgroundColor3 = C.bar; topBar.BorderSizePixel = 0; topBar.ZIndex = 8; topBar.Parent = win
+Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 10)
+-- cover bottom round corners
+local topCover = Instance.new("Frame")
+topCover.Size = UDim2.new(1,0,0,10); topCover.Position = UDim2.new(0,0,1,-10)
+topCover.BackgroundColor3 = C.bar; topCover.BorderSizePixel = 0; topCover.ZIndex = 8; topCover.Parent = topBar
+
+-- feather glyph + title
+local glyph = Instance.new("TextLabel")
+glyph.Size = UDim2.new(0,24,0,24); glyph.Position = UDim2.new(0,10,0.5,-12)
+glyph.Text = ""; glyph.Font = Enum.Font.GothamBold; glyph.TextSize = 18
+glyph.TextColor3 = C.accent; glyph.BackgroundTransparency = 1
+glyph.ZIndex = 9; glyph.Parent = topBar
+
+local hubTitle = Instance.new("TextLabel")
+hubTitle.Size = UDim2.new(0,120,1,0); hubTitle.Position = UDim2.new(0,32,0,0)
+hubTitle.Text = "FEATHER"; hubTitle.Font = Enum.Font.GothamBold; hubTitle.TextSize = 13
+hubTitle.TextColor3 = C.accent; hubTitle.TextXAlignment = Enum.TextXAlignment.Left
+hubTitle.BackgroundTransparency = 1; hubTitle.ZIndex = 9; hubTitle.Parent = topBar
+
+local gameLbl = Instance.new("TextLabel")
+gameLbl.Size = UDim2.new(0,200,1,0); gameLbl.Position = UDim2.new(0,132,0,0)
+gameLbl.Text = "99 Nights in the Forest"; gameLbl.Font = Enum.Font.Gotham; gameLbl.TextSize = 10
+gameLbl.TextColor3 = C.muted; gameLbl.TextXAlignment = Enum.TextXAlignment.Left
+gameLbl.BackgroundTransparency = 1; gameLbl.ZIndex = 9; gameLbl.Parent = topBar
+
+local verLbl = Instance.new("TextLabel")
+verLbl.Size = UDim2.new(0,36,0,18); verLbl.Position = UDim2.new(1,-84,0.5,-9)
+verLbl.Text = "v0.1"; verLbl.Font = Enum.Font.GothamBold; verLbl.TextSize = 9
+verLbl.TextColor3 = C.muted; verLbl.BackgroundColor3 = C.dim; verLbl.BorderSizePixel = 0
+verLbl.ZIndex = 9; verLbl.Parent = topBar
+Instance.new("UICorner", verLbl).CornerRadius = UDim.new(0,4)
+
+-- close + minimise
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0,26,0,26); closeBtn.Position = UDim2.new(1,-34,0.5,-13)
+closeBtn.Text = "×"; closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16
+closeBtn.TextColor3 = C.muted; closeBtn.BackgroundColor3 = C.dim
+closeBtn.BorderSizePixel = 0; closeBtn.AutoButtonColor = false; closeBtn.ZIndex = 9; closeBtn.Parent = topBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,5)
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn,ti(),{BackgroundColor3=Color3.fromRGB(80,20,20),TextColor3=C.red}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn,ti(),{BackgroundColor3=C.dim,TextColor3=C.muted}):Play() end)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- drag
+local dragging, dragInput, dragStart, dragStartPos
+topBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true; dragStart = input.Position; dragStartPos = win.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+topBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local d = input.Position - dragStart
+        win.Position = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + d.X,
+                                  dragStartPos.Y.Scale, dragStartPos.Y.Offset + d.Y)
+    end
+end)
+
+-- ── Sidebar ────────────────────────────────────────────────
+
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, TAB_W, 1, -38)
+sidebar.Position = UDim2.new(0, 0, 0, 38)
+sidebar.BackgroundColor3 = C.darker
+sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 5
+sidebar.ClipsDescendants = false
+sidebar.Parent = win
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 10)
+
+-- Inner scroll frame that holds the tab buttons — keeps UIListLayout
+-- away from any cosmetic children of sidebar
+local sideInner = Instance.new("Frame")
+sideInner.Size = UDim2.new(1, 0, 1, 0)
+sideInner.Position = UDim2.new(0, 0, 0, 0)
+sideInner.BackgroundTransparency = 1
+sideInner.BorderSizePixel = 0
+sideInner.ZIndex = 5
+sideInner.Parent = sidebar
+
+local sideLayout = Instance.new("UIListLayout", sideInner)
+sideLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sideLayout.Padding = UDim.new(0, 3)
+
+local sidePad = Instance.new("UIPadding", sideInner)
+sidePad.PaddingTop = UDim.new(0, 6)
+sidePad.PaddingBottom = UDim.new(0, 6)
+sidePad.PaddingLeft = UDim.new(0, 6)
+sidePad.PaddingRight = UDim.new(0, 6)
+
+-- separator line between sidebar and content
+local sideDiv = Instance.new("Frame")
+sideDiv.Size = UDim2.new(0, 1, 1, -38)
+sideDiv.Position = UDim2.new(0, TAB_W, 0, 38)
+sideDiv.BackgroundColor3 = C.sep
+sideDiv.BorderSizePixel = 0
+sideDiv.ZIndex = 6
+sideDiv.Parent = win
+
+-- ── Content container ──────────────────────────────────────
+
+local contentContainer = Instance.new("Frame")
+contentContainer.Size = UDim2.new(0, CONTENT_W, 1, -38)
+contentContainer.Position = UDim2.new(0, CONTENT_X, 0, 38)
+contentContainer.BackgroundTransparency = 1; contentContainer.ZIndex = 4; contentContainer.Parent = win
+
+-- ══════════════════════════════════════════════════════════════
+--  TAB SYSTEM
+-- ══════════════════════════════════════════════════════════════
+
+local tabs       = {}
+local activeTab  = nil
+
+local tabDefs = {
+    { id = "main",    label = "Main",     icon = "" },
+    { id = "auto",    label = "Auto",     icon = "" },
+    { id = "itemtp",  label = "Item TP",  icon = "" },
+    { id = "gametp",  label = "Game TP",  icon = "" },
+    { id = "mobtp",   label = "Mob TP",   icon = "" },
+    { id = "player",  label = "Player",   icon = "" },
+    { id = "visuals", label = "Visuals",  icon = "" },
+    { id = "misc",    label = "Misc",     icon = "" },
+}
+
+local function createPage()
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1,-12,1,-12); page.Position = UDim2.new(0,6,0,6)
+    page.BackgroundTransparency = 1; page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3; page.ScrollBarImageColor3 = C.accentG
+    page.CanvasSize = UDim2.new(0,0,0,0); page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.ZIndex = 5; page.Visible = false; page.Parent = contentContainer
+    local layout = Instance.new("UIListLayout", page)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder; layout.Padding = UDim.new(0,4)
+    return page
+end
+
+local function switchTab(id)
+    if activeTab == id then return end
+    activeTab = id
+    for tid, tdata in pairs(tabs) do
+        local on = (tid == id)
+        tdata.page.Visible = on
+        TweenService:Create(tdata.btn, ti(0.15), {
+            BackgroundColor3 = on and C.dim or Color3.fromRGB(0,0,0),
+            BackgroundTransparency = on and 0 or 1,
+        }):Play()
+        TweenService:Create(tdata.iconLbl, ti(0.15), {TextColor3 = on and C.accent or C.muted}):Play()
+        TweenService:Create(tdata.nameLbl, ti(0.15), {TextColor3 = on and C.text or C.muted}):Play()
+        if on then
+            local bar = tdata.btn:FindFirstChild("ActiveBar")
+            if not bar then
+                bar = Instance.new("Frame"); bar.Name = "ActiveBar"
+                bar.Size = UDim2.new(0,2,0.6,0); bar.Position = UDim2.new(0,0,0.2,0)
+                bar.BackgroundColor3 = C.accent; bar.BorderSizePixel = 0; bar.ZIndex = 7; bar.Parent = tdata.btn
+                Instance.new("UICorner", bar).CornerRadius = UDim.new(0,2)
+            end
+            bar.Visible = true
+        else
+            local bar = tdata.btn:FindFirstChild("ActiveBar")
+            if bar then bar.Visible = false end
+        end
+    end
+end
+
+for i, def in ipairs(tabDefs) do
+    local page = createPage()
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,0,0,34); btn.BackgroundTransparency = 1
+    btn.BackgroundColor3 = C.dim; btn.BorderSizePixel = 0
+    btn.Text = ""; btn.AutoButtonColor = false; btn.LayoutOrder = i; btn.ZIndex = 6; btn.Parent = sideInner
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+
+    local iconL = Instance.new("TextLabel")
+    iconL.Size = UDim2.new(0,18,1,0); iconL.Position = UDim2.new(0,8,0,0)
+    iconL.Text = def.icon; iconL.Font = Enum.Font.GothamBold; iconL.TextSize = 13
+    iconL.TextColor3 = C.muted; iconL.BackgroundTransparency = 1; iconL.ZIndex = 7; iconL.Parent = btn
+
+    local nameL = Instance.new("TextLabel")
+    nameL.Size = UDim2.new(1,-28,1,0); nameL.Position = UDim2.new(0,28,0,0)
+    nameL.Text = def.label; nameL.Font = Enum.Font.GothamSemibold; nameL.TextSize = 11
+    nameL.TextColor3 = C.muted; nameL.TextXAlignment = Enum.TextXAlignment.Left
+    nameL.BackgroundTransparency = 1; nameL.ZIndex = 7; nameL.Parent = btn
+
+    btn.MouseEnter:Connect(function()
+        if activeTab ~= def.id then
+            TweenService:Create(btn,ti(0.1),{BackgroundTransparency=0.7,BackgroundColor3=C.dim}):Play()
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if activeTab ~= def.id then
+            TweenService:Create(btn,ti(0.1),{BackgroundTransparency=1}):Play()
+        end
+    end)
+    btn.MouseButton1Click:Connect(function() switchTab(def.id) end)
+
+    tabs[def.id] = { page = page, btn = btn, iconLbl = iconL, nameLbl = nameL }
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  UI COMPONENT BUILDERS
+-- ══════════════════════════════════════════════════════════════
+
+local layoutOrder = {}
+for k, _ in pairs(tabs) do layoutOrder[k] = 0 end
+
+local function nextOrder(tabId)
+    layoutOrder[tabId] = (layoutOrder[tabId] or 0) + 1
+    return layoutOrder[tabId]
+end
+
+-- Section header
+local function addSection(tabId, text)
+    local page = tabs[tabId].page
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,0,22); f.BackgroundTransparency = 1
+    f.LayoutOrder = nextOrder(tabId); f.ZIndex = 5; f.Parent = page
+
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1,-8,1,0); lbl.Position = UDim2.new(0,8,0,0)
+    lbl.Text = text:upper(); lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 9
+    lbl.TextColor3 = C.accentG; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1; lbl.ZIndex = 6
+
+    local line = Instance.new("Frame", f)
+    line.Size = UDim2.new(1,-8,0,1); line.Position = UDim2.new(0,8,1,-1)
+    line.BackgroundColor3 = C.sep; line.BorderSizePixel = 0; line.ZIndex = 6
+end
+
+-- Toggle row (checkbox)
+local function addToggle(tabId, label, desc, callback)
+    local page = tabs[tabId].page
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,0,0,42); row.BackgroundColor3 = C.panel
+    row.BorderSizePixel = 0; row.LayoutOrder = nextOrder(tabId); row.ZIndex = 5; row.Parent = page
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0,7)
+
+    local nameLbl = Instance.new("TextLabel", row)
+    nameLbl.Size = UDim2.new(1,-70,0,18); nameLbl.Position = UDim2.new(0,12,0,6)
+    nameLbl.Text = label; nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 12
+    nameLbl.TextColor3 = C.text; nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.BackgroundTransparency = 1; nameLbl.ZIndex = 6
+
+    if desc then
+        local descLbl = Instance.new("TextLabel", row)
+        descLbl.Size = UDim2.new(1,-70,0,14); descLbl.Position = UDim2.new(0,12,0,24)
+        descLbl.Text = desc; descLbl.Font = Enum.Font.Gotham; descLbl.TextSize = 10
+        descLbl.TextColor3 = C.muted; descLbl.TextXAlignment = Enum.TextXAlignment.Left
+        descLbl.BackgroundTransparency = 1; descLbl.ZIndex = 6
+    end
+
+    local state = false
+
+    -- pill
+    local pill = Instance.new("TextButton", row)
+    pill.Size = UDim2.new(0,46,0,24); pill.Position = UDim2.new(1,-56,0.5,-12)
+    pill.BackgroundColor3 = C.dim; pill.BorderSizePixel = 0; pill.Text = ""
+    pill.AutoButtonColor = false; pill.ZIndex = 6
+    Instance.new("UICorner", pill).CornerRadius = UDim.new(1,0)
+
+    local knob = Instance.new("Frame", pill)
+    knob.Size = UDim2.new(0,18,0,18); knob.Position = UDim2.new(0,3,0.5,-9)
+    knob.BackgroundColor3 = C.muted; knob.BorderSizePixel = 0; knob.ZIndex = 7
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+
+    local function setToggleState(on)
+        state = on
+        TweenService:Create(pill,ti(0.15),{BackgroundColor3 = on and C.accent or C.dim}):Play()
+        TweenService:Create(knob,ti(0.15),{
+            Position = on and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9),
+            BackgroundColor3 = on and C.bg or C.muted,
+        }):Play()
+        if callback then callback(on) end
+    end
+
+    pill.MouseButton1Click:Connect(function() setToggleState(not state) end)
+    return setToggleState
+end
+
+-- Slider row
+local function addSlider(tabId, label, min, max, default, callback)
+    local page = tabs[tabId].page
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,0,0,52); row.BackgroundColor3 = C.panel
+    row.BorderSizePixel = 0; row.LayoutOrder = nextOrder(tabId); row.ZIndex = 5; row.Parent = page
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0,7)
+
+    local currentVal = default or min
+
+    local topRow = Instance.new("Frame", row)
+    topRow.Size = UDim2.new(1,-24,0,18); topRow.Position = UDim2.new(0,12,0,8)
+    topRow.BackgroundTransparency = 1; topRow.ZIndex = 6
+
+    local nameLbl = Instance.new("TextLabel", topRow)
+    nameLbl.Size = UDim2.new(0.7,0,1,0); nameLbl.Text = label
+    nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 11
+    nameLbl.TextColor3 = C.text; nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.BackgroundTransparency = 1; nameLbl.ZIndex = 6
+
+    local valLbl = Instance.new("TextLabel", topRow)
+    valLbl.Size = UDim2.new(0.3,0,1,0); valLbl.Text = tostring(currentVal)
+    valLbl.Font = Enum.Font.GothamBold; valLbl.TextSize = 11
+    valLbl.TextColor3 = C.accent; valLbl.TextXAlignment = Enum.TextXAlignment.Right
+    valLbl.BackgroundTransparency = 1; valLbl.ZIndex = 6
+
+    local track = Instance.new("Frame", row)
+    track.Size = UDim2.new(1,-24,0,6); track.Position = UDim2.new(0,12,0,32)
+    track.BackgroundColor3 = C.dim; track.BorderSizePixel = 0; track.ZIndex = 6
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new((currentVal-min)/(max-min),0,1,0)
+    fill.BackgroundColor3 = C.accent; fill.BorderSizePixel = 0; fill.ZIndex = 7
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1,0)
+
+    local handle = Instance.new("TextButton", track)
+    handle.Size = UDim2.new(0,14,0,14); handle.AnchorPoint = Vector2.new(0.5,0.5)
+    handle.Position = UDim2.new((currentVal-min)/(max-min),0,0.5,0)
+    handle.BackgroundColor3 = Color3.new(1,1,1); handle.BorderSizePixel = 0
+    handle.Text = ""; handle.AutoButtonColor = false; handle.ZIndex = 8
+    Instance.new("UICorner", handle).CornerRadius = UDim.new(1,0)
+
+    local sliding = false
+    handle.MouseButton1Down:Connect(function() sliding = true end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local trackPos = track.AbsolutePosition.X
+            local trackW   = track.AbsoluteSize.X
+            local rel = math.clamp((input.Position.X - trackPos) / trackW, 0, 1)
+            currentVal = math.floor(min + (max - min) * rel)
+            valLbl.Text = tostring(currentVal)
+            fill.Size = UDim2.new(rel,0,1,0)
+            handle.Position = UDim2.new(rel,0,0.5,0)
+            if callback then callback(currentVal) end
+        end
+    end)
+end
+
+-- Button row
+local function addButton(tabId, label, callback)
+    local page = tabs[tabId].page
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,0,0,34); btn.BackgroundColor3 = C.panel
+    btn.BorderSizePixel = 0; btn.Text = ""
+    btn.AutoButtonColor = false; btn.LayoutOrder = nextOrder(tabId); btn.ZIndex = 5; btn.Parent = page
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,7)
+
+    local lbl = Instance.new("TextLabel", btn)
+    lbl.Size = UDim2.new(1,-12,1,0); lbl.Position = UDim2.new(0,12,0,0)
+    lbl.Text = label; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 12
+    lbl.TextColor3 = C.text; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1; lbl.ZIndex = 6
+
+    local arrow = Instance.new("TextLabel", btn)
+    arrow.Size = UDim2.new(0,20,1,0); arrow.Position = UDim2.new(1,-26,0,0)
+    arrow.Text = "›"; arrow.Font = Enum.Font.GothamBold; arrow.TextSize = 16
+    arrow.TextColor3 = C.accentG; arrow.BackgroundTransparency = 1; arrow.ZIndex = 6
+
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn,ti(0.1),{BackgroundColor3=C.dim}):Play()
+        TweenService:Create(arrow,ti(0.1),{TextColor3=C.accent}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn,ti(0.1),{BackgroundColor3=C.panel}):Play()
+        TweenService:Create(arrow,ti(0.1),{TextColor3=C.accentG}):Play()
+    end)
+    btn.MouseButton1Click:Connect(function()
+        TweenService:Create(btn,ti(0.08),{BackgroundColor3=C.accentG}):Play()
+        task.wait(0.08)
+        TweenService:Create(btn,ti(0.12),{BackgroundColor3=C.panel}):Play()
+        if callback then callback() end
+    end)
+end
+
+-- Dropdown (collapsible list of buttons/toggles)
+local function addDropdown(tabId, label)
+    local page = tabs[tabId].page
+
+    local wrapper = Instance.new("Frame")
+    wrapper.Size = UDim2.new(1,0,0,34); wrapper.BackgroundColor3 = C.panel
+    wrapper.BorderSizePixel = 0; wrapper.LayoutOrder = nextOrder(tabId); wrapper.ClipsDescendants = false
+    wrapper.ZIndex = 5; wrapper.Parent = page
+    Instance.new("UICorner", wrapper).CornerRadius = UDim.new(0,7)
+    wrapper.AutomaticSize = Enum.AutomaticSize.None
+
+    local header = Instance.new("TextButton", wrapper)
+    header.Size = UDim2.new(1,0,0,34); header.BackgroundTransparency = 1
+    header.Text = ""; header.AutoButtonColor = false; header.ZIndex = 6
+
+    local headerLbl = Instance.new("TextLabel", header)
+    headerLbl.Size = UDim2.new(1,-36,1,0); headerLbl.Position = UDim2.new(0,12,0,0)
+    headerLbl.Text = label; headerLbl.Font = Enum.Font.GothamSemibold; headerLbl.TextSize = 12
+    headerLbl.TextColor3 = C.text; headerLbl.TextXAlignment = Enum.TextXAlignment.Left
+    headerLbl.BackgroundTransparency = 1; headerLbl.ZIndex = 7
+
+    local chevron = Instance.new("TextLabel", header)
+    chevron.Size = UDim2.new(0,20,1,0); chevron.Position = UDim2.new(1,-28,0,0)
+    chevron.Text = "›"; chevron.Font = Enum.Font.GothamBold; chevron.TextSize = 14
+    chevron.TextColor3 = C.accentG; chevron.BackgroundTransparency = 1; chevron.ZIndex = 7
+    chevron.Rotation = 90
+
+    local list = Instance.new("Frame", wrapper)
+    list.Size = UDim2.new(1,0,0,0); list.Position = UDim2.new(0,0,0,34)
+    list.BackgroundTransparency = 1; list.ClipsDescendants = false; list.ZIndex = 6
+    list.AutomaticSize = Enum.AutomaticSize.Y; list.Visible = false
+
+    local listLayout = Instance.new("UIListLayout", list)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder; listLayout.Padding = UDim.new(0,2)
+
+    local listPad = Instance.new("UIPadding", list)
+    listPad.PaddingTop = UDim.new(0,4); listPad.PaddingBottom = UDim.new(0,4)
+    listPad.PaddingLeft = UDim.new(0,8); listPad.PaddingRight = UDim.new(0,8)
+
+    local open = false
+
+    local function refreshHeight()
+        if open then
+            local h = listLayout.AbsoluteContentSize.Y + 8
+            wrapper.Size = UDim2.new(1,0,0,34+h)
+        else
+            wrapper.Size = UDim2.new(1,0,0,34)
+        end
+    end
+
+    header.MouseButton1Click:Connect(function()
+        open = not open
+        list.Visible = open
+        chevron.Rotation = open and 270 or 90
+        TweenService:Create(chevron,ti(0.15),{TextColor3 = open and C.accent or C.accentG}):Play()
+        task.wait(0.01)
+        refreshHeight()
+    end)
+
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        if open then refreshHeight() end
+    end)
+
+    local dd = {}
+
+    function dd:AddButton(btnLabel, callback)
+        local b = Instance.new("TextButton", list)
+        b.Size = UDim2.new(1,0,0,30); b.BackgroundColor3 = C.dim
+        b.BorderSizePixel = 0; b.Text = ""
+        b.AutoButtonColor = false; b.LayoutOrder = #list:GetChildren(); b.ZIndex = 7
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+
+        local bl = Instance.new("TextLabel", b)
+        bl.Size = UDim2.new(1,-10,1,0); bl.Position = UDim2.new(0,10,0,0)
+        bl.Text = btnLabel; bl.Font = Enum.Font.Gotham; bl.TextSize = 11
+        bl.TextColor3 = C.text; bl.TextXAlignment = Enum.TextXAlignment.Left
+        bl.BackgroundTransparency = 1; bl.ZIndex = 8
+
+        b.MouseEnter:Connect(function() TweenService:Create(b,ti(0.1),{BackgroundColor3=C.bar}):Play() end)
+        b.MouseLeave:Connect(function() TweenService:Create(b,ti(0.1),{BackgroundColor3=C.dim}):Play() end)
+        b.MouseButton1Click:Connect(function()
+            if callback then callback() end
+        end)
+        refreshHeight()
+    end
+
+    function dd:AddToggle(toggleLabel, callback)
+        local f = Instance.new("Frame", list)
+        f.Size = UDim2.new(1,0,0,30); f.BackgroundColor3 = C.dim
+        f.BorderSizePixel = 0; f.LayoutOrder = #list:GetChildren(); f.ZIndex = 7
+        Instance.new("UICorner", f).CornerRadius = UDim.new(0,6)
+
+        local fl = Instance.new("TextLabel", f)
+        fl.Size = UDim2.new(1,-50,1,0); fl.Position = UDim2.new(0,10,0,0)
+        fl.Text = toggleLabel; fl.Font = Enum.Font.Gotham; fl.TextSize = 11
+        fl.TextColor3 = C.text; fl.TextXAlignment = Enum.TextXAlignment.Left
+        fl.BackgroundTransparency = 1; fl.ZIndex = 8
+
+        local tState = false
+        local tPill = Instance.new("TextButton", f)
+        tPill.Size = UDim2.new(0,36,0,18); tPill.Position = UDim2.new(1,-44,0.5,-9)
+        tPill.BackgroundColor3 = C.bar; tPill.BorderSizePixel = 0; tPill.Text = ""
+        tPill.AutoButtonColor = false; tPill.ZIndex = 8
+        Instance.new("UICorner", tPill).CornerRadius = UDim.new(1,0)
+
+        local tKnob = Instance.new("Frame", tPill)
+        tKnob.Size = UDim2.new(0,12,0,12); tKnob.Position = UDim2.new(0,3,0.5,-6)
+        tKnob.BackgroundColor3 = C.muted; tKnob.BorderSizePixel = 0; tKnob.ZIndex = 9
+        Instance.new("UICorner", tKnob).CornerRadius = UDim.new(1,0)
+
+        local function setTs(on)
+            tState = on
+            TweenService:Create(tPill,ti(0.12),{BackgroundColor3 = on and C.accent or C.bar}):Play()
+            TweenService:Create(tKnob,ti(0.12),{
+                Position = on and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6),
+                BackgroundColor3 = on and C.bg or C.muted,
+            }):Play()
+            if callback then callback(on) end
+        end
+
+        tPill.MouseButton1Click:Connect(function() setTs(not tState) end)
+        refreshHeight()
+    end
+
+    return dd
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  ── MAIN TAB ──
+-- ══════════════════════════════════════════════════════════════
+
+addSection("main","Safe Zone")
+addToggle("main","Show Safe Zone","Toggle safe zone baseplates",function(on)
+    for _, bp in ipairs(safezoneBaseplates) do
+        bp.Transparency = on and 0.8 or 1
+        bp.CanCollide = on
+    end
+end)
+
+addSection("main","Combat")
+addToggle("main","Kill Aura","Damage all mobs in radius",function(on)
+    killAuraToggle = on
+    if on then task.spawn(killAuraLoop)
+    else unequipTool(getAnyToolWithDamageID()) end
+end)
+addSlider("main","Kill Aura Radius",20,500,200,function(v) killAuraRadius = v end)
+
+addSection("main","Stronghold")
+do
+    local function getStrongholdTimerLabel()
+        local m = workspace:FindFirstChild("Map")
+        local l = m and m:FindFirstChild("Landmarks")
+        local s = l and l:FindFirstChild("Stronghold")
+        local f = s and s:FindFirstChild("Functional")
+        local sign = f and f:FindFirstChild("Sign")
+        local sg2 = sign and sign:FindFirstChild("SurfaceGui")
+        local fr = sg2 and sg2:FindFirstChild("Frame")
+        return fr and fr:FindFirstChild("Body")
+    end
+
+    -- live timer label
+    local timerRow = Instance.new("Frame")
+    timerRow.Size = UDim2.new(1,0,0,28); timerRow.BackgroundColor3 = C.panel
+    timerRow.BorderSizePixel = 0; timerRow.LayoutOrder = nextOrder("main"); timerRow.ZIndex = 5
+    timerRow.Parent = tabs["main"].page
+    Instance.new("UICorner", timerRow).CornerRadius = UDim.new(0,7)
+
+    local timerLbl = Instance.new("TextLabel", timerRow)
+    timerLbl.Size = UDim2.new(1,-12,1,0); timerLbl.Position = UDim2.new(0,12,0,0)
+    timerLbl.Text = "Stronghold Timer: ..."; timerLbl.Font = Enum.Font.Gotham; timerLbl.TextSize = 11
+    timerLbl.TextColor3 = C.muted; timerLbl.TextXAlignment = Enum.TextXAlignment.Left
+    timerLbl.BackgroundTransparency = 1; timerLbl.ZIndex = 6
+
+    coroutine.wrap(function()
+        while true do
+            local lbl = getStrongholdTimerLabel()
+            timerLbl.Text = "Stronghold Timer: " .. tostring(lbl and lbl.ContentText or "N/A")
+            task.wait(0.5)
+        end
+    end)()
+
+    addButton("main","Teleport to Stronghold",function()
+        local target = workspace:FindFirstChild("Map")
+            and workspace.Map:FindFirstChild("Landmarks")
+            and workspace.Map.Landmarks:FindFirstChild("Stronghold")
+            and workspace.Map.Landmarks.Stronghold:FindFirstChild("Functional")
+            and workspace.Map.Landmarks.Stronghold.Functional:FindFirstChild("EntryDoors")
+            and workspace.Map.Landmarks.Stronghold.Functional.EntryDoors:FindFirstChild("DoorRight")
+            and workspace.Map.Landmarks.Stronghold.Functional.EntryDoors.DoorRight:FindFirstChild("Model")
+        if target then
+            local dest = target:GetChildren()[5]
+            if dest and dest:IsA("BasePart") then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = dest.CFrame + Vector3.new(0,5,0) end
+            end
+        end
+    end)
+
+    addButton("main","Teleport to Diamond Chest",function()
+        local items = workspace:FindFirstChild("Items")
+        if not items then return end
+        local chest = items:FindFirstChild("Stronghold Diamond Chest")
+        if not chest then return end
+        local lid = chest:FindFirstChild("ChestLid")
+        if not lid then return end
+        local mesh = lid:FindFirstChild("Meshes/diamondchest_Cube.002")
+        if not mesh then return end
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then hrp.CFrame = mesh.CFrame + Vector3.new(0,5,0) end
+    end)
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  ── AUTO TAB ──
+-- ══════════════════════════════════════════════════════════════
+
+addSection("auto","Campfire")
+do
+    local dd1 = addDropdown("auto","Auto Feed Campfire (Always)")
+    for _, item in ipairs(campfireFuelItems) do
+        dd1:AddToggle(item,function(on) alwaysFeedEnabled[item] = on end)
+    end
+    dd1:AddToggle("Bulk (All)",function(on)
+        for _, item in ipairs(campfireFuelItems) do alwaysFeedEnabled[item] = on end
+    end)
+
+    local dd2 = addDropdown("auto","Auto Feed Campfire (HP Based)")
+    for _, item in ipairs(campfireFuelItems) do
+        dd2:AddToggle(item,function(on) autoFuelEnabled[item] = on end)
+    end
+    dd2:AddToggle("Bulk (All)",function(on)
+        for _, item in ipairs(campfireFuelItems) do autoFuelEnabled[item] = on end
+    end)
+
+    local dd3 = addDropdown("auto","Auto Cook Food")
+    for _, item in ipairs(autocookItems) do
+        dd3:AddToggle(item,function(on) autoCookEnabled[item] = on end)
+    end
+    dd3:AddToggle("Bulk (All)",function(on)
+        for _, item in ipairs(autocookItems) do autoCookEnabled[item] = on end
+    end)
+end
+
+addSection("auto","Machine")
+do
+    local dd4 = addDropdown("auto","Auto Machine Grind")
+    for _, item in ipairs(autoGrindItems) do
+        dd4:AddToggle(item,function(on) autoGrindEnabled[item] = on end)
+    end
+    dd4:AddToggle("Bulk (All)",function(on)
+        for _, item in ipairs(autoGrindItems) do autoGrindEnabled[item] = on end
+    end)
+
+    local dd5 = addDropdown("auto","Auto Biofuel Processor")
+    for _, item in ipairs(biofuelItems) do
+        dd5:AddToggle(item,function(on) autoBiofuelEnabled[item] = on end)
+    end
+    dd5:AddToggle("Bulk (All)",function(on)
+        for _, item in ipairs(biofuelItems) do autoBiofuelEnabled[item] = on end
+    end)
+end
+
+addSection("auto","Food & Trees")
+addToggle("auto","Auto Eat (3s Interval)","Eats random food every 3 seconds",function(on)
+    autoEatEnabled = on
+end)
+addToggle("auto","Auto Eat (HP Based)","Eats when hunger bar drops below 50%",function(on)
+    autoEatHPEnabled = on
+end)
+addToggle("auto","Auto Bring Small Trees","Pulls all small trees to you",function(on)
+    if on and not treesBrought then bringAllTrees()
+    elseif not on and treesBrought then restoreTrees() end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  ── ITEM TP TAB ──
+-- ══════════════════════════════════════════════════════════════
+
+addSection("itemtp","ESP")
+addToggle("itemtp","Item ESP","Show labels above all items",function(on)
+    local itemNames = {
+        ["Revolver"]=true,["Oil Barrel"]=true,["Chainsaw"]=true,["Giant Sack"]=true,
+        ["Bunny Foot"]=true,["MedKit"]=true,["Alien Chest"]=true,["Berry"]=true,
+        ["Bolt"]=true,["Broken Fan"]=true,["Carrot"]=true,["Coal"]=true,
+        ["Coin Stack"]=true,["Hologram Emitter"]=true,["Item Chest"]=true,
+        ["Laser Fence Blueprint"]=true,["Log"]=true,["Old Flashlight"]=true,
+        ["Old Radio"]=true,["Sheet Metal"]=true,["Bandage"]=true,["Rifle"]=true
+    }
+    local function makeESP(model)
+        if not model:IsA("Model") or not itemNames[model.Name] then return end
+        if not model.PrimaryPart or model:FindFirstChild("ESP") then return end
+        local bb = Instance.new("BillboardGui"); bb.Name = "ESP"
+        bb.Size = UDim2.new(0,100,0,30); bb.Adornee = model.PrimaryPart
+        bb.AlwaysOnTop = true; bb.StudsOffset = Vector3.new(0,3,0)
+        local lbl = Instance.new("TextLabel", bb)
+        lbl.Size = UDim2.new(1,0,1,0); lbl.TextSize = 17; lbl.BackgroundTransparency = 1
+        lbl.TextColor3 = Color3.new(1,1,1); lbl.TextStrokeTransparency = 0.5
+        lbl.TextScaled = false; lbl.FontFace = customFont; lbl.Text = model.Name
+        bb.Parent = model
+    end
+    if on then
+        for _, m in ipairs(itemsFolder:GetChildren()) do makeESP(m) end
+        itemsFolder.ChildAdded:Connect(function(m)
+            if m:IsA("Model") and itemNames[m.Name] then
+                m:GetPropertyChangedSignal("PrimaryPart"):Wait(); makeESP(m)
+            end
+        end)
+    else
+        for _, m in ipairs(itemsFolder:GetChildren()) do
+            local e = m:FindFirstChild("ESP"); if e then e:Destroy() end
+        end
+    end
+end)
+
+addSection("itemtp","Teleport to Item")
+do
+    local tpItems = {"Revolver","Medkit","Alien Chest","Berry","Bolt","Broken Fan","Carrot","Coal","Coin Stack","Hologram Emitter","Item Chest","Laser Fence Blueprint","Log","Old Flashlight","Old Radio","Sheet Metal","Bandage","Rifle"}
+    local dd = addDropdown("itemtp","Teleport to Item")
+    for _, itemName in ipairs(tpItems) do
+        dd:AddButton(itemName,function()
+            local candidates = {}
+            for _, model in pairs(itemsFolder:GetChildren()) do
+                if model:IsA("Model") and model.Name == itemName then
+                    local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+                    if part then table.insert(candidates, part) end
+                end
+            end
+            if #candidates == 0 then return end
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = candidates[math.random(1,#candidates)].CFrame + Vector3.new(0,5,0) end
+        end)
+    end
+end
+
+addSection("itemtp","Bring Item to You (Bulk)")
+do
+    local possibleItems = {"Alien Chest","Alpha Wolf Pelt","Anvil Front","Anvil Back","Apple","Bandage","Bear Corpse","Bear Pelt","Berry","Biofuel","Bolt","Broken Fan","Bunny Foot","Carrot","Coal","Coin Stack","Cooked Morsel","Cooked Steak","Chainsaw","Cultist","Cultist Gem","Flower","Fuel Canister","Hologram Emitter","Item Chest","Laser Fence Blueprint","Leather Body","Iron Body","Thorn Body","Log","MedKit","Morsel","Old Flashlight","Old Radio","Good Sack","Good Axe","Raygun","Giant Sack","Strong Axe","Oil Barrel","Old Car Engine","Rifle","Rifle Ammo","Revolver","Revolver Ammo","Sapling","Sheet Metal","Steak","Wolf Pelt","Gem of the Forest Fragment","Tyre","Washing Machine","Broken Microwave"}
+    local tempStorage = ReplicatedStorage:WaitForChild("TempStorage")
+    local sources = {itemsFolder, tempStorage}
+
+    local function teleportItemBulk(itemName)
+        local count = 0
+        for _, source in ipairs(sources) do
+            for _, item in ipairs(source:GetChildren()) do
+                if item.Name == itemName then
+                    local targetPart
+                    for _, d in ipairs(item:GetDescendants()) do
+                        if d:IsA("MeshPart") or d:IsA("Part") then targetPart = d; break end
+                    end
+                    if targetPart then
+                        remoteEvents.RequestStartDraggingItem:FireServer(item)
+                        targetPart.CFrame = rootPart.CFrame + Vector3.new(0, count*2, 0)
+                        remoteEvents.StopDraggingItem:FireServer(item)
+                        count = count + 1
+                    end
+                end
+            end
+        end
+    end
+
+    local dd = addDropdown("itemtp","Bring Item to You")
+    for _, itemName in ipairs(possibleItems) do
+        dd:AddButton(itemName,function() teleportItemBulk(itemName) end)
+    end
+end
+
+addSection("itemtp","Bring by Category")
+do
+    local bracket = {
+        ["Weapons"]   = {"Laser Sword","Raygun","Kunai","Katana","Spear"},
+        ["Mini Foods"]= {"Apple","Berry","Carrot"},
+        ["Meat"]      = {"Steak","Cooked Steak","Cooked Morsel","Morsel"},
+        ["Armor"]     = {"Leather Body","Iron Body","Thorn Body"},
+        ["Guns/Ammo"] = {"Rifle","Revolver","Raygun","Revolver Ammo","Rifle Ammo"},
+        ["Materials"] = {"Log","Coal","Fuel Canister","UFO Junk","UFO Component","Bandage","MedKit","Old Car Engine","Broken Fan","Old Microwave","Old Radio","Sheet Metal"},
+        ["Pelts"]     = {"Alpha Wolf Pelt","Bear Pelt","Wolf Pelt","Bunny Foot"},
+        ["Tools"]     = {"Good Sack","Old Flashlight","Old Radio","Giant Sack","Strong Flashlight","Chainsaw"},
+    }
+    for groupName, itemList in pairs(bracket) do
+        local dd = addDropdown("itemtp", groupName)
+        for _, itemName in ipairs(itemList) do
+            dd:AddButton(itemName,function()
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if item.Name == itemName then
+                        local part = findTeleportablePart(item)
+                        if part then
+                            remoteEvents.RequestStartDraggingItem:FireServer(item)
+                            part.CFrame = rootPart.CFrame
+                            remoteEvents.StopDraggingItem:FireServer(item)
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  ── GAME TP TAB ──
+-- ══════════════════════════════════════════════════════════════
+
+addSection("gametp","Locations")
+do
+    local storyCoords = {
+        {"Camp Site",  "0, 8, -0"},
+        {"Safe Zone",  "0, 110, -0"},
+    }
+    local dd = addDropdown("gametp","Teleports")
+    for _, entry in ipairs(storyCoords) do
+        dd:AddButton(entry[1],function()
+            teleportToTarget(stringToCFrame(entry[2]), 0.1)
+        end)
+    end
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  ── MOB TP TAB ──
+-- ══════════════════════════════════════════════════════════════
+
+addSection("mobtp","Bring Mob to You")
+do
+    local mobs = {"Alpha Wolf","Bear","Lost Child","Lost Child2","Lost Child3","Lost Child4","Wolf","Bunny","Cultist","Alien"}
+    local characterFolder = workspace:WaitForChild("Characters")
+
+    local function getMainPart(model)
+        if model.PrimaryPart then return model.PrimaryPart end
+        for _, p in ipairs(model:GetDescendants()) do
+            if p:IsA("BasePart") then return p end
+        end
+    end
+
+    local dd = addDropdown("mobtp","Teleport Mob")
+    for _, mobName in ipairs(mobs) do
+        dd:AddButton(mobName,function()
+            local count = 0
+            for _, model in ipairs(characterFolder:GetChildren()) do
+                if model.Name == mobName then
+                    local part = getMainPart(model)
+                    if part and rootPart then
+                        local cf = rootPart.CFrame + Vector3.new(0, count*3, 0)
+                        if model.PrimaryPart then model:SetPrimaryPartCFrame(cf)
+                        else part.CFrame = cf end
+                        count = count + 1
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  ── PLAYER TAB ──
+-- ══════════════════════════════════════════════════════════════
+
+addSection("player","Movement")
+_G.FeatherWalkSpeed = 16
+
+addSlider("player","Walk Speed",16,700,16,function(v)
+    _G.FeatherWalkSpeed = v
+    local char = LocalPlayer.Character
+    if char then applyWalkSpeed(char:FindFirstChild("Humanoid"), v) end
+end)
+addToggle("player","Speed Toggle (50)","Quick toggle walkspeed to 50",function(on)
+    _G.FeatherWalkSpeed = on and 50 or 16
+    local char = LocalPlayer.Character
+    if char then applyWalkSpeed(char:FindFirstChild("Humanoid"), _G.FeatherWalkSpeed) end
+end)
+addSlider("player","Jump Power",50,700,50,function(v)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.JumpPower = v
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    char:WaitForChild("Humanoid")
+    applyWalkSpeed(char:FindFirstChild("Humanoid"), _G.FeatherWalkSpeed)
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  ── VISUALS TAB ──
+-- ══════════════════════════════════════════════════════════════
+
+addSection("visuals","Player ESP")
+addToggle("visuals","ESP (Billboard)","Show name + HP above players",function(on)
+    ESPEnabled = on
+    if not on then cleanupBillboard()
+    else
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then createBillboardESP(plr) end
+        end
+    end
+end)
+addToggle("visuals","Chams (Box ESP)","Show coloured box around players",function(on)
+    ChamsEnabled = on
+    if not on then cleanupChams()
+    else
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then createChamsESP(plr) end
+        end
+    end
+end)
+addToggle("visuals","FOV Circle","Show FOV circle on screen",function(on)
+    FOVCircle.Visible = on
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  ── MISC TAB ──
+-- ══════════════════════════════════════════════════════════════
+
+addSection("misc","Extra Scripts")
+do
+    local dd = addDropdown("misc","Extra Scripts")
+    dd:AddButton("Infinite Yield",function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()
+    end)
+    dd:AddButton("Emote GUI",function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/dimension-sources/random-scripts-i-found/refs/heads/main/r6%20animations"))()
+    end)
+    dd:AddButton("Anti AFK",function()
+        local vu = game:GetService("VirtualUser")
+        game:GetService("Players").LocalPlayer.Idled:Connect(function()
+            vu:CaptureController(); vu:ClickButton2(Vector2.new())
+        end)
+    end)
+    dd:AddButton("Turtle Spy",function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Turtle-Brand/Turtle-Spy/main/source.lua",true))()
+    end)
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  OPEN ON MAIN TAB
+-- ══════════════════════════════════════════════════════════════
+
+switchTab("main")
