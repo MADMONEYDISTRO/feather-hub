@@ -1,0 +1,503 @@
+-- ╔══════════════════════════════════════════╗
+-- ║         TWEEN PATH FARM  —  UI v2.0      ║
+-- ╚══════════════════════════════════════════╝
+
+local TweenService     = game:GetService("TweenService")
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local char      = player.Character or player.CharacterAdded:Wait()
+local root      = char:WaitForChild("HumanoidRootPart")
+
+-- ══════════════════════════════════════════
+--  FARM CONFIG
+-- ══════════════════════════════════════════
+
+local startCF  = CFrame.new(47.07,  15.68, 3075.36)
+local secondCF = CFrame.new(53.44,  15.68, 3054.97)
+local thirdCF  = CFrame.new(71.46,  15.68, 3064.12)
+local fourthCF = CFrame.new(89.56,  19.84, 3076.19)
+
+local TWEEN_TIME    = 2
+local DELAY_BETWEEN = 1
+
+-- ══════════════════════════════════════════
+--  STATE
+-- ══════════════════════════════════════════
+
+local farmEnabled = false
+local farmThread  = nil
+local loopCount   = 0
+
+-- ══════════════════════════════════════════
+--  COLORS
+-- ══════════════════════════════════════════
+
+local C = {
+    bg      = Color3.fromRGB(14,  14,  20),
+    panel   = Color3.fromRGB(22,  22,  30),
+    bar     = Color3.fromRGB(28,  28,  38),
+    accent  = Color3.fromRGB(99,  102, 241),
+    accentD = Color3.fromRGB(67,  70,  180),
+    green   = Color3.fromRGB(52,  211, 153),
+    red     = Color3.fromRGB(248, 113, 113),
+    yellow  = Color3.fromRGB(251, 191,  36),
+    text    = Color3.fromRGB(230, 230, 240),
+    muted   = Color3.fromRGB(110, 110, 130),
+    dim     = Color3.fromRGB(32,  32,  44),
+}
+
+local function tw(t, style, dir)
+    return TweenInfo.new(t or 0.22, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+end
+
+-- ══════════════════════════════════════════
+--  SCREEN GUI
+-- ══════════════════════════════════════════
+
+local sg = Instance.new("ScreenGui")
+sg.Name           = "TweenFarmUI"
+sg.ResetOnSpawn   = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder   = 1000
+sg.Parent         = playerGui
+
+-- ══════════════════════════════════════════
+--  MAIN FRAME
+--  NOTE: ClipsDescendants is NOT set — that was the bug before.
+--  Starting at full size to avoid children being clipped.
+-- ══════════════════════════════════════════
+
+local W, H = 330, 230
+
+local main = Instance.new("Frame")
+main.Name             = "Main"
+main.Size             = UDim2.new(0, W, 0, H)
+main.Position         = UDim2.new(0.5, -W/2, 0.5, -H/2)
+main.BackgroundColor3 = C.bg
+main.BorderSizePixel  = 0
+main.Parent           = sg
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+-- ══════════════════════════════════════════
+--  HEADER BAR
+-- ══════════════════════════════════════════
+
+local header = Instance.new("Frame")
+header.Size             = UDim2.new(1, 0, 0, 42)
+header.Position         = UDim2.new(0, 0, 0, 0)
+header.BackgroundColor3 = C.bar
+header.BorderSizePixel  = 0
+header.ZIndex           = 5
+header.Parent           = main
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
+
+-- square off bottom corners of header
+local hCover = Instance.new("Frame")
+hCover.Size             = UDim2.new(1, 0, 0, 12)
+hCover.Position         = UDim2.new(0, 0, 1, -12)
+hCover.BackgroundColor3 = C.bar
+hCover.BorderSizePixel  = 0
+hCover.ZIndex           = 5
+hCover.Parent           = header
+
+-- accent dot
+local dot = Instance.new("Frame")
+dot.Size             = UDim2.new(0, 8, 0, 8)
+dot.Position         = UDim2.new(0, 14, 0.5, -4)
+dot.BackgroundColor3 = C.accent
+dot.BorderSizePixel  = 0
+dot.ZIndex           = 6
+dot.Parent           = header
+Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size               = UDim2.new(1, -90, 1, 0)
+titleLbl.Position           = UDim2.new(0, 30, 0, 0)
+titleLbl.Text               = "BGSI flower farm"
+titleLbl.Font               = Enum.Font.GothamBold
+titleLbl.TextSize           = 13
+titleLbl.TextColor3         = C.text
+titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+titleLbl.BackgroundTransparency = 1
+titleLbl.ZIndex             = 6
+titleLbl.Parent             = header
+
+-- version tag
+local verTag = Instance.new("TextLabel")
+verTag.Size               = UDim2.new(0, 40, 0, 18)
+verTag.Position           = UDim2.new(1, -74, 0.5, -9)
+verTag.Text               = "v2.0"
+verTag.Font               = Enum.Font.GothamMedium
+verTag.TextSize           = 10
+verTag.TextColor3         = C.muted
+verTag.BackgroundColor3   = C.dim
+verTag.BorderSizePixel    = 0
+verTag.ZIndex             = 6
+verTag.Parent             = header
+Instance.new("UICorner", verTag).CornerRadius = UDim.new(0, 5)
+
+-- close button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size             = UDim2.new(0, 26, 0, 26)
+closeBtn.Position         = UDim2.new(1, -34, 0.5, -13)
+closeBtn.Text             = "x"
+closeBtn.Font             = Enum.Font.GothamBold
+closeBtn.TextSize         = 14
+closeBtn.TextColor3       = C.muted
+closeBtn.BackgroundColor3 = C.dim
+closeBtn.BorderSizePixel  = 0
+closeBtn.AutoButtonColor  = false
+closeBtn.ZIndex           = 6
+closeBtn.Parent           = header
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+closeBtn.MouseEnter:Connect(function()
+    TweenService:Create(closeBtn, tw(), {BackgroundColor3 = Color3.fromRGB(80, 20, 20), TextColor3 = C.red}):Play()
+end)
+closeBtn.MouseLeave:Connect(function()
+    TweenService:Create(closeBtn, tw(), {BackgroundColor3 = C.dim, TextColor3 = C.muted}):Play()
+end)
+closeBtn.MouseButton1Click:Connect(function()
+    farmEnabled = false
+    sg:Destroy()
+end)
+
+-- drag logic
+local dragging, dragInput, dragStart, startPos
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = main.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+header.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local d = input.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+
+-- ══════════════════════════════════════════
+--  STATUS CARD
+-- ══════════════════════════════════════════
+
+local statusCard = Instance.new("Frame")
+statusCard.Size             = UDim2.new(1, -24, 0, 54)
+statusCard.Position         = UDim2.new(0, 12, 0, 52)
+statusCard.BackgroundColor3 = C.panel
+statusCard.BorderSizePixel  = 0
+statusCard.ZIndex           = 3
+statusCard.Parent           = main
+Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 10)
+
+-- accent left strip
+local strip = Instance.new("Frame")
+strip.Size             = UDim2.new(0, 3, 0.55, 0)
+strip.Position         = UDim2.new(0, 0, 0.225, 0)
+strip.BackgroundColor3 = C.accent
+strip.BorderSizePixel  = 0
+strip.ZIndex           = 4
+strip.Parent           = statusCard
+Instance.new("UICorner", strip).CornerRadius = UDim.new(0, 3)
+
+local statusTagLbl = Instance.new("TextLabel")
+statusTagLbl.Size               = UDim2.new(0.6, 0, 0, 14)
+statusTagLbl.Position           = UDim2.new(0, 14, 0, 8)
+statusTagLbl.Text               = "STATUS"
+statusTagLbl.Font               = Enum.Font.GothamBold
+statusTagLbl.TextSize           = 9
+statusTagLbl.TextColor3         = C.muted
+statusTagLbl.TextXAlignment     = Enum.TextXAlignment.Left
+statusTagLbl.BackgroundTransparency = 1
+statusTagLbl.ZIndex             = 4
+statusTagLbl.Parent             = statusCard
+
+local statusLbl = Instance.new("TextLabel")
+statusLbl.Size               = UDim2.new(0.78, 0, 0, 20)
+statusLbl.Position           = UDim2.new(0, 14, 0, 24)
+statusLbl.Text               = "Idle - press ON to start"
+statusLbl.Font               = Enum.Font.GothamSemibold
+statusLbl.TextSize           = 12
+statusLbl.TextColor3         = C.muted
+statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
+statusLbl.BackgroundTransparency = 1
+statusLbl.ZIndex             = 4
+statusLbl.Parent             = statusCard
+
+-- loop counter box
+local loopBox = Instance.new("Frame")
+loopBox.Size             = UDim2.new(0, 54, 0, 38)
+loopBox.Position         = UDim2.new(1, -62, 0.5, -19)
+loopBox.BackgroundColor3 = C.dim
+loopBox.BorderSizePixel  = 0
+loopBox.ZIndex           = 4
+loopBox.Parent           = statusCard
+Instance.new("UICorner", loopBox).CornerRadius = UDim.new(0, 8)
+
+local loopNumLbl = Instance.new("TextLabel")
+loopNumLbl.Size               = UDim2.new(1, 0, 0, 20)
+loopNumLbl.Position           = UDim2.new(0, 0, 0, 4)
+loopNumLbl.Text               = "0"
+loopNumLbl.Font               = Enum.Font.GothamBold
+loopNumLbl.TextSize           = 16
+loopNumLbl.TextColor3         = C.accent
+loopNumLbl.BackgroundTransparency = 1
+loopNumLbl.ZIndex             = 5
+loopNumLbl.Parent             = loopBox
+
+local loopTagLbl = Instance.new("TextLabel")
+loopTagLbl.Size               = UDim2.new(1, 0, 0, 12)
+loopTagLbl.Position           = UDim2.new(0, 0, 0, 24)
+loopTagLbl.Text               = "LOOPS"
+loopTagLbl.Font               = Enum.Font.GothamBold
+loopTagLbl.TextSize           = 8
+loopTagLbl.TextColor3         = C.muted
+loopTagLbl.BackgroundTransparency = 1
+loopTagLbl.ZIndex             = 5
+loopTagLbl.Parent             = loopBox
+
+-- ══════════════════════════════════════════
+--  STEP INDICATOR ROW
+-- ══════════════════════════════════════════
+
+local stepsContainer = Instance.new("Frame")
+stepsContainer.Size               = UDim2.new(1, -24, 0, 44)
+stepsContainer.Position           = UDim2.new(0, 12, 0, 116)
+stepsContainer.BackgroundTransparency = 1
+stepsContainer.ZIndex             = 3
+stepsContainer.Parent             = main
+
+local steps = {
+    { label = "Teleport", short = "TP" },
+    { label = "Pt 1->2",  short = "1"  },
+    { label = "Pt 2->3",  short = "2"  },
+    { label = "Pt 3->4",  short = "3"  },
+}
+
+local stepObjs = {}
+local numSteps = #steps
+local stepW2 = math.floor((W - 24 - (numSteps - 1) * 6) / numSteps)
+
+for i, s in ipairs(steps) do
+    local sf = Instance.new("Frame")
+    sf.Size             = UDim2.new(0, stepW2, 1, 0)
+    sf.Position         = UDim2.new(0, (stepW2 + 6) * (i - 1), 0, 0)
+    sf.BackgroundColor3 = C.panel
+    sf.BorderSizePixel  = 0
+    sf.ZIndex           = 4
+    sf.Parent           = stepsContainer
+    Instance.new("UICorner", sf).CornerRadius = UDim.new(0, 8)
+
+    local numL = Instance.new("TextLabel")
+    numL.Size               = UDim2.new(1, 0, 0, 18)
+    numL.Position           = UDim2.new(0, 0, 0, 5)
+    numL.Text               = s.short
+    numL.Font               = Enum.Font.GothamBold
+    numL.TextSize           = 13
+    numL.TextColor3         = C.muted
+    numL.BackgroundTransparency = 1
+    numL.ZIndex             = 5
+    numL.Parent             = sf
+
+    local nameL = Instance.new("TextLabel")
+    nameL.Size               = UDim2.new(1, -4, 0, 12)
+    nameL.Position           = UDim2.new(0, 2, 0, 26)
+    nameL.Text               = s.label
+    nameL.Font               = Enum.Font.Gotham
+    nameL.TextSize           = 9
+    nameL.TextColor3         = C.muted
+    nameL.BackgroundTransparency = 1
+    nameL.ZIndex             = 5
+    nameL.Parent             = sf
+
+    stepObjs[i] = { frame = sf, num = numL, name = nameL }
+end
+
+local function highlightStep(idx)
+    for i, obj in ipairs(stepObjs) do
+        local on = (i == idx)
+        TweenService:Create(obj.frame, tw(0.15), {BackgroundColor3 = on and C.accentD or C.panel}):Play()
+        TweenService:Create(obj.num,   tw(0.15), {TextColor3 = on and C.text or C.muted}):Play()
+        TweenService:Create(obj.name,  tw(0.15), {TextColor3 = on and C.text or C.muted}):Play()
+    end
+end
+
+-- ══════════════════════════════════════════
+--  TOGGLE ROW
+-- ══════════════════════════════════════════
+
+local toggleRow = Instance.new("Frame")
+toggleRow.Size             = UDim2.new(1, -24, 0, 42)
+toggleRow.Position         = UDim2.new(0, 12, 0, 172)
+toggleRow.BackgroundColor3 = C.panel
+toggleRow.BorderSizePixel  = 0
+toggleRow.ZIndex           = 3
+toggleRow.Parent           = main
+Instance.new("UICorner", toggleRow).CornerRadius = UDim.new(0, 10)
+
+local farmLbl = Instance.new("TextLabel")
+farmLbl.Size               = UDim2.new(0.6, 0, 0, 18)
+farmLbl.Position           = UDim2.new(0, 14, 0, 6)
+farmLbl.Text               = "Auto-Farm"
+farmLbl.Font               = Enum.Font.GothamSemibold
+farmLbl.TextSize           = 13
+farmLbl.TextColor3         = C.text
+farmLbl.TextXAlignment     = Enum.TextXAlignment.Left
+farmLbl.BackgroundTransparency = 1
+farmLbl.ZIndex             = 4
+farmLbl.Parent             = toggleRow
+
+local farmSubLbl = Instance.new("TextLabel")
+farmSubLbl.Size               = UDim2.new(0.7, 0, 0, 13)
+farmSubLbl.Position           = UDim2.new(0, 14, 0, 24)
+farmSubLbl.Text               = "Loops through 4 waypoints"
+farmSubLbl.Font               = Enum.Font.Gotham
+farmSubLbl.TextSize           = 10
+farmSubLbl.TextColor3         = C.muted
+farmSubLbl.TextXAlignment     = Enum.TextXAlignment.Left
+farmSubLbl.BackgroundTransparency = 1
+farmSubLbl.ZIndex             = 4
+farmSubLbl.Parent             = toggleRow
+
+-- pill toggle button
+local pill = Instance.new("TextButton")
+pill.Size             = UDim2.new(0, 76, 0, 32)
+pill.Position         = UDim2.new(1, -88, 0.5, -16)
+pill.BackgroundColor3 = C.dim
+pill.BorderSizePixel  = 0
+pill.Text             = ""
+pill.AutoButtonColor  = false
+pill.ZIndex           = 4
+pill.Parent           = toggleRow
+Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+
+local knob = Instance.new("Frame")
+knob.Size             = UDim2.new(0, 24, 0, 24)
+knob.Position         = UDim2.new(0, 4, 0.5, -12)
+knob.BackgroundColor3 = C.muted
+knob.BorderSizePixel  = 0
+knob.ZIndex           = 5
+knob.Parent           = pill
+Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+local pillTxt = Instance.new("TextLabel")
+pillTxt.Size               = UDim2.new(0, 30, 1, 0)
+pillTxt.Position           = UDim2.new(1, -34, 0, 0)
+pillTxt.Text               = "OFF"
+pillTxt.Font               = Enum.Font.GothamBold
+pillTxt.TextSize           = 9
+pillTxt.TextColor3         = C.muted
+pillTxt.BackgroundTransparency = 1
+pillTxt.ZIndex             = 5
+pillTxt.Parent             = pill
+
+-- ══════════════════════════════════════════
+--  FARM LOGIC
+-- ══════════════════════════════════════════
+
+local function setStatus(txt, color)
+    statusLbl.Text       = txt
+    statusLbl.TextColor3 = color or C.text
+end
+
+local function tweenTo(cf, stepIdx)
+    highlightStep(stepIdx)
+    local t = TweenService:Create(
+        root,
+        TweenInfo.new(TWEEN_TIME, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+        { CFrame = cf }
+    )
+    t:Play()
+    t.Completed:Wait()
+end
+
+local function runFarm()
+    while farmEnabled do
+
+        -- 1. Teleport to start
+        highlightStep(1)
+        setStatus("Teleporting to start...", C.yellow)
+        root.CFrame = startCF
+        task.wait(0.2)
+        if not farmEnabled then break end
+
+        -- 2. Tween waypoint 1 -> 2
+        setStatus("Tweening: point 1 -> 2", C.green)
+        tweenTo(secondCF, 2)
+        if not farmEnabled then break end
+        task.wait(DELAY_BETWEEN)
+
+        -- 3. Tween waypoint 2 -> 3
+        setStatus("Tweening: point 2 -> 3", C.green)
+        tweenTo(thirdCF, 3)
+        if not farmEnabled then break end
+        task.wait(DELAY_BETWEEN)
+
+        -- 4. Tween waypoint 3 -> 4
+        setStatus("Tweening: point 3 -> 4", C.green)
+        tweenTo(fourthCF, 4)
+        if not farmEnabled then break end
+        task.wait(DELAY_BETWEEN)
+
+        -- Loop complete
+        loopCount = loopCount + 1
+        loopNumLbl.Text = tostring(loopCount)
+        setStatus("Loop " .. loopCount .. " done - restarting", C.accent)
+        highlightStep(0)
+        root.CFrame = startCF
+        task.wait(1)
+    end
+
+    setStatus("Idle - press ON to start", C.muted)
+    highlightStep(0)
+    strip.BackgroundColor3 = C.accent
+end
+
+-- ══════════════════════════════════════════
+--  TOGGLE HANDLER
+-- ══════════════════════════════════════════
+
+local function setToggle(on)
+    farmEnabled = on
+
+    if on then
+        TweenService:Create(pill, tw(), {BackgroundColor3 = C.green}):Play()
+        TweenService:Create(knob, tw(), {
+            Position         = UDim2.new(1, -28, 0.5, -12),
+            BackgroundColor3 = Color3.new(1, 1, 1),
+        }):Play()
+        pillTxt.Text       = "ON"
+        pillTxt.TextColor3 = Color3.new(1, 1, 1)
+        strip.BackgroundColor3 = C.green
+        farmThread = task.spawn(runFarm)
+    else
+        if farmThread then
+            task.cancel(farmThread)
+            farmThread = nil
+        end
+        TweenService:Create(pill, tw(), {BackgroundColor3 = C.dim}):Play()
+        TweenService:Create(knob, tw(), {
+            Position         = UDim2.new(0, 4, 0.5, -12),
+            BackgroundColor3 = C.muted,
+        }):Play()
+        pillTxt.Text       = "OFF"
+        pillTxt.TextColor3 = C.muted
+        strip.BackgroundColor3 = C.accent
+        setStatus("Idle - press ON to start", C.muted)
+        highlightStep(0)
+    end
+end
+
+pill.MouseButton1Click:Connect(function()
+    setToggle(not farmEnabled)
+end)
