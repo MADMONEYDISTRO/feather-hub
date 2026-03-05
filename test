@@ -456,7 +456,7 @@ function createFlightUI()
     local titleLabel = Instance.new("TextLabel")
     titleLabel.Size = UDim2.new(1, -120, 1, 0)
     titleLabel.Position = UDim2.new(0, 44, 0, 0)
-    titleLabel.Text = "Hover Flight System"
+    titleLabel.Text = "FEATHER"
     titleLabel.Font = Enum.Font.GothamSemibold
     titleLabel.TextSize = 15
     titleLabel.TextColor3 = colors.text
