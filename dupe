@@ -1,0 +1,494 @@
+--loadstring(game:HttpGet("https://pastebin.com/raw/ZBj9wEyy"))()
+--[[
+    Feather Hub  —  Item Duper
+    Fixed + UI  v0.1
+--]]
+
+-- ══════════════════════════════════════════════════════════════
+--  SERVICES  (cloneref for anti-detection)
+-- ══════════════════════════════════════════════════════════════
+
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local Players           = cloneref(game:GetService("Players"))
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+local CoreGui           = game:GetService("CoreGui")
+
+-- ══════════════════════════════════════════════════════════════
+--  PLAYER REFS
+-- ══════════════════════════════════════════════════════════════
+
+local Player    = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local Backpack  = Player:WaitForChild("Backpack")
+
+-- ══════════════════════════════════════════════════════════════
+--  THEME  (matches Feather hub)
+-- ══════════════════════════════════════════════════════════════
+
+local C = {
+    bg      = Color3.fromRGB(10,  10,  13),
+    panel   = Color3.fromRGB(17,  17,  22),
+    bar     = Color3.fromRGB(22,  22,  28),
+    darker  = Color3.fromRGB(14,  14,  18),
+    accent  = Color3.fromRGB(220, 220, 230),
+    accentD = Color3.fromRGB(160, 160, 175),
+    accentG = Color3.fromRGB(100, 100, 115),
+    text    = Color3.fromRGB(225, 225, 235),
+    muted   = Color3.fromRGB(100, 100, 115),
+    dim     = Color3.fromRGB(28,  28,  35),
+    green   = Color3.fromRGB(52,  211, 153),
+    red     = Color3.fromRGB(248, 113, 113),
+    yellow  = Color3.fromRGB(251, 191,  36),
+    sep     = Color3.fromRGB(35,  35,  44),
+}
+
+local function ti(t, style, dir)
+    return TweenInfo.new(t or 0.2, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  SCREEN GUI
+-- ══════════════════════════════════════════════════════════════
+
+local sg = Instance.new("ScreenGui")
+sg.Name           = "FeatherDuper"
+sg.ResetOnSpawn   = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder   = 1001
+
+local guiOk = pcall(function() sg.Parent = CoreGui end)
+if not guiOk then sg.Parent = Player:WaitForChild("PlayerGui") end
+
+-- ══════════════════════════════════════════════════════════════
+--  WINDOW
+-- ══════════════════════════════════════════════════════════════
+
+local W, H = 320, 260
+
+local win = Instance.new("Frame")
+win.Name             = "DuperWin"
+win.Size             = UDim2.new(0, W, 0, H)
+win.Position         = UDim2.new(0.5, -W/2, 0.5, -H/2)
+win.BackgroundColor3 = C.bg
+win.BorderSizePixel  = 0
+win.Parent           = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 10)
+
+-- ── Top bar ────────────────────────────────────────────────
+
+local topBar = Instance.new("Frame")
+topBar.Size             = UDim2.new(1, 0, 0, 38)
+topBar.BackgroundColor3 = C.bar
+topBar.BorderSizePixel  = 0
+topBar.ZIndex           = 5
+topBar.Parent           = win
+Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 10)
+
+local topCover = Instance.new("Frame")
+topCover.Size             = UDim2.new(1, 0, 0, 10)
+topCover.Position         = UDim2.new(0, 0, 1, -10)
+topCover.BackgroundColor3 = C.bar
+topCover.BorderSizePixel  = 0
+topCover.ZIndex           = 5
+topCover.Parent           = topBar
+
+local dot = Instance.new("Frame")
+dot.Size             = UDim2.new(0, 8, 0, 8)
+dot.Position         = UDim2.new(0, 12, 0.5, -4)
+dot.BackgroundColor3 = C.accent
+dot.BorderSizePixel  = 0
+dot.ZIndex           = 6
+dot.Parent           = topBar
+Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size               = UDim2.new(1, -80, 1, 0)
+titleLbl.Position           = UDim2.new(0, 28, 0, 0)
+titleLbl.Text               = "Item Duper"
+titleLbl.Font               = Enum.Font.GothamBold
+titleLbl.TextSize           = 13
+titleLbl.TextColor3         = C.text
+titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+titleLbl.BackgroundTransparency = 1
+titleLbl.ZIndex             = 6
+titleLbl.Parent             = topBar
+
+local verLbl = Instance.new("TextLabel")
+verLbl.Size             = UDim2.new(0, 36, 0, 18)
+verLbl.Position         = UDim2.new(1, -72, 0.5, -9)
+verLbl.Text             = "v0.1"
+verLbl.Font             = Enum.Font.GothamBold
+verLbl.TextSize         = 9
+verLbl.TextColor3       = C.muted
+verLbl.BackgroundColor3 = C.dim
+verLbl.BorderSizePixel  = 0
+verLbl.ZIndex           = 6
+verLbl.Parent           = topBar
+Instance.new("UICorner", verLbl).CornerRadius = UDim.new(0, 4)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size             = UDim2.new(0, 26, 0, 26)
+closeBtn.Position         = UDim2.new(1, -34, 0.5, -13)
+closeBtn.Text             = "x"
+closeBtn.Font             = Enum.Font.GothamBold
+closeBtn.TextSize         = 14
+closeBtn.TextColor3       = C.muted
+closeBtn.BackgroundColor3 = C.dim
+closeBtn.BorderSizePixel  = 0
+closeBtn.AutoButtonColor  = false
+closeBtn.ZIndex           = 6
+closeBtn.Parent           = topBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 5)
+
+closeBtn.MouseEnter:Connect(function()
+    TweenService:Create(closeBtn, ti(), {BackgroundColor3 = Color3.fromRGB(80,20,20), TextColor3 = C.red}):Play()
+end)
+closeBtn.MouseLeave:Connect(function()
+    TweenService:Create(closeBtn, ti(), {BackgroundColor3 = C.dim, TextColor3 = C.muted}):Play()
+end)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- drag
+local dragging, dragInput, dragStart, dragStartPos
+topBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging     = true
+        dragStart    = input.Position
+        dragStartPos = win.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+topBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local d = input.Position - dragStart
+        win.Position = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + d.X,
+                                  dragStartPos.Y.Scale, dragStartPos.Y.Offset + d.Y)
+    end
+end)
+
+-- ── Body ───────────────────────────────────────────────────
+
+local body = Instance.new("Frame")
+body.Size               = UDim2.new(1, -24, 1, -50)
+body.Position           = UDim2.new(0, 12, 0, 44)
+body.BackgroundTransparency = 1
+body.Parent             = win
+
+-- ── Status card ────────────────────────────────────────────
+
+local statusCard = Instance.new("Frame")
+statusCard.Size             = UDim2.new(1, 0, 0, 52)
+statusCard.BackgroundColor3 = C.panel
+statusCard.BorderSizePixel  = 0
+statusCard.ZIndex           = 3
+statusCard.Parent           = body
+Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 8)
+
+local statusStrip = Instance.new("Frame")
+statusStrip.Size             = UDim2.new(0, 3, 0.55, 0)
+statusStrip.Position         = UDim2.new(0, 0, 0.225, 0)
+statusStrip.BackgroundColor3 = C.accentG
+statusStrip.BorderSizePixel  = 0
+statusStrip.ZIndex           = 4
+statusStrip.Parent           = statusCard
+Instance.new("UICorner", statusStrip).CornerRadius = UDim.new(0, 3)
+
+local statusTag = Instance.new("TextLabel")
+statusTag.Size               = UDim2.new(1, -16, 0, 14)
+statusTag.Position           = UDim2.new(0, 12, 0, 7)
+statusTag.Text               = "STATUS"
+statusTag.Font               = Enum.Font.GothamBold
+statusTag.TextSize           = 8
+statusTag.TextColor3         = C.muted
+statusTag.TextXAlignment     = Enum.TextXAlignment.Left
+statusTag.BackgroundTransparency = 1
+statusTag.ZIndex             = 4
+statusTag.Parent             = statusCard
+
+local statusLbl = Instance.new("TextLabel")
+statusLbl.Size               = UDim2.new(1, -16, 0, 20)
+statusLbl.Position           = UDim2.new(0, 12, 0, 24)
+statusLbl.Text               = "Idle — equip a tool then press Dupe"
+statusLbl.Font               = Enum.Font.GothamSemibold
+statusLbl.TextSize           = 11
+statusLbl.TextColor3         = C.muted
+statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
+statusLbl.BackgroundTransparency = 1
+statusLbl.ZIndex             = 4
+statusLbl.Parent             = statusCard
+
+-- ── Tool name display ──────────────────────────────────────
+
+local toolCard = Instance.new("Frame")
+toolCard.Size             = UDim2.new(1, 0, 0, 40)
+toolCard.Position         = UDim2.new(0, 0, 0, 60)
+toolCard.BackgroundColor3 = C.panel
+toolCard.BorderSizePixel  = 0
+toolCard.ZIndex           = 3
+toolCard.Parent           = body
+Instance.new("UICorner", toolCard).CornerRadius = UDim.new(0, 8)
+
+local toolTag = Instance.new("TextLabel")
+toolTag.Size               = UDim2.new(0, 80, 1, 0)
+toolTag.Position           = UDim2.new(0, 12, 0, 0)
+toolTag.Text               = "EQUIPPED"
+toolTag.Font               = Enum.Font.GothamBold
+toolTag.TextSize           = 9
+toolTag.TextColor3         = C.muted
+toolTag.TextXAlignment     = Enum.TextXAlignment.Left
+toolTag.BackgroundTransparency = 1
+toolTag.ZIndex             = 4
+toolTag.Parent             = toolCard
+
+local toolNameLbl = Instance.new("TextLabel")
+toolNameLbl.Size               = UDim2.new(1, -100, 1, 0)
+toolNameLbl.Position           = UDim2.new(0, 90, 0, 0)
+toolNameLbl.Text               = "None"
+toolNameLbl.Font               = Enum.Font.GothamSemibold
+toolNameLbl.TextSize           = 12
+toolNameLbl.TextColor3         = C.accentD
+toolNameLbl.TextXAlignment     = Enum.TextXAlignment.Right
+toolNameLbl.BackgroundTransparency = 1
+toolNameLbl.ZIndex             = 4
+toolNameLbl.Parent             = toolCard
+
+-- ── Ping display ───────────────────────────────────────────
+
+local pingCard = Instance.new("Frame")
+pingCard.Size             = UDim2.new(1, 0, 0, 32)
+pingCard.Position         = UDim2.new(0, 0, 0, 108)
+pingCard.BackgroundColor3 = C.panel
+pingCard.BorderSizePixel  = 0
+pingCard.ZIndex           = 3
+pingCard.Parent           = body
+Instance.new("UICorner", pingCard).CornerRadius = UDim.new(0, 8)
+
+local pingTag = Instance.new("TextLabel")
+pingTag.Size               = UDim2.new(0, 80, 1, 0)
+pingTag.Position           = UDim2.new(0, 12, 0, 0)
+pingTag.Text               = "PING"
+pingTag.Font               = Enum.Font.GothamBold
+pingTag.TextSize           = 9
+pingTag.TextColor3         = C.muted
+pingTag.TextXAlignment     = Enum.TextXAlignment.Left
+pingTag.BackgroundTransparency = 1
+pingTag.ZIndex             = 4
+pingTag.Parent             = pingCard
+
+local pingLbl = Instance.new("TextLabel")
+pingLbl.Size               = UDim2.new(1, -100, 1, 0)
+pingLbl.Position           = UDim2.new(0, 90, 0, 0)
+pingLbl.Text               = "-- ms"
+pingLbl.Font               = Enum.Font.GothamSemibold
+pingLbl.TextSize           = 12
+pingLbl.TextColor3         = C.accent
+pingLbl.TextXAlignment     = Enum.TextXAlignment.Right
+pingLbl.BackgroundTransparency = 1
+pingLbl.ZIndex             = 4
+pingLbl.Parent             = pingCard
+
+-- ── Dupe button ────────────────────────────────────────────
+
+local dupeBtn = Instance.new("TextButton")
+dupeBtn.Size             = UDim2.new(1, 0, 0, 40)
+dupeBtn.Position         = UDim2.new(0, 0, 0, 150)
+dupeBtn.Text             = "Dupe Equipped Tool"
+dupeBtn.Font             = Enum.Font.GothamBold
+dupeBtn.TextSize         = 13
+dupeBtn.TextColor3       = C.bg
+dupeBtn.BackgroundColor3 = C.accent
+dupeBtn.BorderSizePixel  = 0
+dupeBtn.AutoButtonColor  = false
+dupeBtn.ZIndex           = 3
+dupeBtn.Parent           = body
+Instance.new("UICorner", dupeBtn).CornerRadius = UDim.new(0, 8)
+
+dupeBtn.MouseEnter:Connect(function()
+    TweenService:Create(dupeBtn, ti(), {BackgroundColor3 = C.accentD}):Play()
+end)
+dupeBtn.MouseLeave:Connect(function()
+    TweenService:Create(dupeBtn, ti(), {BackgroundColor3 = C.accent}):Play()
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  HELPERS
+-- ══════════════════════════════════════════════════════════════
+
+local function setStatus(txt, color)
+    statusLbl.Text       = txt
+    statusLbl.TextColor3 = color or C.text
+    statusStrip.BackgroundColor3 = color or C.accentG
+end
+
+local function setDupeEnabled(enabled)
+    dupeBtn.Active           = enabled
+    dupeBtn.AutoButtonColor  = false
+    TweenService:Create(dupeBtn, ti(), {
+        BackgroundColor3 = enabled and C.accent or C.dim,
+        TextColor3       = enabled and C.bg or C.muted,
+    }):Play()
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  PING MEASUREMENT
+-- ══════════════════════════════════════════════════════════════
+
+local function getPing()
+    -- Method 1: GetNetworkPing (newer executors expose this)
+    if typeof(Player.GetNetworkPing) == "function" then
+        local ok, result = pcall(function()
+            return tonumber(string.match(Player:GetNetworkPing(), "%d+"))
+        end)
+        if ok and result then return result end
+    end
+
+    -- Method 2: read from a TextLabel named "Ping" in PlayerGui/PlayerScripts
+    local ok2, pingStat = pcall(function()
+        return Player:FindFirstChild("PlayerGui") and Player.PlayerGui:FindFirstChild("Ping")
+            or Player:FindFirstChild("PlayerScripts") and Player.PlayerScripts:FindFirstChild("Ping")
+    end)
+    if ok2 and pingStat and pingStat:IsA("TextLabel") then
+        local num = tonumber(string.match(pingStat.Text, "%d+"))
+        if num then return num end
+    end
+
+    -- Method 3: measure round-trip time via a temporary instance
+    local t0   = tick()
+    local temp = Instance.new("BoolValue", ReplicatedStorage)
+    temp.Name  = "PingTest_" .. tostring(math.random(10000, 99999))
+    task.wait(0.1)
+    local t1 = tick()
+    temp:Destroy()
+    return math.clamp((t1 - t0) * 1000, 50, 300)
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  CORE DUPE FUNCTION
+-- ══════════════════════════════════════════════════════════════
+
+local dupeRunning = false
+
+local function runDupe()
+    if dupeRunning then return end
+
+    -- ── 1. Check for equipped tool ──────────────────────────
+    local Tool = Character:FindFirstChildOfClass("Tool")
+    if not Tool then
+        setStatus("No tool equipped — equip one first", C.red)
+        return
+    end
+
+    local ToolName = Tool.Name
+    toolNameLbl.Text = ToolName
+    dupeRunning = true
+    setDupeEnabled(false)
+
+    -- ── 2. Measure ping & calculate safe delay ──────────────
+    setStatus("Measuring ping...", C.yellow)
+    local ping  = getPing()
+    pingLbl.Text = ping .. " ms"
+    pingLbl.TextColor3 = ping < 100 and C.green or ping < 200 and C.yellow or C.red
+
+    -- Delay scales with ping: base 0.25s + up to 0.03s extra at 300ms ping
+    local delay = 0.25 + ((math.clamp(ping, 0, 300) / 300) * 0.03)
+
+    -- ── 3. Unequip tool to backpack ─────────────────────────
+    setStatus("Unequipping tool...", C.yellow)
+    Tool.Parent = Backpack
+    task.wait(0.5)
+
+    -- ── 4. Listen for market item so we can grab its SpecialId
+    local ToolId           = nil
+    local marketConnection = ReplicatedStorage.MarketItems.ChildAdded:Connect(function(item)
+        if item.Name == ToolName then
+            local owner = item:WaitForChild("owner", 2)
+            if owner and owner.Value == Player.Name then
+                ToolId = item:GetAttribute("SpecialId")
+            end
+        end
+    end)
+
+    -- ── 5. List the weapon on the market ───────────────────
+    setStatus("Listing on market...", C.yellow)
+    task.spawn(function()
+        ReplicatedStorage.ListWeaponRemote:FireServer(ToolName, 99999)
+    end)
+
+    task.wait(delay)
+
+    -- ── 6. Store to backpack (triggers the dupe window) ────
+    setStatus("Storing to backpack...", C.yellow)
+    task.spawn(function()
+        ReplicatedStorage.BackpackRemote:InvokeServer("Store", ToolName)
+    end)
+
+    task.wait(3)
+
+    -- ── 7. Remove listing from market ──────────────────────
+    if ToolId then
+        setStatus("Removing market listing...", C.yellow)
+        task.spawn(function()
+            ReplicatedStorage.BuyItemRemote:FireServer(ToolName, "Remove", ToolId)
+        end)
+    else
+        setStatus("Warning: ToolId not found — listing may remain", C.yellow)
+    end
+
+    -- ── 8. Grab tool back from backpack ────────────────────
+    setStatus("Grabbing tool back...", C.yellow)
+    task.spawn(function()
+        ReplicatedStorage.BackpackRemote:InvokeServer("Grab", ToolName)
+    end)
+
+    -- ── 9. Cleanup ─────────────────────────────────────────
+    marketConnection:Disconnect()
+
+    task.wait(0.5)
+    setStatus("Done  —  " .. ToolName .. " duped!", C.green)
+    toolNameLbl.Text = ToolName .. " (duped)"
+    dupeRunning = false
+    setDupeEnabled(true)
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  BUTTON WIRING
+-- ══════════════════════════════════════════════════════════════
+
+dupeBtn.MouseButton1Click:Connect(function()
+    task.spawn(runDupe)
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  LIVE TOOL TRACKER  (updates the equipped label in real time)
+-- ══════════════════════════════════════════════════════════════
+
+local function refreshToolLabel()
+    local t = Character:FindFirstChildOfClass("Tool")
+    toolNameLbl.Text      = t and t.Name or "None"
+    toolNameLbl.TextColor3 = t and C.accent or C.muted
+end
+
+refreshToolLabel()
+
+Character.ChildAdded:Connect(function(child)
+    if child:IsA("Tool") then refreshToolLabel() end
+end)
+Character.ChildRemoved:Connect(function(child)
+    if child:IsA("Tool") then refreshToolLabel() end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  INITIAL PING READING
+-- ══════════════════════════════════════════════════════════════
+
+task.spawn(function()
+    local p = getPing()
+    pingLbl.Text       = p .. " ms"
+    pingLbl.TextColor3 = p < 100 and C.green or p < 200 and C.yellow or C.red
+end)
