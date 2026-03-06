@@ -1,11 +1,11 @@
 --loadstring(game:HttpGet("https://pastebin.com/raw/ZBj9wEyy"))()
 --[[
     Feather Hub  —  Item Duper
-    Fixed + UI  v0.1
+    Mobile-Friendly + Touch Drag  v0.2
 --]]
 
 -- ══════════════════════════════════════════════════════════════
---  SERVICES  (cloneref for anti-detection)
+--  SERVICES
 -- ══════════════════════════════════════════════════════════════
 
 local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
@@ -23,7 +23,35 @@ local Character = Player.Character or Player.CharacterAdded:Wait()
 local Backpack  = Player:WaitForChild("Backpack")
 
 -- ══════════════════════════════════════════════════════════════
---  THEME  (matches Feather hub)
+--  DEVICE DETECTION
+-- ══════════════════════════════════════════════════════════════
+
+local isMobile = false
+pcall(function()
+    isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  RESPONSIVE SIZING
+--  Mobile: wider window, bigger buttons, bigger text
+-- ══════════════════════════════════════════════════════════════
+
+local W         = isMobile and 360 or 320
+local H         = isMobile and 310 or 260
+local FONT_SM   = isMobile and 11  or 9
+local FONT_MD   = isMobile and 14  or 12
+local FONT_LG   = isMobile and 16  or 13
+local FONT_TAG  = isMobile and 10  or 8
+local BTN_H     = isMobile and 54  or 40   -- dupe button height
+local BAR_H     = isMobile and 50  or 38   -- top bar height
+local PAD       = isMobile and 14  or 12   -- body side padding
+local ROW_H_ST  = isMobile and 62  or 52   -- status card height
+local ROW_H_TL  = isMobile and 48  or 40   -- tool card height
+local ROW_H_PG  = isMobile and 40  or 32   -- ping card height
+local DUPE_Y    = isMobile and 166 or 150  -- dupe button Y in body
+
+-- ══════════════════════════════════════════════════════════════
+--  THEME
 -- ══════════════════════════════════════════════════════════════
 
 local C = {
@@ -56,6 +84,7 @@ sg.Name           = "FeatherDuper"
 sg.ResetOnSpawn   = false
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.DisplayOrder   = 1001
+sg.IgnoreGuiInset = true   -- important on mobile — avoids top-bar offset
 
 local guiOk = pcall(function() sg.Parent = CoreGui end)
 if not guiOk then sg.Parent = Player:WaitForChild("PlayerGui") end
@@ -63,8 +92,6 @@ if not guiOk then sg.Parent = Player:WaitForChild("PlayerGui") end
 -- ══════════════════════════════════════════════════════════════
 --  WINDOW
 -- ══════════════════════════════════════════════════════════════
-
-local W, H = 320, 260
 
 local win = Instance.new("Frame")
 win.Name             = "DuperWin"
@@ -78,7 +105,7 @@ Instance.new("UICorner", win).CornerRadius = UDim.new(0, 10)
 -- ── Top bar ────────────────────────────────────────────────
 
 local topBar = Instance.new("Frame")
-topBar.Size             = UDim2.new(1, 0, 0, 38)
+topBar.Size             = UDim2.new(1, 0, 0, BAR_H)
 topBar.BackgroundColor3 = C.bar
 topBar.BorderSizePixel  = 0
 topBar.ZIndex           = 5
@@ -93,9 +120,23 @@ topCover.BorderSizePixel  = 0
 topCover.ZIndex           = 5
 topCover.Parent           = topBar
 
+-- drag handle hint (mobile: show three dots)
+if isMobile then
+    local grip = Instance.new("TextLabel")
+    grip.Size               = UDim2.new(0, 40, 1, 0)
+    grip.Position           = UDim2.new(0.5, -20, 0, 0)
+    grip.Text               = "· · ·"
+    grip.Font               = Enum.Font.GothamBold
+    grip.TextSize           = 14
+    grip.TextColor3         = C.accentG
+    grip.BackgroundTransparency = 1
+    grip.ZIndex             = 6
+    grip.Parent             = topBar
+end
+
 local dot = Instance.new("Frame")
-dot.Size             = UDim2.new(0, 8, 0, 8)
-dot.Position         = UDim2.new(0, 12, 0.5, -4)
+dot.Size             = UDim2.new(0, isMobile and 10 or 8, 0, isMobile and 10 or 8)
+dot.Position         = UDim2.new(0, 14, 0.5, isMobile and -5 or -4)
 dot.BackgroundColor3 = C.accent
 dot.BorderSizePixel  = 0
 dot.ZIndex           = 6
@@ -103,11 +144,11 @@ dot.Parent           = topBar
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -80, 1, 0)
-titleLbl.Position           = UDim2.new(0, 28, 0, 0)
+titleLbl.Size               = UDim2.new(1, -90, 1, 0)
+titleLbl.Position           = UDim2.new(0, 32, 0, 0)
 titleLbl.Text               = "Item Duper"
 titleLbl.Font               = Enum.Font.GothamBold
-titleLbl.TextSize           = 13
+titleLbl.TextSize           = FONT_MD + 1
 titleLbl.TextColor3         = C.text
 titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
 titleLbl.BackgroundTransparency = 1
@@ -116,10 +157,10 @@ titleLbl.Parent             = topBar
 
 local verLbl = Instance.new("TextLabel")
 verLbl.Size             = UDim2.new(0, 36, 0, 18)
-verLbl.Position         = UDim2.new(1, -72, 0.5, -9)
-verLbl.Text             = "v0.1"
+verLbl.Position         = UDim2.new(1, -76, 0.5, -9)
+verLbl.Text             = "v0.2"
 verLbl.Font             = Enum.Font.GothamBold
-verLbl.TextSize         = 9
+verLbl.TextSize         = FONT_SM
 verLbl.TextColor3       = C.muted
 verLbl.BackgroundColor3 = C.dim
 verLbl.BorderSizePixel  = 0
@@ -127,19 +168,21 @@ verLbl.ZIndex           = 6
 verLbl.Parent           = topBar
 Instance.new("UICorner", verLbl).CornerRadius = UDim.new(0, 4)
 
+-- Close button — bigger on mobile for easier tapping
+local CLOSE_SZ = isMobile and 36 or 26
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0, 26, 0, 26)
-closeBtn.Position         = UDim2.new(1, -34, 0.5, -13)
-closeBtn.Text             = "x"
+closeBtn.Size             = UDim2.new(0, CLOSE_SZ, 0, CLOSE_SZ)
+closeBtn.Position         = UDim2.new(1, -(CLOSE_SZ + 8), 0.5, -CLOSE_SZ/2)
+closeBtn.Text             = "✕"
 closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.TextSize         = 14
+closeBtn.TextSize         = isMobile and 18 or 14
 closeBtn.TextColor3       = C.muted
 closeBtn.BackgroundColor3 = C.dim
 closeBtn.BorderSizePixel  = 0
 closeBtn.AutoButtonColor  = false
 closeBtn.ZIndex           = 6
 closeBtn.Parent           = topBar
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
 
 closeBtn.MouseEnter:Connect(function()
     TweenService:Create(closeBtn, ti(), {BackgroundColor3 = Color3.fromRGB(80,20,20), TextColor3 = C.red}):Play()
@@ -148,42 +191,66 @@ closeBtn.MouseLeave:Connect(function()
     TweenService:Create(closeBtn, ti(), {BackgroundColor3 = C.dim, TextColor3 = C.muted}):Play()
 end)
 closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+closeBtn.TouchTap:Connect(function() sg:Destroy() end)
 
--- drag
-local dragging, dragInput, dragStart, dragStartPos
-topBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+-- ══════════════════════════════════════════════════════════════
+--  DRAG  (Mouse + Touch unified)
+-- ══════════════════════════════════════════════════════════════
+
+local dragging      = false
+local dragInput     = nil
+local dragStart     = nil
+local dragStartPos  = nil
+
+local function onDragBegan(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
         dragging     = true
         dragStart    = input.Position
         dragStartPos = win.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
     end
-end)
-topBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
-end)
+end
+
+local function onDragChanged(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end
+
+topBar.InputBegan:Connect(onDragBegan)
+topBar.InputChanged:Connect(onDragChanged)
+
 UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local d = input.Position - dragStart
-        win.Position = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + d.X,
-                                  dragStartPos.Y.Scale, dragStartPos.Y.Offset + d.Y)
+    if not dragging or input ~= dragInput then return end
+    local d = input.Position - dragStart
+
+    -- Clamp to screen so the window can't be dragged offscreen
+    local vp       = workspace.CurrentCamera.ViewportSize
+    local newX     = math.clamp(dragStartPos.X.Offset + d.X, 0, vp.X - W)
+    local newY     = math.clamp(dragStartPos.Y.Offset + d.Y, 0, vp.Y - H)
+    win.Position   = UDim2.new(0, newX, 0, newY)
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+        dragging = false
     end
 end)
 
 -- ── Body ───────────────────────────────────────────────────
 
 local body = Instance.new("Frame")
-body.Size               = UDim2.new(1, -24, 1, -50)
-body.Position           = UDim2.new(0, 12, 0, 44)
+body.Size               = UDim2.new(1, -PAD*2, 1, -(BAR_H + PAD + 6))
+body.Position           = UDim2.new(0, PAD, 0, BAR_H + 6)
 body.BackgroundTransparency = 1
 body.Parent             = win
 
 -- ── Status card ────────────────────────────────────────────
 
 local statusCard = Instance.new("Frame")
-statusCard.Size             = UDim2.new(1, 0, 0, 52)
+statusCard.Size             = UDim2.new(1, 0, 0, ROW_H_ST)
 statusCard.BackgroundColor3 = C.panel
 statusCard.BorderSizePixel  = 0
 statusCard.ZIndex           = 3
@@ -200,11 +267,11 @@ statusStrip.Parent           = statusCard
 Instance.new("UICorner", statusStrip).CornerRadius = UDim.new(0, 3)
 
 local statusTag = Instance.new("TextLabel")
-statusTag.Size               = UDim2.new(1, -16, 0, 14)
+statusTag.Size               = UDim2.new(1, -16, 0, isMobile and 16 or 14)
 statusTag.Position           = UDim2.new(0, 12, 0, 7)
 statusTag.Text               = "STATUS"
 statusTag.Font               = Enum.Font.GothamBold
-statusTag.TextSize           = 8
+statusTag.TextSize           = FONT_TAG
 statusTag.TextColor3         = C.muted
 statusTag.TextXAlignment     = Enum.TextXAlignment.Left
 statusTag.BackgroundTransparency = 1
@@ -212,13 +279,14 @@ statusTag.ZIndex             = 4
 statusTag.Parent             = statusCard
 
 local statusLbl = Instance.new("TextLabel")
-statusLbl.Size               = UDim2.new(1, -16, 0, 20)
-statusLbl.Position           = UDim2.new(0, 12, 0, 24)
+statusLbl.Size               = UDim2.new(1, -16, 0, isMobile and 26 or 20)
+statusLbl.Position           = UDim2.new(0, 12, 0, isMobile and 28 or 24)
 statusLbl.Text               = "Idle — equip a tool then press Dupe"
 statusLbl.Font               = Enum.Font.GothamSemibold
-statusLbl.TextSize           = 11
+statusLbl.TextSize           = FONT_MD - 1
 statusLbl.TextColor3         = C.muted
 statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
+statusLbl.TextWrapped        = true
 statusLbl.BackgroundTransparency = 1
 statusLbl.ZIndex             = 4
 statusLbl.Parent             = statusCard
@@ -226,8 +294,8 @@ statusLbl.Parent             = statusCard
 -- ── Tool name display ──────────────────────────────────────
 
 local toolCard = Instance.new("Frame")
-toolCard.Size             = UDim2.new(1, 0, 0, 40)
-toolCard.Position         = UDim2.new(0, 0, 0, 60)
+toolCard.Size             = UDim2.new(1, 0, 0, ROW_H_TL)
+toolCard.Position         = UDim2.new(0, 0, 0, ROW_H_ST + 8)
 toolCard.BackgroundColor3 = C.panel
 toolCard.BorderSizePixel  = 0
 toolCard.ZIndex           = 3
@@ -235,11 +303,11 @@ toolCard.Parent           = body
 Instance.new("UICorner", toolCard).CornerRadius = UDim.new(0, 8)
 
 local toolTag = Instance.new("TextLabel")
-toolTag.Size               = UDim2.new(0, 80, 1, 0)
+toolTag.Size               = UDim2.new(0, 90, 1, 0)
 toolTag.Position           = UDim2.new(0, 12, 0, 0)
 toolTag.Text               = "EQUIPPED"
 toolTag.Font               = Enum.Font.GothamBold
-toolTag.TextSize           = 9
+toolTag.TextSize           = FONT_TAG
 toolTag.TextColor3         = C.muted
 toolTag.TextXAlignment     = Enum.TextXAlignment.Left
 toolTag.BackgroundTransparency = 1
@@ -247,13 +315,14 @@ toolTag.ZIndex             = 4
 toolTag.Parent             = toolCard
 
 local toolNameLbl = Instance.new("TextLabel")
-toolNameLbl.Size               = UDim2.new(1, -100, 1, 0)
-toolNameLbl.Position           = UDim2.new(0, 90, 0, 0)
+toolNameLbl.Size               = UDim2.new(1, -110, 1, 0)
+toolNameLbl.Position           = UDim2.new(0, 100, 0, 0)
 toolNameLbl.Text               = "None"
 toolNameLbl.Font               = Enum.Font.GothamSemibold
-toolNameLbl.TextSize           = 12
+toolNameLbl.TextSize           = FONT_MD
 toolNameLbl.TextColor3         = C.accentD
 toolNameLbl.TextXAlignment     = Enum.TextXAlignment.Right
+toolNameLbl.TextTruncate       = Enum.TextTruncate.AtEnd
 toolNameLbl.BackgroundTransparency = 1
 toolNameLbl.ZIndex             = 4
 toolNameLbl.Parent             = toolCard
@@ -261,8 +330,8 @@ toolNameLbl.Parent             = toolCard
 -- ── Ping display ───────────────────────────────────────────
 
 local pingCard = Instance.new("Frame")
-pingCard.Size             = UDim2.new(1, 0, 0, 32)
-pingCard.Position         = UDim2.new(0, 0, 0, 108)
+pingCard.Size             = UDim2.new(1, 0, 0, ROW_H_PG)
+pingCard.Position         = UDim2.new(0, 0, 0, ROW_H_ST + ROW_H_TL + 16)
 pingCard.BackgroundColor3 = C.panel
 pingCard.BorderSizePixel  = 0
 pingCard.ZIndex           = 3
@@ -274,7 +343,7 @@ pingTag.Size               = UDim2.new(0, 80, 1, 0)
 pingTag.Position           = UDim2.new(0, 12, 0, 0)
 pingTag.Text               = "PING"
 pingTag.Font               = Enum.Font.GothamBold
-pingTag.TextSize           = 9
+pingTag.TextSize           = FONT_TAG
 pingTag.TextColor3         = C.muted
 pingTag.TextXAlignment     = Enum.TextXAlignment.Left
 pingTag.BackgroundTransparency = 1
@@ -286,7 +355,7 @@ pingLbl.Size               = UDim2.new(1, -100, 1, 0)
 pingLbl.Position           = UDim2.new(0, 90, 0, 0)
 pingLbl.Text               = "-- ms"
 pingLbl.Font               = Enum.Font.GothamSemibold
-pingLbl.TextSize           = 12
+pingLbl.TextSize           = FONT_MD
 pingLbl.TextColor3         = C.accent
 pingLbl.TextXAlignment     = Enum.TextXAlignment.Right
 pingLbl.BackgroundTransparency = 1
@@ -296,11 +365,11 @@ pingLbl.Parent             = pingCard
 -- ── Dupe button ────────────────────────────────────────────
 
 local dupeBtn = Instance.new("TextButton")
-dupeBtn.Size             = UDim2.new(1, 0, 0, 40)
-dupeBtn.Position         = UDim2.new(0, 0, 0, 150)
+dupeBtn.Size             = UDim2.new(1, 0, 0, BTN_H)
+dupeBtn.Position         = UDim2.new(0, 0, 0, ROW_H_ST + ROW_H_TL + ROW_H_PG + 24)
 dupeBtn.Text             = "Dupe Equipped Tool"
 dupeBtn.Font             = Enum.Font.GothamBold
-dupeBtn.TextSize         = 13
+dupeBtn.TextSize         = FONT_LG
 dupeBtn.TextColor3       = C.bg
 dupeBtn.BackgroundColor3 = C.accent
 dupeBtn.BorderSizePixel  = 0
@@ -321,14 +390,14 @@ end)
 -- ══════════════════════════════════════════════════════════════
 
 local function setStatus(txt, color)
-    statusLbl.Text       = txt
-    statusLbl.TextColor3 = color or C.text
+    statusLbl.Text               = txt
+    statusLbl.TextColor3         = color or C.text
     statusStrip.BackgroundColor3 = color or C.accentG
 end
 
 local function setDupeEnabled(enabled)
-    dupeBtn.Active           = enabled
-    dupeBtn.AutoButtonColor  = false
+    dupeBtn.Active          = enabled
+    dupeBtn.AutoButtonColor = false
     TweenService:Create(dupeBtn, ti(), {
         BackgroundColor3 = enabled and C.accent or C.dim,
         TextColor3       = enabled and C.bg or C.muted,
@@ -340,7 +409,6 @@ end
 -- ══════════════════════════════════════════════════════════════
 
 local function getPing()
-    -- Method 1: GetNetworkPing (newer executors expose this)
     if typeof(Player.GetNetworkPing) == "function" then
         local ok, result = pcall(function()
             return tonumber(string.match(Player:GetNetworkPing(), "%d+"))
@@ -348,7 +416,6 @@ local function getPing()
         if ok and result then return result end
     end
 
-    -- Method 2: read from a TextLabel named "Ping" in PlayerGui/PlayerScripts
     local ok2, pingStat = pcall(function()
         return Player:FindFirstChild("PlayerGui") and Player.PlayerGui:FindFirstChild("Ping")
             or Player:FindFirstChild("PlayerScripts") and Player.PlayerScripts:FindFirstChild("Ping")
@@ -358,7 +425,6 @@ local function getPing()
         if num then return num end
     end
 
-    -- Method 3: measure round-trip time via a temporary instance
     local t0   = tick()
     local temp = Instance.new("BoolValue", ReplicatedStorage)
     temp.Name  = "PingTest_" .. tostring(math.random(10000, 99999))
@@ -377,7 +443,6 @@ local dupeRunning = false
 local function runDupe()
     if dupeRunning then return end
 
-    -- ── 1. Check for equipped tool ──────────────────────────
     local Tool = Character:FindFirstChildOfClass("Tool")
     if not Tool then
         setStatus("No tool equipped — equip one first", C.red)
@@ -389,21 +454,17 @@ local function runDupe()
     dupeRunning = true
     setDupeEnabled(false)
 
-    -- ── 2. Measure ping & calculate safe delay ──────────────
     setStatus("Measuring ping...", C.yellow)
     local ping  = getPing()
-    pingLbl.Text = ping .. " ms"
+    pingLbl.Text       = ping .. " ms"
     pingLbl.TextColor3 = ping < 100 and C.green or ping < 200 and C.yellow or C.red
 
-    -- Delay scales with ping: base 0.25s + up to 0.03s extra at 300ms ping
     local delay = 0.25 + ((math.clamp(ping, 0, 300) / 300) * 0.03)
 
-    -- ── 3. Unequip tool to backpack ─────────────────────────
     setStatus("Unequipping tool...", C.yellow)
     Tool.Parent = Backpack
     task.wait(0.5)
 
-    -- ── 4. Listen for market item so we can grab its SpecialId
     local ToolId           = nil
     local marketConnection = ReplicatedStorage.MarketItems.ChildAdded:Connect(function(item)
         if item.Name == ToolName then
@@ -414,23 +475,18 @@ local function runDupe()
         end
     end)
 
-    -- ── 5. List the weapon on the market ───────────────────
     setStatus("Listing on market...", C.yellow)
     task.spawn(function()
         ReplicatedStorage.ListWeaponRemote:FireServer(ToolName, 99999)
     end)
-
     task.wait(delay)
 
-    -- ── 6. Store to backpack (triggers the dupe window) ────
     setStatus("Storing to backpack...", C.yellow)
     task.spawn(function()
         ReplicatedStorage.BackpackRemote:InvokeServer("Store", ToolName)
     end)
-
     task.wait(3)
 
-    -- ── 7. Remove listing from market ──────────────────────
     if ToolId then
         setStatus("Removing market listing...", C.yellow)
         task.spawn(function()
@@ -440,15 +496,12 @@ local function runDupe()
         setStatus("Warning: ToolId not found — listing may remain", C.yellow)
     end
 
-    -- ── 8. Grab tool back from backpack ────────────────────
     setStatus("Grabbing tool back...", C.yellow)
     task.spawn(function()
         ReplicatedStorage.BackpackRemote:InvokeServer("Grab", ToolName)
     end)
 
-    -- ── 9. Cleanup ─────────────────────────────────────────
     marketConnection:Disconnect()
-
     task.wait(0.5)
     setStatus("Done  —  " .. ToolName .. " duped!", C.green)
     toolNameLbl.Text = ToolName .. " (duped)"
@@ -457,20 +510,23 @@ local function runDupe()
 end
 
 -- ══════════════════════════════════════════════════════════════
---  BUTTON WIRING
+--  BUTTON WIRING  (Mouse + Touch)
 -- ══════════════════════════════════════════════════════════════
 
 dupeBtn.MouseButton1Click:Connect(function()
     task.spawn(runDupe)
 end)
+dupeBtn.TouchTap:Connect(function()
+    task.spawn(runDupe)
+end)
 
 -- ══════════════════════════════════════════════════════════════
---  LIVE TOOL TRACKER  (updates the equipped label in real time)
+--  LIVE TOOL TRACKER
 -- ══════════════════════════════════════════════════════════════
 
 local function refreshToolLabel()
     local t = Character:FindFirstChildOfClass("Tool")
-    toolNameLbl.Text      = t and t.Name or "None"
+    toolNameLbl.Text       = t and t.Name or "None"
     toolNameLbl.TextColor3 = t and C.accent or C.muted
 end
 
@@ -492,3 +548,15 @@ task.spawn(function()
     pingLbl.Text       = p .. " ms"
     pingLbl.TextColor3 = p < 100 and C.green or p < 200 and C.yellow or C.red
 end)
+
+-- ══════════════════════════════════════════════════════════════
+--  OPENING ANIMATION
+-- ══════════════════════════════════════════════════════════════
+
+win.Size                = UDim2.new(0, 0, 0, 0)
+win.BackgroundTransparency = 1
+
+TweenService:Create(win, ti(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size                   = UDim2.new(0, W, 0, H),
+    BackgroundTransparency = 0,
+}):Play()
