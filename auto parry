@@ -1,0 +1,567 @@
+--// ════════════════════════════════════════════
+--//  FEATHER HUB  —  Auto Parry  v1.0
+--//  Matches Feather Hub key system aesthetic
+--// ════════════════════════════════════════════
+
+getgenv().autoparry = false
+
+local VirtualManager = game:GetService("VirtualInputManager")
+local Stats          = game:GetService("Stats")
+local Players        = game:GetService("Players")
+local RunService     = game:GetService("RunService")
+local TweenService   = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui        = game:GetService("CoreGui")
+
+local Player  = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local ero     = false
+
+local parry_helper = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/TripleScript/TripleHub/main/helper_.lua"
+))()
+
+-- ══════════════════════════════════════════
+--  THEME  (matches Feather Hub key system)
+-- ══════════════════════════════════════════
+
+local C = {
+    background   = Color3.fromRGB(22,  22,  26),
+    dragBar      = Color3.fromRGB(30,  30,  35),
+    accent       = Color3.fromRGB(0,   120, 215),
+    text         = Color3.fromRGB(220, 220, 220),
+    buttonBg     = Color3.fromRGB(45,  45,  50),
+    buttonHover  = Color3.fromRGB(60,  60,  65),
+    success      = Color3.fromRGB(46,  204, 113),
+    error        = Color3.fromRGB(231, 76,  60),
+    warning      = Color3.fromRGB(241, 196, 15),
+    panel        = Color3.fromRGB(30,  30,  36),
+    muted        = Color3.fromRGB(90,  90,  100),
+    dim          = Color3.fromRGB(38,  38,  43),
+}
+
+local function ti(t, style, dir)
+    return TweenInfo.new(
+        t     or 0.3,
+        style or Enum.EasingStyle.Quad,
+        dir   or Enum.EasingDirection.Out
+    )
+end
+
+-- ══════════════════════════════════════════
+--  SCREEN GUI
+-- ══════════════════════════════════════════
+
+local sg = Instance.new("ScreenGui")
+sg.Name           = "FeatherAutoParry"
+sg.ResetOnSpawn   = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder   = 999999999
+sg.IgnoreGuiInset = true
+
+local ok = pcall(function() sg.Parent = CoreGui end)
+if not ok then sg.Parent = Player:WaitForChild("PlayerGui") end
+
+-- ══════════════════════════════════════════
+--  MAIN WINDOW  (240 × 210)
+-- ══════════════════════════════════════════
+
+local W, H = 240, 210
+
+local win = Instance.new("Frame")
+win.Name             = "AutoParryWin"
+win.Size             = UDim2.new(0, W, 0, H)
+win.Position         = UDim2.new(0.5, -W/2, 0.5, -H/2)
+win.BackgroundColor3 = C.background
+win.BorderSizePixel  = 0
+win.Parent           = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
+
+-- subtle border stroke
+local stroke = Instance.new("UIStroke")
+stroke.Color     = Color3.fromRGB(50, 50, 58)
+stroke.Thickness = 1
+stroke.Parent    = win
+
+-- drop shadow (same asset as key system)
+local shadow = Instance.new("ImageLabel")
+shadow.Image              = "rbxassetid://1316045217"
+shadow.ScaleType          = Enum.ScaleType.Slice
+shadow.SliceCenter        = Rect.new(10, 10, 118, 118)
+shadow.ImageColor3        = Color3.new(0, 0, 0)
+shadow.ImageTransparency  = 0.7
+shadow.Size               = UDim2.new(1, 20, 1, 20)
+shadow.Position           = UDim2.new(0, -10, 0, -10)
+shadow.BackgroundTransparency = 1
+shadow.ZIndex             = 0
+shadow.Parent             = win
+
+-- ── Drag bar ───────────────────────────────────────────────
+
+local dragBar = Instance.new("Frame")
+dragBar.Size             = UDim2.new(1, 0, 0, 40)
+dragBar.BackgroundColor3 = C.dragBar
+dragBar.BorderSizePixel  = 0
+dragBar.ZIndex           = 2
+dragBar.Parent           = win
+Instance.new("UICorner", dragBar).CornerRadius = UDim.new(0, 12)
+
+-- cover the bottom-rounded corners of the drag bar
+local dragBarCover = Instance.new("Frame")
+dragBarCover.Size             = UDim2.new(1, 0, 0, 12)
+dragBarCover.Position         = UDim2.new(0, 0, 1, -12)
+dragBarCover.BackgroundColor3 = C.dragBar
+dragBarCover.BorderSizePixel  = 0
+dragBarCover.ZIndex           = 2
+dragBarCover.Parent           = dragBar
+
+-- "F" logo badge (same as key system)
+local logoFrame = Instance.new("Frame")
+logoFrame.Size             = UDim2.new(0, 28, 0, 28)
+logoFrame.Position         = UDim2.new(0, 8, 0, 6)
+logoFrame.BackgroundColor3 = C.accent
+logoFrame.BorderSizePixel  = 0
+logoFrame.ZIndex           = 3
+logoFrame.Parent           = dragBar
+Instance.new("UICorner", logoFrame).CornerRadius = UDim.new(0, 6)
+
+local logoText = Instance.new("TextLabel")
+logoText.Size               = UDim2.new(1, 0, 1, 0)
+logoText.Text               = "F"
+logoText.Font               = Enum.Font.GothamBold
+logoText.TextSize           = 16
+logoText.TextColor3         = Color3.new(1, 1, 1)
+logoText.BackgroundTransparency = 1
+logoText.ZIndex             = 4
+logoText.Parent             = logoFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size               = UDim2.new(1, -100, 1, 0)
+titleLabel.Position           = UDim2.new(0, 44, 0, 0)
+titleLabel.Text               = "Auto Parry"
+titleLabel.Font               = Enum.Font.GothamSemibold
+titleLabel.TextSize           = 15
+titleLabel.TextColor3         = C.text
+titleLabel.TextXAlignment     = Enum.TextXAlignment.Left
+titleLabel.BackgroundTransparency = 1
+titleLabel.ZIndex             = 3
+titleLabel.Parent             = dragBar
+
+local verBadge = Instance.new("TextLabel")
+verBadge.Size             = UDim2.new(0, 40, 0, 20)
+verBadge.Position         = UDim2.new(1, -76, 0, 10)
+verBadge.Text             = "v1.0"
+verBadge.Font             = Enum.Font.GothamMedium
+verBadge.TextSize         = 10
+verBadge.TextColor3       = C.text
+verBadge.BackgroundColor3 = C.buttonBg
+verBadge.BorderSizePixel  = 0
+verBadge.ZIndex           = 3
+verBadge.Parent           = dragBar
+Instance.new("UICorner", verBadge).CornerRadius = UDim.new(0, 4)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size             = UDim2.new(0, 28, 0, 28)
+closeBtn.Position         = UDim2.new(1, -36, 0, 6)
+closeBtn.Text             = "x"
+closeBtn.Font             = Enum.Font.GothamBold
+closeBtn.TextSize         = 20
+closeBtn.TextColor3       = C.text
+closeBtn.BackgroundColor3 = C.buttonBg
+closeBtn.BorderSizePixel  = 0
+closeBtn.AutoButtonColor  = false
+closeBtn.ZIndex           = 3
+closeBtn.Parent           = dragBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+closeBtn.MouseEnter:Connect(function()
+    TweenService:Create(closeBtn, ti(), {
+        BackgroundColor3 = Color3.fromRGB(220, 50, 50),
+        TextColor3       = Color3.new(1, 1, 1),
+    }):Play()
+end)
+closeBtn.MouseLeave:Connect(function()
+    TweenService:Create(closeBtn, ti(), {
+        BackgroundColor3 = C.buttonBg,
+        TextColor3       = C.text,
+    }):Play()
+end)
+closeBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(win, ti(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+        {Size = UDim2.new(0, 0, 0, 0)}):Play()
+    task.wait(0.25)
+    if sg and sg.Parent then sg:Destroy() end
+end)
+
+-- ── Drag logic (Mouse + Touch) ─────────────────────────────
+
+local dragging, dragInput, dragStart, startPos
+
+dragBar.InputBegan:Connect(function(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = win.Position
+    end
+end)
+dragBar.InputChanged:Connect(function(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local d  = input.Position - dragStart
+        local vp = workspace.CurrentCamera.ViewportSize
+        win.Position = UDim2.new(
+            0, math.clamp(startPos.X.Offset + d.X, 0, vp.X - W),
+            0, math.clamp(startPos.Y.Offset + d.Y, 0, vp.Y - H)
+        )
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- ══════════════════════════════════════════
+--  BODY  (below drag bar)
+-- ══════════════════════════════════════════
+
+local body = Instance.new("Frame")
+body.Size               = UDim2.new(1, -24, 1, -52)
+body.Position           = UDim2.new(0, 12, 0, 46)
+body.BackgroundTransparency = 1
+body.Parent             = win
+
+-- ── Status card ────────────────────────────────────────────
+
+local statusCard = Instance.new("Frame")
+statusCard.Size             = UDim2.new(1, 0, 0, 48)
+statusCard.BackgroundColor3 = C.panel
+statusCard.BorderSizePixel  = 0
+statusCard.ZIndex           = 3
+statusCard.Parent           = body
+Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 8)
+
+-- left colour strip (red when off, green when on)
+local statusStrip = Instance.new("Frame")
+statusStrip.Size             = UDim2.new(0, 3, 0.6, 0)
+statusStrip.Position         = UDim2.new(0, 0, 0.2, 0)
+statusStrip.BackgroundColor3 = C.error
+statusStrip.BorderSizePixel  = 0
+statusStrip.ZIndex           = 4
+statusStrip.Parent           = statusCard
+Instance.new("UICorner", statusStrip).CornerRadius = UDim.new(0, 3)
+
+local statusTag = Instance.new("TextLabel")
+statusTag.Size               = UDim2.new(1, -16, 0, 14)
+statusTag.Position           = UDim2.new(0, 12, 0, 6)
+statusTag.Text               = "STATUS"
+statusTag.Font               = Enum.Font.GothamBold
+statusTag.TextSize           = 8
+statusTag.TextColor3         = C.muted
+statusTag.TextXAlignment     = Enum.TextXAlignment.Left
+statusTag.BackgroundTransparency = 1
+statusTag.ZIndex             = 4
+statusTag.Parent             = statusCard
+
+local statusLbl = Instance.new("TextLabel")
+statusLbl.Size               = UDim2.new(1, -16, 0, 18)
+statusLbl.Position           = UDim2.new(0, 12, 0, 22)
+statusLbl.Text               = "Parry is disabled"
+statusLbl.Font               = Enum.Font.GothamSemibold
+statusLbl.TextSize           = 12
+statusLbl.TextColor3         = C.error
+statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
+statusLbl.BackgroundTransparency = 1
+statusLbl.ZIndex             = 4
+statusLbl.Parent             = statusCard
+
+-- ── Toggle button ──────────────────────────────────────────
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size             = UDim2.new(1, 0, 0, 44)
+toggleBtn.Position         = UDim2.new(0, 0, 0, 58)
+toggleBtn.Text             = ""
+toggleBtn.BackgroundColor3 = C.buttonBg
+toggleBtn.BorderSizePixel  = 0
+toggleBtn.AutoButtonColor  = false
+toggleBtn.ZIndex           = 3
+toggleBtn.Parent           = body
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
+
+-- icon background circle
+local iconBg = Instance.new("Frame")
+iconBg.Size               = UDim2.new(0, 32, 0, 32)
+iconBg.Position           = UDim2.new(0, 8, 0.5, -16)
+iconBg.BackgroundColor3   = C.error
+iconBg.BackgroundTransparency = 0.82
+iconBg.BorderSizePixel    = 0
+iconBg.ZIndex             = 4
+iconBg.Parent             = toggleBtn
+Instance.new("UICorner", iconBg).CornerRadius = UDim.new(0, 7)
+
+local iconLbl = Instance.new("TextLabel")
+iconLbl.Size               = UDim2.new(1, 0, 1, 0)
+iconLbl.Text               = "🛡️"
+iconLbl.TextSize           = 16
+iconLbl.BackgroundTransparency = 1
+iconLbl.ZIndex             = 5
+iconLbl.Parent             = iconBg
+
+local toggleTitle = Instance.new("TextLabel")
+toggleTitle.Size               = UDim2.new(1, -100, 0, 18)
+toggleTitle.Position           = UDim2.new(0, 48, 0, 7)
+toggleTitle.Text               = "Auto Parry"
+toggleTitle.Font               = Enum.Font.GothamSemibold
+toggleTitle.TextSize           = 13
+toggleTitle.TextColor3         = C.text
+toggleTitle.TextXAlignment     = Enum.TextXAlignment.Left
+toggleTitle.BackgroundTransparency = 1
+toggleTitle.ZIndex             = 4
+toggleTitle.Parent             = toggleBtn
+
+local toggleSub = Instance.new("TextLabel")
+toggleSub.Size               = UDim2.new(1, -100, 0, 14)
+toggleSub.Position           = UDim2.new(0, 48, 0, 25)
+toggleSub.Text               = "Click to enable"
+toggleSub.Font               = Enum.Font.Gotham
+toggleSub.TextSize           = 10
+toggleSub.TextColor3         = C.text
+toggleSub.TextTransparency   = 0.5
+toggleSub.TextXAlignment     = Enum.TextXAlignment.Left
+toggleSub.BackgroundTransparency = 1
+toggleSub.ZIndex             = 4
+toggleSub.Parent             = toggleBtn
+
+-- pill toggle (right side of button row)
+local pill = Instance.new("Frame")
+pill.Size             = UDim2.new(0, 44, 0, 22)
+pill.Position         = UDim2.new(1, -52, 0.5, -11)
+pill.BackgroundColor3 = C.dim
+pill.BorderSizePixel  = 0
+pill.ZIndex           = 4
+pill.Parent           = toggleBtn
+Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+
+local knob = Instance.new("Frame")
+knob.Size             = UDim2.new(0, 16, 0, 16)
+knob.Position         = UDim2.new(0, 3, 0.5, -8)
+knob.BackgroundColor3 = C.muted
+knob.BorderSizePixel  = 0
+knob.ZIndex           = 5
+knob.Parent           = pill
+Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+-- hover effects for the button row
+toggleBtn.MouseEnter:Connect(function()
+    TweenService:Create(toggleBtn, ti(), {BackgroundColor3 = C.buttonHover}):Play()
+end)
+toggleBtn.MouseLeave:Connect(function()
+    TweenService:Create(toggleBtn, ti(), {BackgroundColor3 = C.buttonBg}):Play()
+end)
+
+-- ── Parry count display ────────────────────────────────────
+
+local countCard = Instance.new("Frame")
+countCard.Size             = UDim2.new(1, 0, 0, 36)
+countCard.Position         = UDim2.new(0, 0, 0, 112)
+countCard.BackgroundColor3 = C.panel
+countCard.BorderSizePixel  = 0
+countCard.ZIndex           = 3
+countCard.Parent           = body
+Instance.new("UICorner", countCard).CornerRadius = UDim.new(0, 8)
+
+local countTag = Instance.new("TextLabel")
+countTag.Size               = UDim2.new(0, 100, 1, 0)
+countTag.Position           = UDim2.new(0, 12, 0, 0)
+countTag.Text               = "PARRIES"
+countTag.Font               = Enum.Font.GothamBold
+countTag.TextSize           = 9
+countTag.TextColor3         = C.muted
+countTag.TextXAlignment     = Enum.TextXAlignment.Left
+countTag.BackgroundTransparency = 1
+countTag.ZIndex             = 4
+countTag.Parent             = countCard
+
+local countLbl = Instance.new("TextLabel")
+countLbl.Size               = UDim2.new(1, -110, 1, 0)
+countLbl.Position           = UDim2.new(0, 100, 0, 0)
+countLbl.Text               = "0"
+countLbl.Font               = Enum.Font.GothamBold
+countLbl.TextSize           = 14
+countLbl.TextColor3         = C.accent
+countLbl.TextXAlignment     = Enum.TextXAlignment.Right
+countLbl.BackgroundTransparency = 1
+countLbl.ZIndex             = 4
+countLbl.Parent             = countCard
+
+local parryCount = 0
+
+-- ══════════════════════════════════════════
+--  TOGGLE LOGIC
+-- ══════════════════════════════════════════
+
+local function setParry(enabled)
+    getgenv().autoparry = enabled
+
+    -- pill animation
+    TweenService:Create(pill, ti(), {
+        BackgroundColor3 = enabled and C.success or C.dim,
+    }):Play()
+    TweenService:Create(knob, ti(), {
+        Position         = enabled and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8),
+        BackgroundColor3 = enabled and Color3.new(1, 1, 1) or C.muted,
+    }):Play()
+
+    -- status card
+    TweenService:Create(statusStrip, ti(), {
+        BackgroundColor3 = enabled and C.success or C.error,
+    }):Play()
+    statusLbl.Text       = enabled and "Parry is active" or "Parry is disabled"
+    statusLbl.TextColor3 = enabled and C.success or C.error
+
+    -- icon bg
+    TweenService:Create(iconBg, ti(), {
+        BackgroundColor3 = enabled and C.success or C.error,
+    }):Play()
+
+    -- sub text
+    toggleSub.Text = enabled and "Click to disable" or "Click to enable"
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+    setParry(not getgenv().autoparry)
+end)
+
+-- ══════════════════════════════════════════
+--  NOTIFICATION
+-- ══════════════════════════════════════════
+
+local function notify(title, message, nType)
+    local col = C.accent
+    if nType == "success" then col = C.success
+    elseif nType == "error" then col = C.error
+    elseif nType == "warning" then col = C.warning
+    end
+
+    local notif = Instance.new("Frame")
+    notif.Size             = UDim2.new(0, 0, 0, 60)
+    notif.Position         = UDim2.new(1, -10, 0.95, -70)
+    notif.AnchorPoint      = Vector2.new(1, 1)
+    notif.BackgroundColor3 = C.background
+    notif.BorderSizePixel  = 0
+    notif.Parent           = sg
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
+
+    local bar = Instance.new("Frame")
+    bar.Size             = UDim2.new(0, 4, 1, 0)
+    bar.BackgroundColor3 = col
+    bar.BorderSizePixel  = 0
+    bar.Parent           = notif
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 8)
+
+    local t1 = Instance.new("TextLabel")
+    t1.Size               = UDim2.new(1, -16, 0, 20)
+    t1.Position           = UDim2.new(0, 12, 0, 8)
+    t1.Text               = title
+    t1.Font               = Enum.Font.GothamBold
+    t1.TextSize           = 12
+    t1.TextColor3         = C.text
+    t1.TextXAlignment     = Enum.TextXAlignment.Left
+    t1.BackgroundTransparency = 1
+    t1.Parent             = notif
+
+    local t2 = Instance.new("TextLabel")
+    t2.Size               = UDim2.new(1, -16, 0, 24)
+    t2.Position           = UDim2.new(0, 12, 0, 28)
+    t2.Text               = message
+    t2.Font               = Enum.Font.Gotham
+    t2.TextSize           = 10
+    t2.TextColor3         = C.text
+    t2.TextTransparency   = 0.3
+    t2.TextWrapped        = true
+    t2.TextXAlignment     = Enum.TextXAlignment.Left
+    t2.BackgroundTransparency = 1
+    t2.Parent             = notif
+
+    TweenService:Create(notif, ti(), {Size = UDim2.new(0, 260, 0, 60)}):Play()
+    task.delay(3, function()
+        TweenService:Create(notif, ti(), {
+            Size = UDim2.new(0, 0, 0, 60),
+            BackgroundTransparency = 1,
+        }):Play()
+        task.wait(0.3)
+        if notif and notif.Parent then notif:Destroy() end
+    end)
+end
+
+-- ══════════════════════════════════════════
+--  AUTO PARRY LOOP
+-- ══════════════════════════════════════════
+
+task.spawn(function()
+    RunService.PreRender:Connect(function()
+        if not getgenv().autoparry then return end
+
+        local par = parry_helper.FindTargetBall()
+        if not par then return end
+
+        local hat = par.AssemblyLinearVelocity
+        if par:FindFirstChild("zoomies") then
+            hat = par.zoomies.VectorVelocity
+        end
+
+        local i = par.Position
+        local j = Player.Character and Player.Character.PrimaryPart
+        if not j then return end
+        j = j.Position
+
+        local kil = (j - i).Unit
+        local l   = Player:DistanceFromCharacter(i)
+        local m   = kil:Dot(hat.Unit)
+        local n   = hat.Magnitude
+
+        if m > 0 then
+            local o = l - 5
+            local p = o / n
+
+            if parry_helper.IsPlayerTarget(par) and p <= 0.55 and not ero then
+                VirtualManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                task.wait(0.01)
+                ero = true
+
+                -- increment counter
+                parryCount = parryCount + 1
+                countLbl.Text = tostring(parryCount)
+
+                -- flash accent on count label
+                TweenService:Create(countLbl, ti(0.1), {TextColor3 = C.success}):Play()
+                task.delay(0.4, function()
+                    TweenService:Create(countLbl, ti(), {TextColor3 = C.accent}):Play()
+                end)
+            end
+        else
+            ero = false
+        end
+    end)
+end)
+
+-- ══════════════════════════════════════════
+--  OPENING ANIMATION
+-- ══════════════════════════════════════════
+
+win.Size                = UDim2.new(0, 0, 0, 0)
+win.BackgroundTransparency = 1
+
+TweenService:Create(win, ti(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size                   = UDim2.new(0, W, 0, H),
+    BackgroundTransparency = 0,
+}):Play()
+
+task.wait(0.5)
+notify("Feather Hub", "Auto Parry loaded — click to enable", "success")
