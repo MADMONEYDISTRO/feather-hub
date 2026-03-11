@@ -1,0 +1,636 @@
+--// ════════════════════════════════════════════
+--//  FEATHER HUB  —  IRC Chat  v1.4
+--//  Backend: jsonbin.io
+--// ════════════════════════════════════════════
+
+--[[
+    ── SETUP (one time, 2 minutes) ─────────────
+    1. Go to https://jsonbin.io and log in
+    2. Click "+ Create Bin" (top right)
+    3. Paste this into the editor and click Save:
+           {"messages":[]}
+    4. Copy the Bin ID from the URL bar
+       e.g. https://jsonbin.io/b/66abc123  →  66abc123
+    5. Paste it as BIN_ID below
+    6. Go to API Keys → copy your Access Key
+    7. Paste it as ACCESS_KEY below
+    Done — share the script with your users!
+    ────────────────────────────────────────────
+]]
+
+local ACCESS_KEY = "$2a$10$haU6YIqH8JwrPqhwOGTw5OkdstOsbeum.DvTUrOx5Lgs/DDh9R/Cy"
+local BIN_ID     = "69b0b8ee864efc355b5ef988"   -- paste the bin ID from jsonbin.io
+
+local POLL_RATE  = 4
+local MAX_MSGS   = 20
+local BASE_URL   = "https://api.jsonbin.io/v3/b/"
+
+-- ── Services ───────────────────────────────────────────────
+local Players          = game:GetService("Players")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService      = game:GetService("HttpService")
+local CoreGui          = game:GetService("CoreGui")
+
+local Client      = Players.LocalPlayer
+local DisplayName = tostring(Client.DisplayName)
+local Username    = tostring(Client.Name)
+
+-- ── Device detection ───────────────────────────────────────
+local isMobile = false
+pcall(function()
+    isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end)
+
+-- ══════════════════════════════════════════
+--  VALIDATION — catch missing config early
+-- ══════════════════════════════════════════
+
+if BIN_ID == "j" then
+    error("[FeatherIRC] BIN_ID not set! Read the setup instructions at the top of the script.")
+end
+
+-- ══════════════════════════════════════════
+--  USERNAME COLORS
+-- ══════════════════════════════════════════
+
+local USER_COLORS = {
+    Color3.fromRGB(99,  179, 237),
+    Color3.fromRGB(154, 230, 180),
+    Color3.fromRGB(252, 129, 74),
+    Color3.fromRGB(246, 173, 85),
+    Color3.fromRGB(183, 148, 246),
+    Color3.fromRGB(246, 114, 128),
+    Color3.fromRGB(79,  209, 197),
+    Color3.fromRGB(237, 137, 54),
+    Color3.fromRGB(129, 230, 217),
+    Color3.fromRGB(214, 158, 46),
+    Color3.fromRGB(160, 174, 192),
+    Color3.fromRGB(252, 182, 159),
+}
+
+local colorCache = {}
+local function getUserColor(name)
+    if colorCache[name] then return colorCache[name] end
+    local hash = 0
+    for i = 1, #name do
+        hash = (hash * 31 + string.byte(name, i)) % #USER_COLORS
+    end
+    local col = USER_COLORS[(hash % #USER_COLORS) + 1]
+    colorCache[name] = col
+    return col
+end
+
+-- ══════════════════════════════════════════
+--  THEME
+-- ══════════════════════════════════════════
+
+local C = {
+    background  = Color3.fromRGB(22,  22,  26),
+    dragBar     = Color3.fromRGB(30,  30,  35),
+    accent      = Color3.fromRGB(0,   120, 215),
+    text        = Color3.fromRGB(220, 220, 220),
+    buttonBg    = Color3.fromRGB(45,  45,  50),
+    buttonHover = Color3.fromRGB(60,  60,  65),
+    success     = Color3.fromRGB(46,  204, 113),
+    error       = Color3.fromRGB(231, 76,  60),
+    warning     = Color3.fromRGB(241, 196, 15),
+    panel       = Color3.fromRGB(28,  28,  34),
+    inputBg     = Color3.fromRGB(18,  18,  22),
+    muted       = Color3.fromRGB(90,  90,  100),
+    dim         = Color3.fromRGB(38,  38,  43),
+    msgBg       = Color3.fromRGB(26,  26,  32),
+    selfMsg     = Color3.fromRGB(0,   55,  110),
+    systemMsg   = Color3.fromRGB(241, 196, 15),
+}
+
+local function ti(t, style, dir)
+    return TweenInfo.new(t or 0.2, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+end
+
+-- ══════════════════════════════════════════
+--  SIZING  (plain numbers only)
+-- ══════════════════════════════════════════
+
+local W, H, BAR_H, CLOSE_SZ, FONT_SM, FONT_MD, FONT_LG, INPUT_H, PAD
+if isMobile then
+    W=340; H=460; BAR_H=50; CLOSE_SZ=36; FONT_SM=11; FONT_MD=13; FONT_LG=15; INPUT_H=46; PAD=10
+else
+    W=300; H=400; BAR_H=40; CLOSE_SZ=28; FONT_SM=9;  FONT_MD=11; FONT_LG=13; INPUT_H=36; PAD=8
+end
+
+local SCROLL_H  = H - BAR_H - INPUT_H - PAD * 3 - 20
+local TB_HEIGHT = INPUT_H - (isMobile and 12 or 8)
+local TB_YOFF   = -math.floor(TB_HEIGHT / 2)
+local SEND_W    = isMobile and 44 or 38
+local SEND_H    = isMobile and 34 or 26
+local SEND_XOFF = -(SEND_W + 4)
+local SEND_YOFF = -math.floor(SEND_H / 2)
+
+-- ══════════════════════════════════════════
+--  SCREEN GUI
+-- ══════════════════════════════════════════
+
+local sg = Instance.new("ScreenGui")
+sg.Name           = "FeatherIRC"
+sg.ResetOnSpawn   = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder   = 999999998
+sg.IgnoreGuiInset = true
+
+local guiOk = pcall(function() sg.Parent = CoreGui end)
+if not guiOk then sg.Parent = Client:WaitForChild("PlayerGui") end
+
+-- ══════════════════════════════════════════
+--  MAIN WINDOW
+-- ══════════════════════════════════════════
+
+local win = Instance.new("Frame")
+win.Name             = "IRCWin"
+win.Size             = UDim2.new(0, W, 0, H)
+win.Position         = UDim2.new(0.02, 0, 0.5, -math.floor(H/2))
+win.BackgroundColor3 = C.background
+win.BorderSizePixel  = 0
+win.Parent           = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
+
+local winStroke = Instance.new("UIStroke")
+winStroke.Color = Color3.fromRGB(50,50,58); winStroke.Thickness = 1; winStroke.Parent = win
+
+local shadow = Instance.new("ImageLabel")
+shadow.Image = "rbxassetid://1316045217"; shadow.ScaleType = Enum.ScaleType.Slice
+shadow.SliceCenter = Rect.new(10,10,118,118); shadow.ImageColor3 = Color3.new(0,0,0)
+shadow.ImageTransparency = 0.7; shadow.Size = UDim2.new(1,20,1,20)
+shadow.Position = UDim2.new(0,-10,0,-10); shadow.BackgroundTransparency = 1
+shadow.ZIndex = 0; shadow.Parent = win
+
+-- ── Drag bar ───────────────────────────────────────────────
+
+local dragBar = Instance.new("Frame")
+dragBar.Size = UDim2.new(1,0,0,BAR_H); dragBar.BackgroundColor3 = C.dragBar
+dragBar.BorderSizePixel = 0; dragBar.ZIndex = 2; dragBar.Parent = win
+Instance.new("UICorner", dragBar).CornerRadius = UDim.new(0, 12)
+
+local dragCover = Instance.new("Frame")
+dragCover.Size = UDim2.new(1,0,0,12); dragCover.Position = UDim2.new(0,0,1,-12)
+dragCover.BackgroundColor3 = C.dragBar; dragCover.BorderSizePixel = 0
+dragCover.ZIndex = 2; dragCover.Parent = dragBar
+
+if isMobile then
+    local grip = Instance.new("TextLabel")
+    grip.Size = UDim2.new(0,40,1,0); grip.Position = UDim2.new(0.5,-20,0,0)
+    grip.Text = "· · ·"; grip.Font = Enum.Font.GothamBold; grip.TextSize = 14
+    grip.TextColor3 = C.muted; grip.BackgroundTransparency = 1; grip.ZIndex = 6; grip.Parent = dragBar
+end
+
+local logoFrame = Instance.new("Frame")
+logoFrame.Size = UDim2.new(0,28,0,28); logoFrame.Position = UDim2.new(0,8,0.5,-14)
+logoFrame.BackgroundColor3 = C.accent; logoFrame.BorderSizePixel = 0
+logoFrame.ZIndex = 3; logoFrame.Parent = dragBar
+Instance.new("UICorner", logoFrame).CornerRadius = UDim.new(0, 6)
+
+local logoTxt = Instance.new("TextLabel")
+logoTxt.Size = UDim2.new(1,0,1,0); logoTxt.Text = "F"
+logoTxt.Font = Enum.Font.GothamBold; logoTxt.TextSize = 16
+logoTxt.TextColor3 = Color3.new(1,1,1); logoTxt.BackgroundTransparency = 1
+logoTxt.ZIndex = 4; logoTxt.Parent = logoFrame
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size = UDim2.new(1,-110,1,0); titleLbl.Position = UDim2.new(0,44,0,0)
+titleLbl.Text = "Feather IRC"; titleLbl.Font = Enum.Font.GothamSemibold
+titleLbl.TextSize = FONT_LG; titleLbl.TextColor3 = C.text
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+titleLbl.BackgroundTransparency = 1; titleLbl.ZIndex = 3; titleLbl.Parent = dragBar
+
+local onlineDot = Instance.new("Frame")
+onlineDot.Size = UDim2.new(0,8,0,8)
+onlineDot.Position = UDim2.new(1,-(CLOSE_SZ+56),0.5,-4)
+onlineDot.BackgroundColor3 = C.muted; onlineDot.BorderSizePixel = 0
+onlineDot.ZIndex = 3; onlineDot.Parent = dragBar
+Instance.new("UICorner", onlineDot).CornerRadius = UDim.new(1,0)
+
+local onlineLbl = Instance.new("TextLabel")
+onlineLbl.Size = UDim2.new(0,50,1,0)
+onlineLbl.Position = UDim2.new(1,-(CLOSE_SZ+100),0,0)
+onlineLbl.Text = "···"; onlineLbl.Font = Enum.Font.GothamMedium; onlineLbl.TextSize = FONT_SM
+onlineLbl.TextColor3 = C.muted; onlineLbl.TextXAlignment = Enum.TextXAlignment.Right
+onlineLbl.BackgroundTransparency = 1; onlineLbl.ZIndex = 3; onlineLbl.Parent = dragBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0,CLOSE_SZ,0,CLOSE_SZ)
+closeBtn.Position = UDim2.new(1,-(CLOSE_SZ+8),0.5,-math.floor(CLOSE_SZ/2))
+closeBtn.Text = "x"; closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = isMobile and 18 or 16; closeBtn.TextColor3 = C.text
+closeBtn.BackgroundColor3 = C.buttonBg; closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false; closeBtn.ZIndex = 3; closeBtn.Parent = dragBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+closeBtn.MouseEnter:Connect(function()
+    TweenService:Create(closeBtn, ti(), {BackgroundColor3 = Color3.fromRGB(220,50,50), TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+closeBtn.MouseLeave:Connect(function()
+    TweenService:Create(closeBtn, ti(), {BackgroundColor3 = C.buttonBg, TextColor3 = C.text}):Play()
+end)
+local function closeUI()
+    TweenService:Create(win, ti(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.new(0,0,0,0)}):Play()
+    task.wait(0.25)
+    if sg and sg.Parent then sg:Destroy() end
+end
+closeBtn.MouseButton1Click:Connect(closeUI)
+closeBtn.TouchTap:Connect(closeUI)
+
+-- ── Drag ───────────────────────────────────────────────────
+
+local dragging, dragInput, dragStart, startPos
+dragBar.InputBegan:Connect(function(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+        dragging = true; dragStart = input.Position; startPos = win.Position
+    end
+end)
+dragBar.InputChanged:Connect(function(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local d = input.Position - dragStart
+        local vp = workspace.CurrentCamera.ViewportSize
+        win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + d.X, 0, vp.X - W),
+                                  0, math.clamp(startPos.Y.Offset + d.Y, 0, vp.Y - H))
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    local t = input.UserInputType
+    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then dragging = false end
+end)
+
+-- ══════════════════════════════════════════
+--  SCROLL FRAME
+-- ══════════════════════════════════════════
+
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Size = UDim2.new(1,-PAD*2, 0, SCROLL_H)
+scrollFrame.Position = UDim2.new(0, PAD, 0, BAR_H + PAD)
+scrollFrame.BackgroundColor3 = C.panel
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 3
+scrollFrame.ScrollBarImageColor3 = C.accent
+scrollFrame.CanvasSize = UDim2.new(0,0,0,0)
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+scrollFrame.ElasticBehavior = Enum.ElasticBehavior.Never
+scrollFrame.ZIndex = 3; scrollFrame.Parent = win
+Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 8)
+
+local msgLayout = Instance.new("UIListLayout")
+msgLayout.SortOrder = Enum.SortOrder.LayoutOrder
+msgLayout.Padding = UDim.new(0, 2)
+msgLayout.Parent = scrollFrame
+
+local msgPad = Instance.new("UIPadding")
+msgPad.PaddingTop = UDim.new(0,4); msgPad.PaddingBottom = UDim.new(0,4)
+msgPad.PaddingLeft = UDim.new(0,4); msgPad.PaddingRight = UDim.new(0,4)
+msgPad.Parent = scrollFrame
+
+-- ══════════════════════════════════════════
+--  STATUS LABEL
+-- ══════════════════════════════════════════
+
+local statusLbl = Instance.new("TextLabel")
+statusLbl.Size = UDim2.new(1,-PAD*2, 0, 16)
+statusLbl.Position = UDim2.new(0, PAD, 0, BAR_H + PAD + SCROLL_H + 3)
+statusLbl.Text = "Connecting..."
+statusLbl.Font = Enum.Font.Gotham; statusLbl.TextSize = FONT_SM
+statusLbl.TextColor3 = C.muted; statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+statusLbl.BackgroundTransparency = 1; statusLbl.ZIndex = 3; statusLbl.Parent = win
+
+-- ══════════════════════════════════════════
+--  INPUT ROW
+-- ══════════════════════════════════════════
+
+local inputRow = Instance.new("Frame")
+inputRow.Size = UDim2.new(1,-PAD*2, 0, INPUT_H)
+inputRow.Position = UDim2.new(0, PAD, 1, -(INPUT_H + PAD))
+inputRow.BackgroundColor3 = C.inputBg
+inputRow.BorderSizePixel = 0; inputRow.ZIndex = 3; inputRow.Parent = win
+Instance.new("UICorner", inputRow).CornerRadius = UDim.new(0, 8)
+
+local inputStroke = Instance.new("UIStroke")
+inputStroke.Color = Color3.fromRGB(50,50,60); inputStroke.Thickness = 1; inputStroke.Parent = inputRow
+
+local textBox = Instance.new("TextBox")
+textBox.Size = UDim2.new(1, SEND_XOFF - 10, 0, TB_HEIGHT)
+textBox.Position = UDim2.new(0, 10, 0.5, TB_YOFF)
+textBox.PlaceholderText = "Type a message..."
+textBox.Text = ""; textBox.Font = Enum.Font.GothamMedium
+textBox.TextSize = FONT_MD; textBox.TextColor3 = C.text
+textBox.PlaceholderColor3 = C.muted
+textBox.BackgroundTransparency = 1; textBox.BorderSizePixel = 0
+textBox.ClearTextOnFocus = false; textBox.ZIndex = 4; textBox.Parent = inputRow
+local tbPad = Instance.new("UIPadding")
+tbPad.PaddingLeft = UDim.new(0,4); tbPad.PaddingRight = UDim.new(0,4); tbPad.Parent = textBox
+
+local sendBtn = Instance.new("TextButton")
+sendBtn.Size = UDim2.new(0, SEND_W, 0, SEND_H)
+sendBtn.Position = UDim2.new(1, SEND_XOFF, 0.5, SEND_YOFF)
+sendBtn.Text = ""; sendBtn.Font = Enum.Font.GothamBold
+sendBtn.TextSize = isMobile and 16 or 14; sendBtn.TextColor3 = Color3.new(1,1,1)
+sendBtn.BackgroundColor3 = C.accent; sendBtn.BorderSizePixel = 0
+sendBtn.AutoButtonColor = false; sendBtn.ZIndex = 4; sendBtn.Parent = inputRow
+Instance.new("UICorner", sendBtn).CornerRadius = UDim.new(0, 6)
+
+sendBtn.MouseEnter:Connect(function()
+    TweenService:Create(sendBtn, ti(), {BackgroundColor3 = Color3.fromRGB(20,140,235)}):Play()
+end)
+sendBtn.MouseLeave:Connect(function()
+    TweenService:Create(sendBtn, ti(), {BackgroundColor3 = C.accent}):Play()
+end)
+
+textBox.Focused:Connect(function()
+    TweenService:Create(inputStroke, ti(), {Color = C.accent, Thickness = 1.5}):Play()
+end)
+textBox.FocusLost:Connect(function()
+    TweenService:Create(inputStroke, ti(), {Color = Color3.fromRGB(50,50,60), Thickness = 1}):Play()
+end)
+
+-- ══════════════════════════════════════════
+--  MESSAGE BUBBLES
+-- ══════════════════════════════════════════
+
+local renderedIds = {}
+local msgOrder    = 0
+
+local function scrollToBottom()
+    task.defer(function()
+        local maxY = scrollFrame.AbsoluteCanvasSize.Y - scrollFrame.AbsoluteSize.Y
+        if maxY > 0 then
+            scrollFrame.CanvasPosition = Vector2.new(0, maxY + 9999)
+        end
+    end)
+end
+
+local function addMessageBubble(msgData)
+    if renderedIds[msgData.id] then return end
+    renderedIds[msgData.id] = true
+    msgOrder = msgOrder + 1
+
+    local isSelf   = (msgData.username == Username)
+    local isSystem = (msgData.system == true)
+    local nameCol  = isSystem and C.systemMsg or getUserColor(msgData.username or "?")
+
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,0,0,0); row.AutomaticSize = Enum.AutomaticSize.Y
+    row.BackgroundTransparency = 1; row.LayoutOrder = msgOrder
+    row.BorderSizePixel = 0; row.ZIndex = 4; row.Parent = scrollFrame
+
+    local bubble = Instance.new("Frame")
+    bubble.Size = UDim2.new(0.88,0,0,0); bubble.AutomaticSize = Enum.AutomaticSize.Y
+    bubble.Position = isSelf and UDim2.new(0.12,0,0,0) or UDim2.new(0,0,0,0)
+    bubble.BackgroundColor3 = isSelf and C.selfMsg or C.msgBg
+    bubble.BorderSizePixel = 0; bubble.ZIndex = 5; bubble.Parent = row
+    Instance.new("UICorner", bubble).CornerRadius = UDim.new(0, 6)
+
+    local bPad = Instance.new("UIPadding")
+    bPad.PaddingLeft = UDim.new(0,8); bPad.PaddingRight = UDim.new(0,8)
+    bPad.PaddingTop = UDim.new(0,5); bPad.PaddingBottom = UDim.new(0,5)
+    bPad.Parent = bubble
+
+    local bLayout = Instance.new("UIListLayout")
+    bLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    bLayout.Padding = UDim.new(0,2); bLayout.Parent = bubble
+
+    local hRow = Instance.new("Frame")
+    hRow.Size = UDim2.new(1,0,0,isMobile and 16 or 14)
+    hRow.BackgroundTransparency = 1; hRow.LayoutOrder = 1
+    hRow.ZIndex = 6; hRow.Parent = bubble
+
+    local displayStr
+    if isSystem then
+        displayStr = "SYSTEM"
+    elseif isSelf then
+        displayStr = "you  (@" .. Username .. ")"
+    else
+        displayStr = tostring(msgData.user) .. "  (@" .. tostring(msgData.username) .. ")"
+    end
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(0.75,0,1,0); nameLbl.Text = displayStr
+    nameLbl.Font = Enum.Font.GothamBold; nameLbl.TextSize = FONT_SM
+    nameLbl.TextColor3 = nameCol; nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLbl.BackgroundTransparency = 1; nameLbl.ZIndex = 6; nameLbl.Parent = hRow
+
+    local timeLbl = Instance.new("TextLabel")
+    timeLbl.Size = UDim2.new(0.25,0,1,0); timeLbl.Position = UDim2.new(0.75,0,0,0)
+    timeLbl.Text = tostring(msgData.time or "")
+    timeLbl.Font = Enum.Font.Gotham; timeLbl.TextSize = FONT_SM
+    timeLbl.TextColor3 = C.muted; timeLbl.TextXAlignment = Enum.TextXAlignment.Right
+    timeLbl.BackgroundTransparency = 1; timeLbl.ZIndex = 6; timeLbl.Parent = hRow
+
+    local textLbl = Instance.new("TextLabel")
+    textLbl.Size = UDim2.new(1,0,0,0); textLbl.AutomaticSize = Enum.AutomaticSize.Y
+    textLbl.Text = tostring(msgData.text or "")
+    textLbl.Font = Enum.Font.GothamMedium; textLbl.TextSize = FONT_MD
+    textLbl.TextColor3 = isSystem and C.systemMsg or C.text
+    textLbl.TextXAlignment = Enum.TextXAlignment.Left; textLbl.TextWrapped = true
+    textLbl.BackgroundTransparency = 1; textLbl.LayoutOrder = 2
+    textLbl.ZIndex = 6; textLbl.Parent = bubble
+
+    scrollToBottom()
+end
+
+local function addSystemMessage(text)
+    local t = os.date("*t")
+    addMessageBubble({
+        id       = string.format("%.0f_sys", tick() * 1000),
+        user     = "System",
+        username = "_system_",
+        text     = tostring(text),
+        time     = string.format("%02d:%02d", t.hour, t.min),
+        system   = true,
+    })
+end
+
+-- ══════════════════════════════════════════
+--  HTTP HELPER
+-- ══════════════════════════════════════════
+
+local function httpRequest(method, url, headers, body)
+    body = body or ""
+    local opts = { Url = url, Method = method, Headers = headers, Body = body }
+
+    local function try(fn)
+        if not fn then return nil end
+        local ok, res = pcall(fn, opts)
+        if ok and type(res) == "table" and res.Body and res.Body ~= "" then
+            return res
+        end
+        return nil
+    end
+
+    local res = nil
+    if not res then pcall(function() if syn and syn.request then res = try(syn.request) end end) end
+    if not res then pcall(function() if http and http.request then res = try(http.request) end end) end
+    if not res then pcall(function() if request then res = try(request) end end) end
+    if not res then pcall(function() if fluxus and fluxus.request then res = try(fluxus.request) end end) end
+    return res
+end
+
+-- ══════════════════════════════════════════
+--  JSONBIN API  (Access Key only)
+-- ══════════════════════════════════════════
+
+local function readMessages()
+    local res = httpRequest("GET", BASE_URL .. BIN_ID .. "/latest", {
+        ["X-Access-Key"] = ACCESS_KEY,
+        ["X-Bin-Meta"]   = "false",
+    })
+    if not res then return nil end
+
+    local ok, data = pcall(HttpService.JSONDecode, HttpService, res.Body)
+    if not ok or not data then return nil end
+
+    local record = data.record or data
+    if type(record) == "table" and type(record.messages) == "table" then
+        return record.messages
+    end
+    return nil
+end
+
+local function writeMessages(msgs)
+    local body = HttpService:JSONEncode({ messages = msgs })
+    local res = httpRequest("PUT", BASE_URL .. BIN_ID, {
+        ["Content-Type"] = "application/json",
+        ["X-Access-Key"] = ACCESS_KEY,
+    }, body)
+    if not res then return false end
+    local ok, data = pcall(HttpService.JSONDecode, HttpService, res.Body)
+    return ok and data and not data["error"]
+end
+
+-- ══════════════════════════════════════════
+--  SEND MESSAGE
+-- ══════════════════════════════════════════
+
+local isSending = false
+
+local function sendMessage(text)
+    text = tostring(text):match("^%s*(.-)%s*$")
+    if text == "" or #text > 200 then return end
+    if isSending then return end
+    isSending = true
+
+    local t       = os.date("*t")
+    local msgId   = string.format("%.0f", tick() * 1000) .. "_" .. Username
+    local timeStr = string.format("%02d:%02d", t.hour, t.min)
+
+    -- Show locally immediately
+    addMessageBubble({
+        id = msgId, user = DisplayName, username = Username, text = text, time = timeStr,
+    })
+    textBox.Text = ""
+
+    task.spawn(function()
+        local msgs = readMessages() or {}
+        table.insert(msgs, {
+            id = msgId, user = DisplayName, username = Username, text = text, time = timeStr,
+        })
+        while #msgs > MAX_MSGS do table.remove(msgs, 1) end
+        local success = writeMessages(msgs)
+        if not success then
+            addSystemMessage("⚠ Message may not have saved")
+        end
+        isSending = false
+    end)
+end
+
+local function onSend()
+    local txt = textBox.Text
+    if txt and txt ~= "" then sendMessage(txt) end
+end
+
+sendBtn.MouseButton1Click:Connect(onSend)
+sendBtn.TouchTap:Connect(onSend)
+textBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then onSend() end
+end)
+
+-- ══════════════════════════════════════════
+--  POLL & SYNC
+-- ══════════════════════════════════════════
+
+local function syncMessages()
+    local msgs = readMessages()
+    if not msgs then
+        statusLbl.Text = "⚠ Could not reach jsonbin — retrying..."
+        statusLbl.TextColor3 = C.error
+        onlineDot.BackgroundColor3 = C.error
+        return
+    end
+
+    onlineDot.BackgroundColor3 = C.success
+
+    local seen = {}
+    for _, m in ipairs(msgs) do
+        if m.username and m.username ~= "_system_" then seen[m.username] = true end
+    end
+    local count = 0
+    for _ in pairs(seen) do count = count + 1 end
+    onlineLbl.Text = count .. (count == 1 and "" or "")
+    onlineLbl.TextColor3 = C.success
+    statusLbl.Text = "Connected  •  updates every " .. POLL_RATE .. "s"
+    statusLbl.TextColor3 = C.muted
+
+    for _, msg in ipairs(msgs) do
+        if msg.id and msg.text and msg.username then
+            addMessageBubble({
+                id       = tostring(msg.id),
+                user     = tostring(msg.user or msg.username),
+                username = tostring(msg.username),
+                text     = tostring(msg.text),
+                time     = tostring(msg.time or ""),
+                system   = (msg.system == true),
+            })
+        end
+    end
+end
+
+-- ══════════════════════════════════════════
+--  INIT
+-- ══════════════════════════════════════════
+
+win.Size = UDim2.new(0,0,0,0); win.BackgroundTransparency = 1
+TweenService:Create(win, ti(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0,W,0,H), BackgroundTransparency = 0,
+}):Play()
+
+task.spawn(function()
+    task.wait(0.5)
+
+    addSystemMessage("Welcome, " .. DisplayName .. " (@" .. Username .. ")")
+    syncMessages()
+
+    -- Post join message to shared chat
+    task.spawn(function()
+        task.wait(1)
+        local msgs = readMessages() or {}
+        local t = os.date("*t")
+        table.insert(msgs, {
+            id       = string.format("%.0f", tick()*1000) .. "_join_" .. Username,
+            user     = "System",
+            username = "_system_",
+            text     = DisplayName .. " (@" .. Username .. ") joined the chat",
+            time     = string.format("%02d:%02d", t.hour, t.min),
+            system   = true,
+        })
+        while #msgs > MAX_MSGS do table.remove(msgs, 1) end
+        writeMessages(msgs)
+    end)
+
+    -- Poll loop
+    while task.wait(POLL_RATE) do
+        if not sg or not sg.Parent then break end
+        syncMessages()
+    end
+end)
