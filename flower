@@ -1625,10 +1625,6 @@ staffWatchThread = task.spawn(staffWatchLoop)
 staffIndicator.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 updateUI()
 
-print("✅ BGSI All-in-One v2.0 loaded successfully!")
-print("👮 Staff Watch System enabled")
-print("🔄 Server Hop and Rejoin buttons added")
-
 -- Load notification
 local loadNotif = Instance.new("Frame")
 loadNotif.Size = UDim2.new(0, 280, 0, 60)
