@@ -1,0 +1,297 @@
+-- ╔══════════════════════════════════════════════════╗
+-- ║         FEATHER HUB — LOADING SCREEN  v2        ║
+-- ║   Draggable card · Feather ring · No bar        ║
+-- ╚══════════════════════════════════════════════════╝
+
+local Players      = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService   = game:GetService("RunService")
+local UIS          = game:GetService("UserInputService")
+
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ════════════════════════════════════════════════════════
+--  CONFIG
+-- ════════════════════════════════════════════════════════
+
+local FEATHER_COUNT = 8
+local RING_RADIUS   = 32      -- px from spinner centre to dot
+local SPIN_SPEED    = 1.6     -- seconds per full rotation
+local FADE_TIME     = 0.45
+local HUB_NAME      = "Feather Hub"
+
+local LOADING_MSGS = {
+    "Initialising",
+    "Loading modules",
+    "Fetching scripts",
+    "Connecting to server",
+}
+
+-- ════════════════════════════════════════════════════════
+--  SCREEN GUI  — display order on top of everything
+-- ════════════════════════════════════════════════════════
+
+local sg = Instance.new("ScreenGui")
+sg.Name           = "FeatherHubLoader"
+sg.ResetOnSpawn   = false
+sg.DisplayOrder   = 999
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.IgnoreGuiInset = true
+sg.Parent         = playerGui
+
+-- Semi-transparent full-screen backdrop (dim but not fully black)
+local backdrop = Instance.new("Frame")
+backdrop.Size                    = UDim2.new(1,0,1,0)
+backdrop.BackgroundColor3        = Color3.fromRGB(0,0,0)
+backdrop.BackgroundTransparency  = 1     -- fades in
+backdrop.BorderSizePixel         = 0
+backdrop.ZIndex                  = 1
+backdrop.Parent                  = sg
+
+-- ════════════════════════════════════════════════════════
+--  CARD  (the draggable rounded box)
+-- ════════════════════════════════════════════════════════
+
+local CARD_W = 260
+local CARD_H = 220
+
+local card = Instance.new("Frame")
+card.Size                   = UDim2.new(0, CARD_W, 0, CARD_H)
+card.Position               = UDim2.new(0.5, -CARD_W/2, 0.5, -CARD_H/2)
+card.BackgroundColor3       = Color3.fromRGB(15, 15, 20)
+card.BackgroundTransparency = 0
+card.BorderSizePixel        = 0
+card.ZIndex                 = 2
+card.Active                 = true
+card.Parent                 = sg
+
+local cardCorner = Instance.new("UICorner", card)
+cardCorner.CornerRadius = UDim.new(0, 20)
+
+local cardStroke = Instance.new("UIStroke", card)
+cardStroke.Color        = Color3.new(1,1,1)
+cardStroke.Transparency = 0.92
+cardStroke.Thickness    = 1
+
+-- ════════════════════════════════════════════════════════
+--  DRAG LOGIC
+-- ════════════════════════════════════════════════════════
+
+local dragging   = false
+local dragOffset = Vector2.new(0,0)
+
+card.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        local absPos = card.AbsolutePosition
+        dragOffset = Vector2.new(
+            input.Position.X - absPos.X,
+            input.Position.Y - absPos.Y
+        )
+    end
+end)
+
+card.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement or
+        input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        local nx = input.Position.X - dragOffset.X
+        local ny = input.Position.Y - dragOffset.Y
+        card.Position = UDim2.new(0, nx, 0, ny)
+    end
+end)
+
+-- ════════════════════════════════════════════════════════
+--  SPINNER CONTAINER  (centre of card)
+-- ════════════════════════════════════════════════════════
+
+local SPIN_SIZE = 90
+local spinCX    = CARD_W / 2
+local spinCY    = 56     -- vertical centre of spinner in card
+
+local spinHolder = Instance.new("Frame")
+spinHolder.Size                    = UDim2.new(0, SPIN_SIZE, 0, SPIN_SIZE)
+spinHolder.Position                = UDim2.new(0, spinCX - SPIN_SIZE/2, 0, spinCY - SPIN_SIZE/2)
+spinHolder.BackgroundTransparency  = 1
+spinHolder.BorderSizePixel         = 0
+spinHolder.ZIndex                  = 3
+spinHolder.Parent                  = card
+
+
+
+-- ════════════════════════════════════════════════════════
+--  FEATHER BARBS
+-- ════════════════════════════════════════════════════════
+
+local lx = SPIN_SIZE / 2   -- local centre within spinHolder
+local ly = SPIN_SIZE / 2
+
+local barbs = {}
+
+for i = 1, FEATHER_COUNT do
+    -- Head = i=1 (brightest, biggest), tail = i=FEATHER_COUNT
+    local t     = (i - 1) / (FEATHER_COUNT - 1)   -- 0 at head, 1 at tail
+    local alpha = t * 0.93                          -- 0 fully opaque → 0.93 nearly invisible
+    local w     = math.max(2, math.ceil(4.0 * (1 - t * 0.6)))
+    local h     = math.max(3, math.ceil(7.0 * (1 - t * 0.55)))
+
+    -- Initial angle: spread evenly, head at top (–π/2)
+    local baseAngle = -math.pi/2 + (2*math.pi/FEATHER_COUNT) * (i - 1)
+
+    local dot = Instance.new("Frame")
+    dot.Size                    = UDim2.new(0, w, 0, h)
+    dot.AnchorPoint             = Vector2.new(0.5, 0.5)
+    dot.BackgroundColor3        = Color3.new(1,1,1)
+    dot.BackgroundTransparency  = alpha
+    dot.BorderSizePixel         = 0
+    dot.ZIndex                  = 4
+    dot.Parent                  = spinHolder
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(0.5,0)
+
+    barbs[i] = { frame = dot, baseAngle = baseAngle }
+end
+
+-- ════════════════════════════════════════════════════════
+--  TEXT LABELS
+-- ════════════════════════════════════════════════════════
+
+local nameLabel = Instance.new("TextLabel")
+nameLabel.Size                 = UDim2.new(1,-32,0,22)
+nameLabel.Position             = UDim2.new(0,16,0,spinCY + SPIN_SIZE/2 + 18)
+nameLabel.BackgroundTransparency = 1
+nameLabel.Font                 = Enum.Font.GothamBold
+nameLabel.TextSize             = 16
+nameLabel.TextColor3           = Color3.new(1,1,1)
+nameLabel.TextTransparency     = 0.04
+nameLabel.Text                 = HUB_NAME
+nameLabel.TextXAlignment       = Enum.TextXAlignment.Center
+nameLabel.ZIndex               = 3
+nameLabel.Parent               = card
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size                 = UDim2.new(1,-32,0,18)
+statusLabel.Position             = UDim2.new(0,16,0,spinCY + SPIN_SIZE/2 + 44)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Font                 = Enum.Font.Gotham
+statusLabel.TextSize             = 11
+statusLabel.TextColor3           = Color3.new(1,1,1)
+statusLabel.TextTransparency     = 0.52
+statusLabel.Text                 = LOADING_MSGS[1]
+statusLabel.TextXAlignment       = Enum.TextXAlignment.Center
+statusLabel.ZIndex               = 3
+statusLabel.Parent               = card
+
+-- ════════════════════════════════════════════════════════
+--  FADE IN
+-- ════════════════════════════════════════════════════════
+
+TweenService:Create(backdrop, TweenInfo.new(FADE_TIME, Enum.EasingStyle.Quad),
+    {BackgroundTransparency = 0.55}):Play()
+
+-- ════════════════════════════════════════════════════════
+--  SPIN + PULSE LOOP
+-- ════════════════════════════════════════════════════════
+
+local startTime   = tick()
+local msgIndex    = 1
+local lastSwap    = startTime
+local MSG_DELAY   = 1.5
+
+local conn
+conn = RunService.RenderStepped:Connect(function()
+    if not sg.Parent then conn:Disconnect(); return end
+
+    local now     = tick()
+    local elapsed = now - startTime
+    local rot     = (elapsed / SPIN_SPEED) * (2 * math.pi)
+
+    -- Move each barb
+    for i, b in ipairs(barbs) do
+        local a  = b.baseAngle + rot
+        local px = lx + RING_RADIUS * math.cos(a)
+        local py = ly + RING_RADIUS * math.sin(a)
+        b.frame.Position = UDim2.new(0, px, 0, py)
+    end
+
+
+    -- Cycle status messages
+    if now - lastSwap >= MSG_DELAY then
+        lastSwap = now
+        msgIndex = (msgIndex % #LOADING_MSGS) + 1
+
+        TweenService:Create(statusLabel, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+            {TextTransparency = 1}):Play()
+        task.delay(0.18, function()
+            if statusLabel and statusLabel.Parent then
+                statusLabel.Text = LOADING_MSGS[msgIndex]
+                TweenService:Create(statusLabel, TweenInfo.new(0.2, Enum.EasingStyle.Quad),
+                    {TextTransparency = 0.52}):Play()
+            end
+        end)
+    end
+end)
+
+-- ════════════════════════════════════════════════════════
+--  PUBLIC API
+-- ════════════════════════════════════════════════════════
+
+local FeatherLoader = {}
+
+function FeatherLoader:SetStatus(text)
+    TweenService:Create(statusLabel, TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+        {TextTransparency = 1}):Play()
+    task.delay(0.18, function()
+        if statusLabel and statusLabel.Parent then
+            statusLabel.Text = text
+            TweenService:Create(statusLabel, TweenInfo.new(0.2, Enum.EasingStyle.Quad),
+                {TextTransparency = 0.52}):Play()
+        end
+    end)
+end
+
+function FeatherLoader:Dismiss(callback)
+    conn:Disconnect()
+
+    -- Fade both the card and backdrop together
+    local info = TweenInfo.new(FADE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+    TweenService:Create(card,     info, {BackgroundTransparency = 1}):Play()
+    TweenService:Create(cardStroke, info, {Transparency = 1}):Play()
+    TweenService:Create(nameLabel,  info, {TextTransparency = 1}):Play()
+    TweenService:Create(statusLabel,info, {TextTransparency = 1}):Play()
+
+    -- Also fade every barb out
+    for _, b in ipairs(barbs) do
+        TweenService:Create(b.frame, info, {BackgroundTransparency = 1}):Play()
+    end
+
+    local backdropFade = TweenService:Create(backdrop, info, {BackgroundTransparency = 1})
+    backdropFade:Play()
+    backdropFade.Completed:Connect(function()
+        sg:Destroy()
+        if callback then callback() end
+    end)
+end
+
+-- ════════════════════════════════════════════════════════
+--  AUTO DISMISS + EXECUTE MAIN SCRIPT
+-- ════════════════════════════════════════════════════════
+
+task.delay(2,   function() FeatherLoader:SetStatus("Loading modules...") end)
+task.delay(3.5, function() FeatherLoader:SetStatus("Almost ready...") end)
+
+task.delay(5, function()
+    FeatherLoader:Dismiss(function()
+        loadstring(game:HttpGetAsync("YOUR_SCRIPT_URL_HERE"))()
+    end)
+end)
