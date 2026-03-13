@@ -1,38 +1,107 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║         BGSI ALL-IN-ONE  —  MERGED v1.1                 ║
+-- ║         BGSI ALL-IN-ONE  —  COMPLETE v2.0               ║
 -- ║   Flower Farm + Wheel + Bubbles + Automation + Pets      ║
+-- ║            + Staff Watch + Server Hop                    ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 local TweenService      = game:GetService("TweenService")
 local Players           = game:GetService("Players")
 local UserInputService  = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService       = game:GetService("HttpService")
+local TeleportService   = game:GetService("TeleportService")
+local VirtualUser       = game:GetService("VirtualUser")
 
 repeat wait() until game:IsLoaded()
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local currentPlaceId = game.PlaceId
+
+-- ════════════════════════════════════════════════════════
+--  STAFF WATCH CONFIGURATION
+-- ════════════════════════════════════════════════════════
+
+local STAFF_LIST = {
+    -- group staff rumble
+    "ObscureEntity", "sircfenner", "PrimE_RBLX", "Blizzyrd", "Sylently",
+    "Nosniy", "KrixYaz", "quamatic", "FutureWebsiteOwner", "Not_Nert",
+    "Mallowiie", "SkeletalReality", "DevCrut", "Beeism", 
+    
+
+}
+
+local staffWatchEnabled = true
+local staffDetected = false
+local lastStaffCheck = 0
+local checkInterval = 2
+local autoServerHop = true
+local hopDelay = 3
+local currentServerStaff = {}
+local notificationShown = false
+local staffWatchThread = nil
 
 -- ════════════════════════════════════════════════════════
 --  EXTERNAL REFERENCES
 -- ════════════════════════════════════════════════════════
 
-local Shared      = ReplicatedStorage.Shared
-local SData       = Shared.Data
-local Utils       = Shared.Utils
-local Framework   = Shared.Framework
-local Client      = ReplicatedStorage.Client
-local Tutorial    = require(Client.Tutorial)
+local Shared = ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")
+local SData = Shared:FindFirstChild("Data")
+local Utils = Shared:FindFirstChild("Utils")
+local Framework = Shared:FindFirstChild("Framework")
+local Client = ReplicatedStorage:FindFirstChild("Client")
 
-local StatsUtil       = require(Utils.Stats.StatsUtil)
-local localData       = require(Client.Framework.Services.LocalData)
-local Data            = localData:Get()
-local EventHandler    = Framework.Network.Remote.RemoteEvent
-local FunctionHandler = Framework.Network.Remote.RemoteFunction
+-- Safe requires
+local Tutorial = {}
+local StatsUtil = {}
+local localData = {}
+local Data = {}
+local EventHandler = nil
+local FunctionHandler = nil
 
+local function safeRequire(module, default)
+    local success, result = pcall(function()
+        return require(module)
+    end)
+    return success and result or (default or {})
+end
+
+if Client and Client:FindFirstChild("Tutorial") then
+    Tutorial = safeRequire(Client.Tutorial)
+end
+
+if Utils and Utils:FindFirstChild("Stats") and Utils.Stats:FindFirstChild("StatsUtil") then
+    StatsUtil = safeRequire(Utils.Stats.StatsUtil)
+end
+
+if Framework and Framework:FindFirstChild("Services") and Framework.Services:FindFirstChild("LocalData") then
+    localData = safeRequire(Framework.Services.LocalData)
+    if localData and type(localData) == "table" and localData.Get then
+        Data = localData:Get() or {}
+    end
+end
+
+if Framework and Framework.Network and Framework.Network.Remote then
+    EventHandler = Framework.Network.Remote:FindFirstChild("RemoteEvent")
+    FunctionHandler = Framework.Network.Remote:FindFirstChild("RemoteFunction")
+end
+
+if not EventHandler then
+    EventHandler = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:FindFirstChild("RemoteEvent")
+end
+
+if not FunctionHandler then
+    FunctionHandler = ReplicatedStorage:FindFirstChild("RemoteFunction")
+end
+
+-- Get eggs list
 local eggs = {}
-for eggName in pairs(require(SData.Eggs)) do
-    table.insert(eggs, eggName)
+local eggsModule = SData and SData:FindFirstChild("Eggs")
+if eggsModule then
+    local eggsData = safeRequire(eggsModule, {})
+    for eggName in pairs(eggsData) do
+        table.insert(eggs, eggName)
+    end
 end
 table.sort(eggs)
 
@@ -84,12 +153,12 @@ local ROUTES = {
 -- ════════════════════════════════════════════════════════
 
 local RetrySystem = {
-    retryQueue      = {},
+    retryQueue = {},
     successfulSpots = {},
-    failedSpots     = {},
-    maxRetries      = 3,
-    retryCooldown   = 2,
-    lastRetryTime   = {},
+    failedSpots = {},
+    maxRetries = 3,
+    retryCooldown = 2,
+    lastRetryTime = {},
 }
 
 local function getRoot()
@@ -112,7 +181,7 @@ local function markForRetry(wp, routeId)
         if tostring(item.waypoint) == key then return end
     end
     table.insert(RetrySystem.retryQueue, {
-        waypoint  = wp, routeId = routeId,
+        waypoint = wp, routeId = routeId,
         failCount = RetrySystem.failedSpots[key], addedTime = tick()
     })
 end
@@ -133,7 +202,10 @@ local function getNextRetrySpot()
         local last = RetrySystem.lastRetryTime[tostring(spot.waypoint)] or 0
         if now - last >= RetrySystem.retryCooldown then
             table.remove(RetrySystem.retryQueue, i)
-            if verifySpot(spot.waypoint) then markSuccessful(spot.waypoint); return nil end
+            if verifySpot(spot.waypoint) then
+                markSuccessful(spot.waypoint)
+                return nil
+            end
             return spot
         end
     end
@@ -143,7 +215,10 @@ local function retrySpot(spot)
     RetrySystem.lastRetryTime[tostring(spot.waypoint)] = tick()
     getRoot().CFrame = spot.waypoint
     task.wait(0.2)
-    if verifySpot(spot.waypoint) then markSuccessful(spot.waypoint); return true end
+    if verifySpot(spot.waypoint) then
+        markSuccessful(spot.waypoint)
+        return true
+    end
     return false
 end
 
@@ -151,30 +226,189 @@ end
 --  STATE
 -- ════════════════════════════════════════════════════════
 
-local farmEnabled  = false
+local farmEnabled = false
 local farmThread, retryThread, wheelThread
-local totalCycles  = 0
-local routeCounts  = {0, 0, 0}
-local nextReadyAt  = {}
+local totalCycles = 0
+local routeCounts = {0, 0, 0}
+local nextReadyAt = {}
 local currentRoute = nil
-local speedMode    = "INSTANT"
+local speedMode = "INSTANT"
 local interactionDelay = 0.2
 
-local autoBlowValue         = false
-local autoSellValue         = false
-local autoSellPer           = 50
+local autoBlowValue = false
+local autoSellValue = false
+local autoSellPer = 50
 local autoCollectCoinsValue = false
-local autoclaimplaytimeval  = false
-local autoclaimchestsval    = false
-local autoClaimRiftGiftval  = false
-local autoHatchValue        = false
-local selectedEgg           = eggs[1] or ""
-local autoGiftValue         = false
-local autoWheelValue        = false
-local wheelSpins            = 0
+local autoclaimplaytimeval = false
+local autoclaimchestsval = false
+local autoClaimRiftGiftval = false
+local autoHatchValue = false
+local selectedEgg = eggs[1] or ""
+local autoGiftValue = false
+local autoWheelValue = false
+local wheelSpins = 0
 
 -- ════════════════════════════════════════════════════════
---  GUI — same 350×330 window as original
+--  SERVER HOP FUNCTIONS
+-- ════════════════════════════════════════════════════════
+
+local function getServers()
+    local success, result = pcall(function()
+        local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?limit=100", currentPlaceId)
+        local response = game:HttpGetAsync(url)
+        return HttpService:JSONDecode(response)
+    end)
+    
+    if success and result and result.data then
+        return result.data
+    end
+    return {}
+end
+
+local function serverHop()
+    farmEnabled = false
+    task.wait(0.5)
+    
+    local servers = getServers()
+    local currentJobId = game.JobId
+    local availableServers = {}
+    
+    for _, server in ipairs(servers) do
+        if server.id ~= currentJobId and server.playing < server.maxPlayers then
+            table.insert(availableServers, server)
+        end
+    end
+    
+    if #availableServers > 0 then
+        local targetServer = availableServers[math.random(1, #availableServers)]
+        TeleportService:TeleportToPlaceInstance(currentPlaceId, targetServer.id, player)
+    end
+end
+
+local function rejoin()
+    farmEnabled = false
+    task.wait(0.5)
+    TeleportService:Teleport(currentPlaceId, player)
+end
+
+-- ════════════════════════════════════════════════════════
+--  STAFF WATCH SYSTEM
+-- ════════════════════════════════════════════════════════
+
+local function isStaffUser(username)
+    username = username:lower()
+    
+    for _, staff in ipairs(STAFF_LIST) do
+        if staff:lower() == username then
+            return true
+        end
+    end
+    
+    for _, keyword in ipairs(BANNED_KEYWORDS) do
+        if username:find(keyword, 1, true) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+local function checkForStaff()
+    local currentTime = tick()
+    if currentTime - lastStaffCheck < checkInterval then
+        return currentServerStaff
+    end
+    lastStaffCheck = currentTime
+    
+    local staffInServer = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player and isStaffUser(plr.Name) then
+            table.insert(staffInServer, plr.Name)
+        end
+    end
+    
+    currentServerStaff = staffInServer
+    
+    if #staffInServer > 0 and autoServerHop and farmEnabled and not notificationShown then
+        staffDetected = true
+        notificationShown = true
+        
+        local notification = Instance.new("Frame")
+        notification.Size = UDim2.new(0, 300, 0, 120)
+        notification.Position = UDim2.new(0.5, -150, 0.2, 0)
+        notification.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        notification.BackgroundTransparency = 0.1
+        notification.BorderSizePixel = 0
+        notification.Parent = sg
+        notification.ZIndex = 100
+        
+        local notificationCorner = Instance.new("UICorner")
+        notificationCorner.CornerRadius = UDim.new(0, 8)
+        notificationCorner.Parent = notification
+        
+        local text = Instance.new("TextLabel")
+        text.Size = UDim2.new(1, -20, 1, -20)
+        text.Position = UDim2.new(0, 10, 0, 10)
+        text.BackgroundTransparency = 1
+        text.Text = string.format("⚠️ STAFF DETECTED ⚠️\n\n%s\n\nServer hopping in %d seconds...",
+            table.concat(staffInServer, ", "), hopDelay)
+        text.TextColor3 = Color3.new(1, 1, 1)
+        text.TextSize = 14
+        text.Font = Enum.Font.GothamBold
+        text.TextWrapped = true
+        text.Parent = notification
+        text.ZIndex = 101
+        
+        local cancelBtn = Instance.new("TextButton")
+        cancelBtn.Size = UDim2.new(0, 60, 0, 25)
+        cancelBtn.Position = UDim2.new(1, -70, 1, -30)
+        cancelBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        cancelBtn.Text = "Cancel"
+        cancelBtn.TextColor3 = Color3.new(1, 1, 1)
+        cancelBtn.Font = Enum.Font.GothamBold
+        cancelBtn.TextSize = 11
+        cancelBtn.Parent = notification
+        cancelBtn.ZIndex = 101
+        
+        local cancelCorner = Instance.new("UICorner")
+        cancelCorner.CornerRadius = UDim.new(0, 4)
+        cancelCorner.Parent = cancelBtn
+        
+        cancelBtn.MouseButton1Click:Connect(function()
+            notification:Destroy()
+            notificationShown = false
+            staffDetected = false
+        end)
+        
+        task.spawn(function()
+            for i = hopDelay, 1, -1 do
+                if not notificationShown then break end
+                text.Text = string.format("⚠️ STAFF DETECTED ⚠️\n\n%s\n\nServer hopping in %d seconds...",
+                    table.concat(staffInServer, ", "), i)
+                task.wait(1)
+            end
+            if notificationShown then
+                notification:Destroy()
+                serverHop()
+            end
+        end)
+    elseif #staffInServer == 0 then
+        staffDetected = false
+        notificationShown = false
+    end
+    
+    return staffInServer
+end
+
+local function staffWatchLoop()
+    while staffWatchEnabled do
+        checkForStaff()
+        task.wait(checkInterval)
+    end
+end
+
+-- ════════════════════════════════════════════════════════
+--  GUI — Main Window (Feather Grey UI)
 -- ════════════════════════════════════════════════════════
 
 local sg = Instance.new("ScreenGui")
@@ -188,542 +422,849 @@ local function mkCorner(p, r)
     c.CornerRadius = UDim.new(0, r or 6)
 end
 
+-- Feather grey color scheme
+local bgColor = Color3.fromRGB(25, 25, 30)      -- Dark grey background
+local headerColor = Color3.fromRGB(35, 35, 42)  -- Slightly lighter grey
+local sectionColor = Color3.fromRGB(40, 40, 48) -- Medium grey sections
+local accentGrey = Color3.fromRGB(60, 60, 70)   -- Button grey
+local textGrey = Color3.fromRGB(180, 180, 190)  -- Light grey text
+local darkGrey = Color3.fromRGB(30, 30, 35)     -- Dark element grey
+
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0,350,0,330)
-main.Position = UDim2.new(0.5,-175,0.5,-165)
-main.BackgroundColor3 = Color3.fromRGB(20,20,30)
+main.Size = UDim2.new(0, 380, 0, 400)
+main.Position = UDim2.new(0.5, -190, 0.5, -200)
+main.BackgroundColor3 = bgColor
 main.BorderSizePixel = 0
 main.Active = true
 main.Parent = sg
 mkCorner(main, 10)
 
--- Header
+-- Header with matching grey buttons
 local header = Instance.new("Frame")
-header.Size = UDim2.new(1,0,0,35)
-header.BackgroundColor3 = Color3.fromRGB(30,30,40)
+header.Size = UDim2.new(1, 0, 0, 40)
+header.BackgroundColor3 = headerColor
 header.BorderSizePixel = 0
 header.Parent = main
 mkCorner(header, 10)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size = UDim2.new(1,-36,1,0)
-titleLbl.Position = UDim2.new(0,10,0,0)
+titleLbl.Size = UDim2.new(0, 140, 1, 0)
+titleLbl.Position = UDim2.new(0, 10, 0, 0)
 titleLbl.Text = "BGSI | Feather Hub"
 titleLbl.Font = Enum.Font.GothamBold
 titleLbl.TextSize = 13
-titleLbl.TextColor3 = Color3.new(1,1,1)
+titleLbl.TextColor3 = textGrey
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 titleLbl.BackgroundTransparency = 1
 titleLbl.Parent = header
 
+-- Version tag
 local versionTag = Instance.new("TextLabel")
-versionTag.Size = UDim2.new(0,30,0,16)
-versionTag.Position = UDim2.new(1,-62,0.5,-8)
-versionTag.Text = "v5"
+versionTag.Size = UDim2.new(0, 35, 0, 18)
+versionTag.Position = UDim2.new(1, -220, 0.5, -9)
+versionTag.Text = "v2.0"
 versionTag.Font = Enum.Font.GothamBold
-versionTag.TextSize = 9
-versionTag.TextColor3 = Color3.fromRGB(120,120,140)
-versionTag.BackgroundColor3 = Color3.fromRGB(40,40,52)
+versionTag.TextSize = 10
+versionTag.TextColor3 = Color3.fromRGB(140, 140, 150)
+versionTag.BackgroundColor3 = darkGrey
 versionTag.BorderSizePixel = 0
 versionTag.Parent = header
 mkCorner(versionTag, 4)
 
+-- Rejoin Button (smaller, grey)
+local rejoinBtn = Instance.new("TextButton")
+rejoinBtn.Size = UDim2.new(0, 60, 0, 24)
+rejoinBtn.Position = UDim2.new(1, -175, 0.5, -12)
+rejoinBtn.Text = "Rejoin"
+rejoinBtn.Font = Enum.Font.GothamBold
+rejoinBtn.TextSize = 11
+rejoinBtn.TextColor3 = textGrey
+rejoinBtn.BackgroundColor3 = accentGrey
+rejoinBtn.BorderSizePixel = 0
+rejoinBtn.Parent = header
+mkCorner(rejoinBtn, 4)
+
+rejoinBtn.MouseButton1Click:Connect(function()
+    rejoinBtn.Text = "⟳"
+    task.spawn(function()
+        rejoin()
+    end)
+end)
+
+-- Server Hop Button (smaller, grey)
+local hopBtn = Instance.new("TextButton")
+hopBtn.Size = UDim2.new(0, 70, 0, 24)
+hopBtn.Position = UDim2.new(1, -105, 0.5, -12)
+hopBtn.Text = "Server Hop"
+hopBtn.Font = Enum.Font.GothamBold
+hopBtn.TextSize = 11
+hopBtn.TextColor3 = textGrey
+hopBtn.BackgroundColor3 = accentGrey
+hopBtn.BorderSizePixel = 0
+hopBtn.Parent = header
+mkCorner(hopBtn, 4)
+
+hopBtn.MouseButton1Click:Connect(function()
+    hopBtn.Text = "⟳"
+    task.spawn(function()
+        serverHop()
+    end)
+end)
+
+-- Staff Watch Indicator
+local staffIndicator = Instance.new("Frame")
+staffIndicator.Size = UDim2.new(0, 10, 0, 10)
+staffIndicator.Position = UDim2.new(1, -25, 0.5, -5)
+staffIndicator.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+staffIndicator.BorderSizePixel = 0
+staffIndicator.Parent = header
+mkCorner(staffIndicator, 5)
+
+-- Close button
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0,24,0,24)
-closeBtn.Position = UDim2.new(1,-29,0.5,-12)
+closeBtn.Size = UDim2.new(0, 22, 0, 22)
+closeBtn.Position = UDim2.new(1, -27, 0.5, -11)
 closeBtn.Text = "X"
 closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 13
-closeBtn.TextColor3 = Color3.fromRGB(200,200,200)
-closeBtn.BackgroundColor3 = Color3.fromRGB(50,50,60)
+closeBtn.TextSize = 12
+closeBtn.TextColor3 = textGrey
+closeBtn.BackgroundColor3 = darkGrey
 closeBtn.BorderSizePixel = 0
 closeBtn.Parent = header
-mkCorner(closeBtn, 5)
-closeBtn.MouseButton1Click:Connect(function() farmEnabled = false; sg:Destroy() end)
+mkCorner(closeBtn, 4)
 
+closeBtn.MouseButton1Click:Connect(function() 
+    farmEnabled = false
+    staffWatchEnabled = false
+    sg:Destroy() 
+end)
+
+-- Dragging
 local dragging, dragStart, startPos
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true; dragStart = i.Position; startPos = main.Position
+        dragging = true
+        dragStart = i.Position
+        startPos = main.Position
     end
 end)
+
 header.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
 end)
+
 UserInputService.InputChanged:Connect(function(i)
     if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
         local d = i.Position - dragStart
-        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
+        main.Position = UDim2.new(
+            startPos.X.Scale, 
+            startPos.X.Offset + d.X, 
+            startPos.Y.Scale, 
+            startPos.Y.Offset + d.Y
+        )
     end
 end)
 
 -- ════════════════════════════════════════════════════════
---  TAB BAR  (22px, fits inside original window height)
+--  TAB BAR
 -- ════════════════════════════════════════════════════════
 
-local TAB_NAMES = {"Farm","Bubbles","Automation","Pets"}
-local tabBtns  = {}
+local TAB_NAMES = {"Farm", "Bubbles", "Automation", "Pets"}
+local tabBtns = {}
 local tabPages = {}
 
 local tabBar = Instance.new("Frame")
-tabBar.Size = UDim2.new(1,-16,0,22)
-tabBar.Position = UDim2.new(0,8,0,38)
-tabBar.BackgroundColor3 = Color3.fromRGB(30,30,40)
+tabBar.Size = UDim2.new(1, -20, 0, 28)
+tabBar.Position = UDim2.new(0, 10, 0, 45)
+tabBar.BackgroundColor3 = headerColor
 tabBar.BorderSizePixel = 0
 tabBar.Parent = main
 mkCorner(tabBar, 5)
 
-local tl = Instance.new("UIListLayout", tabBar)
-tl.FillDirection = Enum.FillDirection.Horizontal
-tl.SortOrder = Enum.SortOrder.LayoutOrder
-tl.Padding = UDim.new(0,2)
-local tp = Instance.new("UIPadding", tabBar)
-tp.PaddingLeft = UDim.new(0,2); tp.PaddingRight = UDim.new(0,2)
-tp.PaddingTop  = UDim.new(0,2); tp.PaddingBottom = UDim.new(0,2)
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Padding = UDim.new(0, 4)
+tabLayout.Parent = tabBar
 
 local contentArea = Instance.new("Frame")
-contentArea.Size = UDim2.new(1,-16,1,-66)
-contentArea.Position = UDim2.new(0,8,0,62)
+contentArea.Size = UDim2.new(1, -20, 1, -90)
+contentArea.Position = UDim2.new(0, 10, 0, 78)
 contentArea.BackgroundTransparency = 1
 contentArea.Parent = main
 
 local function switchTab(name)
     for n, btn in pairs(tabBtns) do
         local on = n == name
-        btn.BackgroundColor3 = on and Color3.fromRGB(50,180,100) or Color3.fromRGB(40,40,50)
-        btn.TextColor3 = on and Color3.new(1,1,1) or Color3.fromRGB(140,140,140)
+        btn.BackgroundColor3 = on and accentGrey or darkGrey
+        btn.TextColor3 = on and Color3.new(1, 1, 1) or textGrey
     end
-    for n, page in pairs(tabPages) do page.Visible = n == name end
+    for n, page in pairs(tabPages) do
+        page.Visible = n == name
+    end
 end
 
 for i, name in ipairs(TAB_NAMES) do
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.25,-2,1,0)
-    btn.BackgroundColor3 = i==1 and Color3.fromRGB(50,180,100) or Color3.fromRGB(40,40,50)
-    btn.TextColor3 = i==1 and Color3.new(1,1,1) or Color3.fromRGB(140,140,140)
-    btn.Text = name; btn.Font = Enum.Font.GothamBold; btn.TextSize = 9
-    btn.BorderSizePixel = 0; btn.LayoutOrder = i; btn.Parent = tabBar
+    btn.Size = UDim2.new(0.25, -3, 1, -4)
+    btn.BackgroundColor3 = i == 1 and accentGrey or darkGrey
+    btn.TextColor3 = i == 1 and Color3.new(1, 1, 1) or textGrey
+    btn.Text = name
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.BorderSizePixel = 0
+    btn.Parent = tabBar
     mkCorner(btn, 4)
     tabBtns[name] = btn
 
-    local page = Instance.new("Frame")
-    page.Size = UDim2.new(1,0,1,0)
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
-    page.Visible = i==1
+    page.Visible = i == 1
     page.Parent = contentArea
+    page.ScrollBarThickness = 4
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.ScrollBarImageColor3 = accentGrey
     tabPages[name] = page
 
-    btn.MouseButton1Click:Connect(function() switchTab(name) end)
+    btn.MouseButton1Click:Connect(function() 
+        switchTab(name) 
+    end)
 end
 
 -- ════════════════════════════════════════════════════════
 --  WIDGET HELPERS
 -- ════════════════════════════════════════════════════════
 
-local function mkSection(page, yOff, h)
+local function mkSection(parent, yOff, h, title)
     local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,0,h)
-    f.Position = UDim2.new(0,0,0,yOff)
-    f.BackgroundColor3 = Color3.fromRGB(30,30,40)
+    f.Size = UDim2.new(1, -10, 0, h)
+    f.Position = UDim2.new(0, 5, 0, yOff)
+    f.BackgroundColor3 = sectionColor
     f.BorderSizePixel = 0
-    f.Parent = page
+    f.Parent = parent
     mkCorner(f, 6)
+    
+    if title then
+        local titleLbl = Instance.new("TextLabel")
+        titleLbl.Size = UDim2.new(1, -12, 0, 20)
+        titleLbl.Position = UDim2.new(0, 6, 0, 2)
+        titleLbl.Text = title
+        titleLbl.Font = Enum.Font.GothamBold
+        titleLbl.TextSize = 11
+        titleLbl.TextColor3 = textGrey
+        titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+        titleLbl.BackgroundTransparency = 1
+        titleLbl.Parent = f
+    end
+    
     return f
 end
 
-local function mkToggle(parent, yOff, label)
+local function mkToggle(parent, yOff, label, default)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1,-12,0,22)
-    row.Position = UDim2.new(0,6,0,yOff)
+    row.Size = UDim2.new(1, -12, 0, 22)
+    row.Position = UDim2.new(0, 6, 0, yOff)
     row.BackgroundTransparency = 1
     row.Parent = parent
 
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1,-40,1,0)
+    lbl.Size = UDim2.new(1, -40, 1, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 10
-    lbl.TextColor3 = Color3.fromRGB(200,200,200)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 10
+    lbl.TextColor3 = textGrey
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Text = label; lbl.Parent = row
+    lbl.Text = label
+    lbl.Parent = row
 
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(0,30,0,16)
-    track.Position = UDim2.new(1,-30,0.5,-8)
-    track.BackgroundColor3 = Color3.fromRGB(50,50,62)
-    track.BorderSizePixel = 0; track.Parent = row
+    track.Size = UDim2.new(0, 30, 0, 16)
+    track.Position = UDim2.new(1, -30, 0.5, -8)
+    track.BackgroundColor3 = default and accentGrey or darkGrey
+    track.BorderSizePixel = 0
+    track.Parent = row
     mkCorner(track, 8)
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0,12,0,12)
-    knob.Position = UDim2.new(0,2,0.5,-6)
-    knob.BackgroundColor3 = Color3.fromRGB(160,160,160)
-    knob.BorderSizePixel = 0; knob.Parent = track
+    knob.Size = UDim2.new(0, 12, 0, 12)
+    knob.Position = default and UDim2.new(0, 16, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+    knob.BackgroundColor3 = default and Color3.new(1, 1, 1) or textGrey
+    knob.BorderSizePixel = 0
+    knob.Parent = track
     mkCorner(knob, 6)
 
-    local state = false; local cbs = {}
+    local state = default or false
+    local cbs = {}
+    
     local hit = Instance.new("TextButton")
-    hit.Size = UDim2.new(1,0,1,0)
-    hit.BackgroundTransparency = 1; hit.Text = ""; hit.Parent = track
+    hit.Size = UDim2.new(1, 0, 1, 0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.Parent = track
     hit.MouseButton1Click:Connect(function()
         state = not state
-        track.BackgroundColor3 = state and Color3.fromRGB(50,180,100) or Color3.fromRGB(50,50,62)
-        knob.Position = state and UDim2.new(0,16,0.5,-6) or UDim2.new(0,2,0.5,-6)
-        knob.BackgroundColor3 = state and Color3.new(1,1,1) or Color3.fromRGB(160,160,160)
-        for _,cb in ipairs(cbs) do cb(state) end
+        track.BackgroundColor3 = state and accentGrey or darkGrey
+        knob.Position = state and UDim2.new(0, 16, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+        knob.BackgroundColor3 = state and Color3.new(1, 1, 1) or textGrey
+        for _, cb in ipairs(cbs) do
+            pcall(cb, state)
+        end
     end)
-    return { onChanged = function(_, cb) table.insert(cbs, cb) end }
+    
+    return {
+        onChanged = function(_, cb)
+            table.insert(cbs, cb)
+        end,
+        getState = function() return state end,
+        setState = function(_, newState)
+            if state ~= newState then
+                state = newState
+                track.BackgroundColor3 = state and accentGrey or darkGrey
+                knob.Position = state and UDim2.new(0, 16, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+                knob.BackgroundColor3 = state and Color3.new(1, 1, 1) or textGrey
+                for _, cb in ipairs(cbs) do
+                    pcall(cb, state)
+                end
+            end
+        end
+    }
 end
 
 -- ════════════════════════════════════════════════════════
---  FARM TAB
+--  FARM TAB (FIXED POSITIONING)
 -- ════════════════════════════════════════════════════════
 
 local farmPage = tabPages["Farm"]
+local currentY = 5
 
--- Status
-local statusSec = mkSection(farmPage, 0, 30)
+-- Status section
+local statusSec = mkSection(farmPage, currentY, 40, "Farm Status")
+currentY = currentY + 45
+
 local statusText = Instance.new("TextLabel")
-statusText.Size = UDim2.new(1,-10,1,0)
-statusText.Position = UDim2.new(0,8,0,0)
+statusText.Size = UDim2.new(1, -20, 1, 0)
+statusText.Position = UDim2.new(0, 10, 0, 0)
 statusText.Text = "⏸ Idle – Press Start"
-statusText.Font = Enum.Font.GothamMedium; statusText.TextSize = 11
-statusText.TextColor3 = Color3.fromRGB(200,200,200)
-statusText.TextXAlignment = Enum.TextXAlignment.Left
-statusText.BackgroundTransparency = 1; statusText.Parent = statusSec
+statusText.Font = Enum.Font.GothamMedium
+statusText.TextSize = 12
+statusText.TextColor3 = textGrey
+statusText.TextXAlignment = Enum.TextXAlignment.Center  -- Centered!
+statusText.BackgroundTransparency = 1
+statusText.Parent = statusSec
 
 -- Route cards
-local cardsSec = mkSection(farmPage, 34, 66)
+local cardsSec = mkSection(farmPage, currentY, 90, "Flower Routes")
+currentY = currentY + 95
+
 local routeCards = {}
-local CW = math.floor(334/3) -- card width slot
+local CW = math.floor(340 / 3)
 
 for i, route in ipairs(ROUTES) do
     local card = Instance.new("Frame")
-    card.Size = UDim2.new(0, CW-5, 1,-8)
-    card.Position = UDim2.new(0, 3 + CW*(i-1), 0, 4)
-    card.BackgroundColor3 = Color3.fromRGB(25,25,35)
-    card.BorderSizePixel = 0; card.Parent = cardsSec
+    card.Size = UDim2.new(0, CW - 8, 0, 75)
+    card.Position = UDim2.new(0, 8 + (CW * (i-1)), 0, 8)
+    card.BackgroundColor3 = darkGrey
+    card.BorderSizePixel = 0
+    card.Parent = cardsSec
     mkCorner(card, 5)
 
+    -- Fixed: Remove the extra line by making strip properly contained
     local strip = Instance.new("Frame")
-    strip.Size = UDim2.new(1,0,0,3)
+    strip.Size = UDim2.new(1, 0, 0, 3)
     strip.BackgroundColor3 = route.color
-    strip.BorderSizePixel = 0; strip.Parent = card
+    strip.BorderSizePixel = 0
+    strip.Parent = card
+    strip.ClipsDescendants = true  -- This prevents overflow
     mkCorner(strip, 3)
 
     local nm = Instance.new("TextLabel")
-    nm.Size = UDim2.new(1,-4,0,16); nm.Position = UDim2.new(0,4,0,5)
-    nm.Text = route.name; nm.Font = Enum.Font.GothamBold; nm.TextSize = 10
-    nm.TextColor3 = route.color; nm.TextXAlignment = Enum.TextXAlignment.Left
-    nm.BackgroundTransparency = 1; nm.Parent = card
+    nm.Size = UDim2.new(1, -8, 0, 18)
+    nm.Position = UDim2.new(0, 4, 0, 5)
+    nm.Text = route.name
+    nm.Font = Enum.Font.GothamBold
+    nm.TextSize = 12
+    nm.TextColor3 = route.color
+    nm.TextXAlignment = Enum.TextXAlignment.Left
+    nm.BackgroundTransparency = 1
+    nm.Parent = card
 
     local cd = Instance.new("TextLabel")
-    cd.Size = UDim2.new(1,-4,0,12); cd.Position = UDim2.new(0,4,0,22)
-    cd.Text = "ready"; cd.Font = Enum.Font.Gotham; cd.TextSize = 9
-    cd.TextColor3 = Color3.fromRGB(100,255,100)
+    cd.Size = UDim2.new(1, -8, 0, 14)
+    cd.Position = UDim2.new(0, 4, 0, 24)
+    cd.Text = "ready"
+    cd.Font = Enum.Font.Gotham
+    cd.TextSize = 10
+    cd.TextColor3 = Color3.fromRGB(100, 255, 100)
     cd.TextXAlignment = Enum.TextXAlignment.Left
-    cd.BackgroundTransparency = 1; cd.Parent = card
+    cd.BackgroundTransparency = 1
+    cd.Parent = card
 
     local cnt = Instance.new("TextLabel")
-    cnt.Size = UDim2.new(1,-4,0,16); cnt.Position = UDim2.new(0,4,0,36)
-    cnt.Text = "0x"; cnt.Font = Enum.Font.GothamBold; cnt.TextSize = 13
-    cnt.TextColor3 = Color3.new(1,1,1)
+    cnt.Size = UDim2.new(1, -8, 0, 18)
+    cnt.Position = UDim2.new(0, 4, 0, 42)
+    cnt.Text = "0x"
+    cnt.Font = Enum.Font.GothamBold
+    cnt.TextSize = 15
+    cnt.TextColor3 = textGrey
     cnt.TextXAlignment = Enum.TextXAlignment.Left
-    cnt.BackgroundTransparency = 1; cnt.Parent = card
+    cnt.BackgroundTransparency = 1
+    cnt.Parent = card
 
-    routeCards[i] = {frame=card, count=cnt, cooldown=cd}
+    routeCards[i] = {frame = card, count = cnt, cooldown = cd}
 end
 
 -- Speed buttons
-local speedSec = mkSection(farmPage, 104, 44)
-local speedLabel = Instance.new("TextLabel")
-speedLabel.Size = UDim2.new(0,50,0,14); speedLabel.Position = UDim2.new(0,6,0,4)
-speedLabel.Text = "Speed"; speedLabel.Font = Enum.Font.Gotham; speedLabel.TextSize = 9
-speedLabel.TextColor3 = Color3.fromRGB(110,110,130)
-speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-speedLabel.BackgroundTransparency = 1; speedLabel.Parent = speedSec
+local speedSec = mkSection(farmPage, currentY, 55, "Movement Speed")
+currentY = currentY + 60
 
 local speedDefs = {
-    {name="SAFE",    col=Color3.fromRGB(70,130,200)},
-    {name="FAST",    col=Color3.fromRGB(50,180,100)},
-    {name="INSTANT", col=Color3.fromRGB(200,100,100)},
+    {name = "SAFE", col = Color3.fromRGB(70, 130, 200)},
+    {name = "FAST", col = Color3.fromRGB(50, 180, 100)},
+    {name = "INSTANT", col = Color3.fromRGB(200, 100, 100)},
 }
+
 local speedBtns = {}
 for i, sd in ipairs(speedDefs) do
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0,72,0,22)
-    btn.Position = UDim2.new(0, 6+74*(i-1), 0, 18)
-    btn.Text = sd.name; btn.Font = Enum.Font.GothamBold; btn.TextSize = 9
-    btn.TextColor3 = (sd.name==speedMode) and Color3.new(1,1,1) or Color3.fromRGB(140,140,140)
-    btn.BackgroundColor3 = (sd.name==speedMode) and sd.col or Color3.fromRGB(40,40,50)
-    btn.BorderSizePixel = 0; btn.Parent = speedSec
+    btn.Size = UDim2.new(0, 85, 0, 26)
+    btn.Position = UDim2.new(0, 10 + 90 * (i-1), 0, 22)
+    btn.Text = sd.name
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.TextColor3 = (sd.name == speedMode) and Color3.new(1, 1, 1) or textGrey
+    btn.BackgroundColor3 = (sd.name == speedMode) and sd.col or accentGrey
+    btn.BorderSizePixel = 0
+    btn.Parent = speedSec
     mkCorner(btn, 4)
-    speedBtns[sd.name] = {btn=btn, col=sd.col}
+    speedBtns[sd.name] = {btn = btn, col = sd.col}
+    
     btn.MouseButton1Click:Connect(function()
         speedMode = sd.name
         for n, sb in pairs(speedBtns) do
-            sb.btn.BackgroundColor3 = (n==sd.name) and sb.col or Color3.fromRGB(40,40,50)
-            sb.btn.TextColor3 = (n==sd.name) and Color3.new(1,1,1) or Color3.fromRGB(140,140,140)
+            sb.btn.BackgroundColor3 = (n == sd.name) and sb.col or accentGrey
+            sb.btn.TextColor3 = (n == sd.name) and Color3.new(1, 1, 1) or textGrey
         end
     end)
 end
 
--- ── Wheel Spin section ──────────────────────────────────
-local wheelSec = mkSection(farmPage, 152, 50)
+-- Wheel Spin section
+local wheelSec = mkSection(farmPage, currentY, 55, "Spring Wheel")
+currentY = currentY + 60
 
-local wheelIcon = Instance.new("TextLabel")
-wheelIcon.Size = UDim2.new(1,-16,0,14); wheelIcon.Position = UDim2.new(0,6,0,4)
-wheelIcon.Text = "Spring Wheel Auto-Spin"
-wheelIcon.Font = Enum.Font.GothamBold; wheelIcon.TextSize = 10
-wheelIcon.TextColor3 = Color3.fromRGB(170,140,255)
-wheelIcon.TextXAlignment = Enum.TextXAlignment.Left
-wheelIcon.BackgroundTransparency = 1; wheelIcon.Parent = wheelSec
-
-mkToggle(wheelSec, 18, "Auto Spin Wheel (uses tickets)"):onChanged(function(s)
+local wheelToggle = mkToggle(wheelSec, 8, "Auto Spin Wheel (uses tickets)", false)
+wheelToggle:onChanged(function(s)
     autoWheelValue = s
 end)
 
 local wheelCountLbl = Instance.new("TextLabel")
-wheelCountLbl.Size = UDim2.new(1,-16,0,14); wheelCountLbl.Position = UDim2.new(0,6,0,36)
+wheelCountLbl.Size = UDim2.new(1, -20, 0, 18)
+wheelCountLbl.Position = UDim2.new(0, 10, 0, 30)
 wheelCountLbl.Text = "Spins this session: 0"
-wheelCountLbl.Font = Enum.Font.Gotham; wheelCountLbl.TextSize = 9
-wheelCountLbl.TextColor3 = Color3.fromRGB(120,120,140)
+wheelCountLbl.Font = Enum.Font.Gotham
+wheelCountLbl.TextSize = 10
+wheelCountLbl.TextColor3 = textGrey
 wheelCountLbl.TextXAlignment = Enum.TextXAlignment.Left
-wheelCountLbl.BackgroundTransparency = 1; wheelCountLbl.Parent = wheelSec
+wheelCountLbl.BackgroundTransparency = 1
+wheelCountLbl.Parent = wheelSec
 
 -- Retry info
-local retrySec = mkSection(farmPage, 206, 22)
-local retryInfo = Instance.new("TextLabel")
-retryInfo.Size = UDim2.new(1,-10,1,0); retryInfo.Position = UDim2.new(0,6,0,0)
-retryInfo.Text = " Retry Queue: 0 spots"
-retryInfo.Font = Enum.Font.Gotham; retryInfo.TextSize = 9
-retryInfo.TextColor3 = Color3.fromRGB(200,200,100)
-retryInfo.TextXAlignment = Enum.TextXAlignment.Left
-retryInfo.BackgroundTransparency = 1; retryInfo.Parent = retrySec
+local retrySec = mkSection(farmPage, currentY, 35, "Retry System")
+currentY = currentY + 40
 
--- Start/stop
-local ctrlSec = mkSection(farmPage, 232, 36)
+local retryInfo = Instance.new("TextLabel")
+retryInfo.Size = UDim2.new(1, -20, 1, 0)
+retryInfo.Position = UDim2.new(0, 10, 0, 0)
+retryInfo.Text = "Retry Queue: 0 spots"
+retryInfo.Font = Enum.Font.Gotham
+retryInfo.TextSize = 10
+retryInfo.TextColor3 = Color3.fromRGB(200, 200, 100)  -- Keep yellow
+retryInfo.TextXAlignment = Enum.TextXAlignment.Center  -- Centered!
+retryInfo.BackgroundTransparency = 1
+retryInfo.Parent = retrySec
+
+-- Start/Stop button
+local ctrlSec = mkSection(farmPage, currentY, 50)
+currentY = currentY + 55
+
 local startBtn = Instance.new("TextButton")
-startBtn.Size = UDim2.new(0,110,0,26); startBtn.Position = UDim2.new(0.5,-55,0.5,-13)
-startBtn.Text = "▶ START"; startBtn.Font = Enum.Font.GothamBold; startBtn.TextSize = 12
-startBtn.TextColor3 = Color3.new(1,1,1)
-startBtn.BackgroundColor3 = Color3.fromRGB(50,180,100)
-startBtn.BorderSizePixel = 0; startBtn.Parent = ctrlSec
+startBtn.Size = UDim2.new(0, 130, 0, 32)
+startBtn.Position = UDim2.new(0.5, -65, 0.5, -16)
+startBtn.Text = "▶ START"
+startBtn.Font = Enum.Font.GothamBold
+startBtn.TextSize = 14
+startBtn.TextColor3 = textGrey
+startBtn.BackgroundColor3 = accentGrey
+startBtn.BorderSizePixel = 0
+startBtn.Parent = ctrlSec
 mkCorner(startBtn, 6)
 
 -- Stats row
-local statsSec = mkSection(farmPage, 272, 18)
+local statsSec = mkSection(farmPage, currentY, 30)
+currentY = currentY + 35
+
 local cyclesLabel = Instance.new("TextLabel")
-cyclesLabel.Size = UDim2.new(0.5,0,1,0); cyclesLabel.Position = UDim2.new(0,6,0,0)
-cyclesLabel.Text = "Total runs: 0"; cyclesLabel.Font = Enum.Font.Gotham; cyclesLabel.TextSize = 9
-cyclesLabel.TextColor3 = Color3.fromRGB(110,110,130)
+cyclesLabel.Size = UDim2.new(0.5, -10, 1, 0)
+cyclesLabel.Position = UDim2.new(0, 10, 0, 0)
+cyclesLabel.Text = "Total runs: 0"
+cyclesLabel.Font = Enum.Font.Gotham
+cyclesLabel.TextSize = 10
+cyclesLabel.TextColor3 = textGrey
 cyclesLabel.TextXAlignment = Enum.TextXAlignment.Left
-cyclesLabel.BackgroundTransparency = 1; cyclesLabel.Parent = statsSec
+cyclesLabel.BackgroundTransparency = 1
+cyclesLabel.Parent = statsSec
 
 local modeLabel = Instance.new("TextLabel")
-modeLabel.Size = UDim2.new(0.5,0,1,0); modeLabel.Position = UDim2.new(0.5,0,0,0)
-modeLabel.Text = "Mode: INSTANT"; modeLabel.Font = Enum.Font.Gotham; modeLabel.TextSize = 9
-modeLabel.TextColor3 = Color3.fromRGB(110,110,130)
+modeLabel.Size = UDim2.new(0.5, -10, 1, 0)
+modeLabel.Position = UDim2.new(0.5, 0, 0, 0)
+modeLabel.Text = "Mode: INSTANT"
+modeLabel.Font = Enum.Font.Gotham
+modeLabel.TextSize = 10
+modeLabel.TextColor3 = textGrey
 modeLabel.TextXAlignment = Enum.TextXAlignment.Right
-modeLabel.BackgroundTransparency = 1; modeLabel.Parent = statsSec
+modeLabel.BackgroundTransparency = 1
+modeLabel.Parent = statsSec
+
+farmPage.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
 
 -- ════════════════════════════════════════════════════════
 --  BUBBLES TAB
 -- ════════════════════════════════════════════════════════
 
 local bubPage = tabPages["Bubbles"]
-local bubSec = mkSection(bubPage, 0, 130)
+currentY = 5
 
-mkToggle(bubSec, 6,  "Auto Blow Bubbles"):onChanged(function(s) autoBlowValue = s end)
-mkToggle(bubSec, 32, "Auto Sell Bubbles"):onChanged(function(s) autoSellValue = s end)
+local bubSec = mkSection(bubPage, currentY, 150, "Bubble Controls")
+currentY = currentY + 155
+
+local blowToggle = mkToggle(bubSec, 8, "Auto Blow Bubbles", false)
+blowToggle:onChanged(function(s) autoBlowValue = s end)
+
+local sellToggle = mkToggle(bubSec, 35, "Auto Sell Bubbles", false)
+sellToggle:onChanged(function(s) autoSellValue = s end)
 
 local sliderLbl = Instance.new("TextLabel")
-sliderLbl.Size = UDim2.new(1,-12,0,14); sliderLbl.Position = UDim2.new(0,6,0,60)
+sliderLbl.Size = UDim2.new(1, -20, 0, 18)
+sliderLbl.Position = UDim2.new(0, 10, 0, 70)
 sliderLbl.Text = "Sell at % of storage: 50%"
-sliderLbl.Font = Enum.Font.Gotham; sliderLbl.TextSize = 9
-sliderLbl.TextColor3 = Color3.fromRGB(170,170,170)
+sliderLbl.Font = Enum.Font.Gotham
+sliderLbl.TextSize = 10
+sliderLbl.TextColor3 = textGrey
 sliderLbl.TextXAlignment = Enum.TextXAlignment.Left
-sliderLbl.BackgroundTransparency = 1; sliderLbl.Parent = bubSec
+sliderLbl.BackgroundTransparency = 1
+sliderLbl.Parent = bubSec
 
 local sliderTrack = Instance.new("Frame")
-sliderTrack.Size = UDim2.new(1,-12,0,6); sliderTrack.Position = UDim2.new(0,6,0,80)
-sliderTrack.BackgroundColor3 = Color3.fromRGB(40,40,52)
-sliderTrack.BorderSizePixel = 0; sliderTrack.Parent = bubSec
+sliderTrack.Size = UDim2.new(1, -20, 0, 6)
+sliderTrack.Position = UDim2.new(0, 10, 0, 95)
+sliderTrack.BackgroundColor3 = darkGrey
+sliderTrack.BorderSizePixel = 0
+sliderTrack.Parent = bubSec
 mkCorner(sliderTrack, 3)
 
 local sliderFill = Instance.new("Frame")
-sliderFill.Size = UDim2.new(0.5,0,1,0)
-sliderFill.BackgroundColor3 = Color3.fromRGB(50,180,100)
-sliderFill.BorderSizePixel = 0; sliderFill.Parent = sliderTrack
+sliderFill.Size = UDim2.new(0.5, 0, 1, 0)
+sliderFill.BackgroundColor3 = accentGrey
+sliderFill.BorderSizePixel = 0
+sliderFill.Parent = sliderTrack
 mkCorner(sliderFill, 3)
 
 local sliderKnob = Instance.new("TextButton")
-sliderKnob.Size = UDim2.new(0,14,0,14)
-sliderKnob.AnchorPoint = Vector2.new(0.5,0.5)
-sliderKnob.Position = UDim2.new(0.5,0,0.5,0)
-sliderKnob.BackgroundColor3 = Color3.new(1,1,1)
-sliderKnob.Text = ""; sliderKnob.BorderSizePixel = 0; sliderKnob.ZIndex = 3
+sliderKnob.Size = UDim2.new(0, 16, 0, 16)
+sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+sliderKnob.Position = UDim2.new(0.5, 0, 0.5, 0)
+sliderKnob.BackgroundColor3 = textGrey
+sliderKnob.Text = ""
+sliderKnob.BorderSizePixel = 0
+sliderKnob.ZIndex = 3
 sliderKnob.Parent = sliderTrack
-mkCorner(sliderKnob, 7)
+mkCorner(sliderKnob, 8)
 
 local draggingSlider = false
 sliderKnob.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingSlider = true end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingSlider = true
+    end
 end)
+
 UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingSlider = false end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingSlider = false
+    end
 end)
+
 UserInputService.InputChanged:Connect(function(i)
     if draggingSlider and i.UserInputType == Enum.UserInputType.MouseMovement then
         local rel = math.clamp((i.Position.X - sliderTrack.AbsolutePosition.X) / sliderTrack.AbsoluteSize.X, 0, 1)
-        autoSellPer = math.floor(rel*99+1)
-        sliderFill.Size = UDim2.new(rel,0,1,0)
-        sliderKnob.Position = UDim2.new(rel,0,0.5,0)
+        autoSellPer = math.floor(rel * 99 + 1)
+        sliderFill.Size = UDim2.new(rel, 0, 1, 0)
+        sliderKnob.Position = UDim2.new(rel, 0, 0.5, 0)
         sliderLbl.Text = string.format("Sell at %% of storage: %d%%", autoSellPer)
     end
 end)
+
+bubPage.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
 
 -- ════════════════════════════════════════════════════════
 --  AUTOMATION TAB
 -- ════════════════════════════════════════════════════════
 
 local autoPage = tabPages["Automation"]
-local autoSec = mkSection(autoPage, 0, 170)
+currentY = 5
+
+-- Unlock Areas button
+local unlockSec = mkSection(autoPage, currentY, 50, "World Unlocker")
+currentY = currentY + 55
 
 local unlockBtn = Instance.new("TextButton")
-unlockBtn.Size = UDim2.new(1,-12,0,26); unlockBtn.Position = UDim2.new(0,6,0,6)
-unlockBtn.Text = " Unlock All Areas"
-unlockBtn.Font = Enum.Font.GothamBold; unlockBtn.TextSize = 11
-unlockBtn.TextColor3 = Color3.new(1,1,1)
-unlockBtn.BackgroundColor3 = Color3.fromRGB(70,130,200)
-unlockBtn.BorderSizePixel = 0; unlockBtn.Parent = autoSec
+unlockBtn.Size = UDim2.new(1, -20, 0, 28)
+unlockBtn.Position = UDim2.new(0, 10, 0, 12)
+unlockBtn.Text = "🔓 Unlock All Areas"
+unlockBtn.Font = Enum.Font.GothamBold
+unlockBtn.TextSize = 12
+unlockBtn.TextColor3 = textGrey
+unlockBtn.BackgroundColor3 = accentGrey
+unlockBtn.BorderSizePixel = 0
+unlockBtn.Parent = unlockSec
 mkCorner(unlockBtn, 5)
+
 unlockBtn.MouseButton1Click:Connect(function()
-    unlockBtn.Text = " Unlocking..."
-    unlockBtn.BackgroundColor3 = Color3.fromRGB(50,80,120)
+    unlockBtn.Text = "⏳ Unlocking..."
+    unlockBtn.BackgroundColor3 = darkGrey
     task.spawn(function()
-        for _, v in pairs(workspace.Worlds["The Overworld"].Islands:GetChildren()) do
-            firetouchinterest(player.Character.HumanoidRootPart, v.Island.UnlockHitbox, 0)
-            task.wait(0.1)
-            firetouchinterest(player.Character.HumanoidRootPart, v.Island.UnlockHitbox, 1)
-            task.wait(10)
+        local worlds = workspace:FindFirstChild("Worlds")
+        if worlds then
+            local overworld = worlds:FindFirstChild("The Overworld")
+            if overworld then
+                local islands = overworld:FindFirstChild("Islands")
+                if islands then
+                    for _, v in pairs(islands:GetChildren()) do
+                        local unlockHitbox = v:FindFirstChild("UnlockHitbox")
+                        if unlockHitbox and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            firetouchinterest(player.Character.HumanoidRootPart, unlockHitbox, 0)
+                            task.wait(0.1)
+                            firetouchinterest(player.Character.HumanoidRootPart, unlockHitbox, 1)
+                            task.wait(0.5)
+                        end
+                    end
+                end
+            end
         end
-        unlockBtn.Text = " Done"
+        unlockBtn.Text = "✅ Done"
+        unlockBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 100)
         task.wait(2)
-        unlockBtn.Text = "  Unlock All Areas"
-        unlockBtn.BackgroundColor3 = Color3.fromRGB(70,130,200)
+        unlockBtn.Text = "🔓 Unlock All Areas"
+        unlockBtn.BackgroundColor3 = accentGrey
     end)
 end)
 
-mkToggle(autoSec, 38,  "Auto Collect Coins"):onChanged(function(s)
-    autoCollectCoinsValue = s
-    if s then
-        for i, v in pairs(Tutorial._activePickups) do
-            v:Destroy()
-            Tutorial._activePickups[tostring(i)] = nil
-            ReplicatedStorage.Remotes.Pickups.CollectPickup:FireServer(i)
-        end
-    end
-end)
-mkToggle(autoSec, 64,  "Auto Claim Playtime"):onChanged(function(s)   autoclaimplaytimeval = s end)
-mkToggle(autoSec, 90,  "Auto Claim Chests"):onChanged(function(s)     autoclaimchestsval   = s end)
-mkToggle(autoSec, 116, "Auto Claim Rift Gifts"):onChanged(function(s) autoClaimRiftGiftval = s end)
+-- Auto Collect
+local collectSec = mkSection(autoPage, currentY, 110, "Auto Collectors")
+currentY = currentY + 115
 
-workspace.Rendered:GetChildren()[14].ChildAdded:Connect(function(coin)
-    if autoCollectCoinsValue then
-        coin:Destroy()
-        Tutorial._activePickups[tostring(coin.Name)] = nil
-        ReplicatedStorage.Remotes.Pickups.CollectPickup:FireServer(coin.Name)
+local coinToggle = mkToggle(collectSec, 8, "Auto Collect Coins", false)
+coinToggle:onChanged(function(s) autoCollectCoinsValue = s end)
+
+local playtimeToggle = mkToggle(collectSec, 35, "Auto Claim Playtime", false)
+playtimeToggle:onChanged(function(s) autoclaimplaytimeval = s end)
+
+local chestToggle = mkToggle(collectSec, 62, "Auto Claim Chests", false)
+chestToggle:onChanged(function(s) autoclaimchestsval = s end)
+
+local riftToggle = mkToggle(collectSec, 89, "Auto Claim Rift Gifts", false)
+riftToggle:onChanged(function(s) autoClaimRiftGiftval = s end)
+
+-- Staff Watch Section
+local staffSec = mkSection(autoPage, currentY, 110, "👮 Staff Watch System")
+currentY = currentY + 115
+
+local staffToggle = mkToggle(staffSec, 8, "Enable Staff Watch", true)
+staffToggle:onChanged(function(s)
+    staffWatchEnabled = s
+    if s and not staffWatchThread then
+        staffWatchThread = task.spawn(staffWatchLoop)
+    elseif not s and staffWatchThread then
+        task.cancel(staffWatchThread)
+        staffWatchThread = nil
     end
+    staffIndicator.BackgroundColor3 = s and (staffDetected and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)) or Color3.fromRGB(100, 100, 100)
 end)
+
+local autoHopToggle = mkToggle(staffSec, 35, "Auto Server Hop on Staff", true)
+autoHopToggle:onChanged(function(s) autoServerHop = s end)
+
+local staffListLbl = Instance.new("TextLabel")
+staffListLbl.Size = UDim2.new(1, -20, 0, 40)
+staffListLbl.Position = UDim2.new(0, 10, 0, 65)
+staffListLbl.Text = "Staff in server: None"
+staffListLbl.Font = Enum.Font.Gotham
+staffListLbl.TextSize = 10
+staffListLbl.TextColor3 = Color3.fromRGB(100, 255, 100)
+staffListLbl.TextXAlignment = Enum.TextXAlignment.Left
+staffListLbl.TextWrapped = true
+staffListLbl.BackgroundTransparency = 1
+staffListLbl.Parent = staffSec
+
+autoPage.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
 
 -- ════════════════════════════════════════════════════════
 --  PETS TAB
 -- ════════════════════════════════════════════════════════
 
 local petPage = tabPages["Pets"]
-local petSec = mkSection(petPage, 0, 200)
+currentY = 5
+
+local eggSec = mkSection(petPage, currentY, 110, "Egg Hatching")
+currentY = currentY + 115
 
 local dropLbl = Instance.new("TextLabel")
-dropLbl.Size = UDim2.new(1,-12,0,14); dropLbl.Position = UDim2.new(0,6,0,6)
+dropLbl.Size = UDim2.new(1, -20, 0, 18)
+dropLbl.Position = UDim2.new(0, 10, 0, 8)
 dropLbl.Text = "Selected Egg:"
-dropLbl.Font = Enum.Font.Gotham; dropLbl.TextSize = 9
-dropLbl.TextColor3 = Color3.fromRGB(140,140,140)
+dropLbl.Font = Enum.Font.Gotham
+dropLbl.TextSize = 10
+dropLbl.TextColor3 = textGrey
 dropLbl.TextXAlignment = Enum.TextXAlignment.Left
-dropLbl.BackgroundTransparency = 1; dropLbl.Parent = petSec
+dropLbl.BackgroundTransparency = 1
+dropLbl.Parent = eggSec
 
 local eggDropBtn = Instance.new("TextButton")
-eggDropBtn.Size = UDim2.new(1,-12,0,24); eggDropBtn.Position = UDim2.new(0,6,0,22)
-eggDropBtn.BackgroundColor3 = Color3.fromRGB(40,40,52)
-eggDropBtn.Text = " "..(selectedEgg ~= "" and selectedEgg or "Select egg...")
-eggDropBtn.Font = Enum.Font.Gotham; eggDropBtn.TextSize = 10
-eggDropBtn.TextColor3 = Color3.fromRGB(220,220,220)
+eggDropBtn.Size = UDim2.new(1, -20, 0, 28)
+eggDropBtn.Position = UDim2.new(0, 10, 0, 28)
+eggDropBtn.BackgroundColor3 = darkGrey
+eggDropBtn.Text = " " .. (selectedEgg ~= "" and selectedEgg or "Select egg...")
+eggDropBtn.Font = Enum.Font.Gotham
+eggDropBtn.TextSize = 11
+eggDropBtn.TextColor3 = textGrey
 eggDropBtn.TextXAlignment = Enum.TextXAlignment.Left
-eggDropBtn.BorderSizePixel = 0; eggDropBtn.Parent = petSec
+eggDropBtn.BorderSizePixel = 0
+eggDropBtn.Parent = eggSec
 mkCorner(eggDropBtn, 5)
 
 local arrowL = Instance.new("TextLabel")
-arrowL.Size = UDim2.new(0,18,1,0); arrowL.Position = UDim2.new(1,-20,0,0)
-arrowL.Text = "▾"; arrowL.Font = Enum.Font.GothamBold; arrowL.TextSize = 11
-arrowL.TextColor3 = Color3.fromRGB(140,140,140)
-arrowL.BackgroundTransparency = 1; arrowL.Parent = eggDropBtn
+arrowL.Size = UDim2.new(0, 20, 1, 0)
+arrowL.Position = UDim2.new(1, -22, 0, 0)
+arrowL.Text = "▾"
+arrowL.Font = Enum.Font.GothamBold
+arrowL.TextSize = 12
+arrowL.TextColor3 = textGrey
+arrowL.BackgroundTransparency = 1
+arrowL.Parent = eggDropBtn
 
 local dropList = Instance.new("Frame")
-dropList.Size = UDim2.new(1,-12,0,math.min(#eggs,5)*20)
-dropList.Position = UDim2.new(0,6,0,48)
-dropList.BackgroundColor3 = Color3.fromRGB(35,35,48)
-dropList.BorderSizePixel = 0; dropList.Visible = false
-dropList.ZIndex = 10; dropList.ClipsDescendants = true
-dropList.Parent = petSec
+dropList.Size = UDim2.new(1, -20, 0, math.min(#eggs, 5) * 24)
+dropList.Position = UDim2.new(0, 10, 0, 58)
+dropList.BackgroundColor3 = darkGrey
+dropList.BorderSizePixel = 0
+dropList.Visible = false
+dropList.ZIndex = 10
+dropList.ClipsDescendants = true
+dropList.Parent = eggSec
 mkCorner(dropList, 5)
 
 local scrollF = Instance.new("ScrollingFrame")
-scrollF.Size = UDim2.new(1,0,1,0)
-scrollF.BackgroundTransparency = 1; scrollF.ScrollBarThickness = 3
-scrollF.CanvasSize = UDim2.new(0,0,0,#eggs*20)
-scrollF.ZIndex = 11; scrollF.Parent = dropList
-Instance.new("UIListLayout", scrollF).SortOrder = Enum.SortOrder.LayoutOrder
+scrollF.Size = UDim2.new(1, 0, 1, 0)
+scrollF.BackgroundTransparency = 1
+scrollF.ScrollBarThickness = 3
+scrollF.CanvasSize = UDim2.new(0, 0, 0, #eggs * 24)
+scrollF.ZIndex = 11
+scrollF.Parent = dropList
+
+local eggLayout = Instance.new("UIListLayout")
+eggLayout.SortOrder = Enum.SortOrder.LayoutOrder
+eggLayout.Parent = scrollF
 
 for i, egg in ipairs(eggs) do
     local item = Instance.new("TextButton")
-    item.Size = UDim2.new(1,0,0,20); item.BackgroundTransparency = 1
-    item.Text = "  "..egg; item.Font = Enum.Font.Gotham; item.TextSize = 10
-    item.TextColor3 = Color3.fromRGB(210,210,210)
+    item.Size = UDim2.new(1, 0, 0, 24)
+    item.BackgroundTransparency = 1
+    item.Text = "  " .. egg
+    item.Font = Enum.Font.Gotham
+    item.TextSize = 11
+    item.TextColor3 = textGrey
     item.TextXAlignment = Enum.TextXAlignment.Left
-    item.BorderSizePixel = 0; item.LayoutOrder = i; item.ZIndex = 12
+    item.BorderSizePixel = 0
+    item.LayoutOrder = i
+    item.ZIndex = 12
     item.Parent = scrollF
-    item.MouseEnter:Connect(function() item.BackgroundTransparency=0; item.BackgroundColor3=Color3.fromRGB(50,50,65) end)
-    item.MouseLeave:Connect(function() item.BackgroundTransparency=1 end)
+    
+    item.MouseEnter:Connect(function()
+        item.BackgroundTransparency = 0
+        item.BackgroundColor3 = accentGrey
+    end)
+    
+    item.MouseLeave:Connect(function()
+        item.BackgroundTransparency = 1
+    end)
+    
     item.MouseButton1Click:Connect(function()
-        selectedEgg = egg; eggDropBtn.Text = " "..egg; dropList.Visible = false
+        selectedEgg = egg
+        eggDropBtn.Text = " " .. egg
+        dropList.Visible = false
     end)
 end
-eggDropBtn.MouseButton1Click:Connect(function() dropList.Visible = not dropList.Visible end)
 
-local toggleBase = math.min(#eggs,5)*20 + 52
-mkToggle(petSec, toggleBase,    "Auto Hatch"):onChanged(function(s) autoHatchValue = s end)
-mkToggle(petSec, toggleBase+26, "Auto Open Mystery Boxes"):onChanged(function(s) autoGiftValue = s end)
+eggDropBtn.MouseButton1Click:Connect(function()
+    dropList.Visible = not dropList.Visible
+end)
+
+-- Auto Hatch toggle
+local hatchToggle = mkToggle(eggSec, 70, "Auto Hatch", false)
+hatchToggle:onChanged(function(s) autoHatchValue = s end)
+
+-- Mystery Box section
+local giftSec = mkSection(petPage, currentY, 50, "Mystery Boxes")
+currentY = currentY + 55
+
+local giftToggle = mkToggle(giftSec, 8, "Auto Open Mystery Boxes", false)
+giftToggle:onChanged(function(s) autoGiftValue = s end)
+
+petPage.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
 
 -- ════════════════════════════════════════════════════════
---  UI UPDATE
+--  UI UPDATE FUNCTIONS
 -- ════════════════════════════════════════════════════════
 
 local function setStatus(txt, col)
-    statusText.Text = txt
-    if col then statusText.TextColor3 = col end
+    if statusText then
+        statusText.Text = txt
+        if col then
+            statusText.TextColor3 = col
+        end
+    end
 end
 
 local function highlightRoute(id)
     for i, card in ipairs(routeCards) do
-        card.frame.BackgroundColor3 = (i==id) and Color3.fromRGB(40,40,55) or Color3.fromRGB(25,25,35)
+        card.frame.BackgroundColor3 = (i == id) and accentGrey or darkGrey
     end
 end
 
 local function updateUI()
-    for i in ipairs(ROUTES) do routeCards[i].count.Text = routeCounts[i].."x" end
-    cyclesLabel.Text = "Total runs: "..totalCycles
-    modeLabel.Text   = "Mode: "..speedMode
-    retryInfo.Text   = string.format(" Retry Queue: %d spots", #RetrySystem.retryQueue)
-    wheelCountLbl.Text = "Spins this session: "..wheelSpins
+    for i in ipairs(ROUTES) do
+        if routeCards[i] and routeCards[i].count then
+            routeCards[i].count.Text = routeCounts[i] .. "x"
+        end
+    end
+    if cyclesLabel then cyclesLabel.Text = "Total runs: " .. totalCycles end
+    if modeLabel then modeLabel.Text = "Mode: " .. speedMode end
+    if retryInfo then retryInfo.Text = string.format("Retry Queue: %d spots", #RetrySystem.retryQueue) end
+    if wheelCountLbl then wheelCountLbl.Text = "Spins this session: " .. wheelSpins end
+    
+    if staffListLbl then
+        if #currentServerStaff > 0 then
+            staffListLbl.Text = "Staff in server: " .. table.concat(currentServerStaff, ", ")
+            staffListLbl.TextColor3 = Color3.fromRGB(255, 100, 100)
+            staffIndicator.BackgroundColor3 = staffWatchEnabled and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(100, 100, 100)
+        else
+            staffListLbl.Text = "Staff in server: None"
+            staffListLbl.TextColor3 = Color3.fromRGB(100, 255, 100)
+            staffIndicator.BackgroundColor3 = staffWatchEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(100, 100, 100)
+        end
+    end
 end
 
 -- ════════════════════════════════════════════════════════
@@ -732,14 +1273,21 @@ end
 
 local function moveToPosition(targetCF, duration)
     local root = getRoot()
+    if not root then return end
+    
     if speedMode == "INSTANT" then
-        root.CFrame = targetCF; task.wait(0.1)
+        root.CFrame = targetCF
+        task.wait(0.1)
     elseif speedMode == "FAST" then
-        local t = TweenService:Create(root, TweenInfo.new(duration or 0.5, Enum.EasingStyle.Linear), {CFrame=targetCF})
-        t:Play(); t.Completed:Wait(); task.wait(interactionDelay)
+        local t = TweenService:Create(root, TweenInfo.new(duration or 0.5, Enum.EasingStyle.Linear), {CFrame = targetCF})
+        t:Play()
+        t.Completed:Wait()
+        task.wait(interactionDelay)
     else
-        local t = TweenService:Create(root, TweenInfo.new(duration or 1.5, Enum.EasingStyle.Linear), {CFrame=targetCF})
-        t:Play(); t.Completed:Wait(); task.wait(interactionDelay + 0.2)
+        local t = TweenService:Create(root, TweenInfo.new(duration or 1.5, Enum.EasingStyle.Linear), {CFrame = targetCF})
+        t:Play()
+        t.Completed:Wait()
+        task.wait(interactionDelay + 0.2)
     end
 end
 
@@ -750,17 +1298,17 @@ end
 local function runRoute(route)
     if not farmEnabled then return end
     highlightRoute(route.id)
-    setStatus(" Farming "..route.name.."...", route.color)
+    setStatus(" Farming " .. route.name .. "...", route.color)
     nextReadyAt[route.id] = tick() + route.cooldown
 
     for i, wp in ipairs(route.waypoints) do
         if not farmEnabled then break end
         setStatus(string.format("%s: point %d/%d", route.name, i, #route.waypoints), route.color)
-        moveToPosition(wp, speedMode=="SAFE" and 1.5 or 0.5)
+        moveToPosition(wp, speedMode == "SAFE" and 1.5 or 0.5)
         task.wait(0.2)
         if not verifySpot(wp) then
             markForRetry(wp, route.id)
-            setStatus(string.format(" %s pt %d → retry", route.name, i), Color3.fromRGB(255,200,100))
+            setStatus(string.format(" %s pt %d → retry", route.name, i), Color3.fromRGB(255, 200, 100))
         else
             markSuccessful(wp)
         end
@@ -769,7 +1317,8 @@ local function runRoute(route)
 
     routeCounts[route.id] = routeCounts[route.id] + 1
     totalCycles = totalCycles + 1
-    updateUI(); highlightRoute(0)
+    updateUI()
+    highlightRoute(0)
 end
 
 -- ════════════════════════════════════════════════════════
@@ -782,11 +1331,12 @@ local function retryLoop()
             local spot = getNextRetrySpot()
             if spot then
                 setStatus(string.format("Retry attempt %d/%d", spot.failCount, RetrySystem.maxRetries),
-                    Color3.fromRGB(255,200,100))
+                    Color3.fromRGB(255, 200, 100))
                 local ok = retrySpot(spot)
                 setStatus(ok and " Retry OK!" or "Retry failed – queued again",
-                    ok and Color3.fromRGB(100,255,100) or Color3.fromRGB(255,150,50))
-                updateUI(); task.wait(1)
+                    ok and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 150, 50))
+                updateUI()
+                task.wait(1)
             end
         end
         task.wait(0.5)
@@ -800,11 +1350,17 @@ end
 local function wheelLoop()
     while farmEnabled do
         if autoWheelValue then
-            FunctionHandler:InvokeServer("SpringWheelSpin")
-            task.wait(0.5)
-            EventHandler:FireServer("ClaimSpringWheelSpinQueue")
-            wheelSpins = wheelSpins + 1
-            updateUI()
+            pcall(function()
+                if FunctionHandler then
+                    FunctionHandler:InvokeServer("SpringWheelSpin")
+                end
+                task.wait(0.5)
+                if EventHandler then
+                    EventHandler:FireServer("ClaimSpringWheelSpinQueue")
+                end
+                wheelSpins = wheelSpins + 1
+                updateUI()
+            end)
             task.wait(1)
         else
             task.wait(0.5)
@@ -819,12 +1375,17 @@ end
 local function getNextRoute()
     local now = tick()
     for _, route in ipairs(ROUTES) do
-        if now >= (nextReadyAt[route.id] or 0) then return route, 0 end
+        if now >= (nextReadyAt[route.id] or 0) then
+            return route, 0
+        end
     end
     local soonest, soonestTime = nil, math.huge
     for _, route in ipairs(ROUTES) do
         local ra = nextReadyAt[route.id] or 0
-        if ra < soonestTime then soonestTime = ra; soonest = route end
+        if ra < soonestTime then
+            soonestTime = ra
+            soonest = route
+        end
     end
     return soonest, soonestTime - now
 end
@@ -834,29 +1395,35 @@ end
 -- ════════════════════════════════════════════════════════
 
 local function farmLoop()
-    for _, route in ipairs(ROUTES) do nextReadyAt[route.id] = 0 end
+    for _, route in ipairs(ROUTES) do
+        nextReadyAt[route.id] = 0
+    end
     while farmEnabled do
         local route, waitTime = getNextRoute()
         if waitTime > 0 then
             setStatus(string.format("Idle %.1fs (%d retry)", waitTime, #RetrySystem.retryQueue),
-                Color3.fromRGB(255,200,100))
+                Color3.fromRGB(255, 200, 100))
             currentRoute = nil
             local deadline = tick() + waitTime
             while farmEnabled and tick() < deadline do
                 local cr = getNextRoute()
-                if cr and cr.id ~= route.id and (nextReadyAt[cr.id] or 0) <= tick() then break end
+                if cr and cr.id ~= route.id and (nextReadyAt[cr.id] or 0) <= tick() then
+                    break
+                end
                 task.wait(0.1)
             end
         end
         if farmEnabled then
             local nextRoute = getNextRoute()
             if nextRoute then
-                currentRoute = nextRoute; runRoute(nextRoute); currentRoute = nil
+                currentRoute = nextRoute
+                runRoute(nextRoute)
+                currentRoute = nil
             end
         end
     end
     currentRoute = nil
-    setStatus("⏸ Idle – Press Start", Color3.fromRGB(200,200,200))
+    setStatus("⏸ Idle – Press Start", Color3.fromRGB(200, 200, 200))
     highlightRoute(0)
 end
 
@@ -867,20 +1434,27 @@ end
 startBtn.MouseButton1Click:Connect(function()
     farmEnabled = not farmEnabled
     if farmEnabled then
-        startBtn.Text = " STOP"
-        startBtn.BackgroundColor3 = Color3.fromRGB(200,100,100)
-        setStatus("▶ Farming started", Color3.fromRGB(100,255,100))
-        if farmThread  then task.cancel(farmThread)  end
+        startBtn.Text = "⏹ STOP"
+        startBtn.BackgroundColor3 = Color3.fromRGB(180, 100, 100)
+        setStatus("▶ Farming started", Color3.fromRGB(100, 255, 100))
+        
+        if farmThread then task.cancel(farmThread) end
         if retryThread then task.cancel(retryThread) end
         if wheelThread then task.cancel(wheelThread) end
-        farmThread  = task.spawn(farmLoop)
+        
+        farmThread = task.spawn(farmLoop)
         retryThread = task.spawn(retryLoop)
         wheelThread = task.spawn(wheelLoop)
+        
+        if staffWatchEnabled and not staffWatchThread then
+            staffWatchThread = task.spawn(staffWatchLoop)
+        end
     else
         startBtn.Text = "▶ START"
-        startBtn.BackgroundColor3 = Color3.fromRGB(50,180,100)
-        setStatus("⏸ Idle – Press Start", Color3.fromRGB(200,200,200))
-        if farmThread  then task.cancel(farmThread);  farmThread  = nil end
+        startBtn.BackgroundColor3 = accentGrey
+        setStatus("⏸ Idle – Press Start", textGrey)
+        
+        if farmThread then task.cancel(farmThread); farmThread = nil end
         if retryThread then task.cancel(retryThread); retryThread = nil end
         if wheelThread then task.cancel(wheelThread); wheelThread = nil end
     end
@@ -891,14 +1465,16 @@ end)
 -- ════════════════════════════════════════════════════════
 
 task.spawn(function()
-    while sg.Parent do
+    while sg and sg.Parent do
         if farmEnabled then
             local now = tick()
             for i, route in ipairs(ROUTES) do
                 local rem = (nextReadyAt[route.id] or 0) - now
-                routeCards[i].cooldown.Text = rem > 0 and string.format("%.0fs", rem) or "ready"
-                routeCards[i].cooldown.TextColor3 = rem > 0
-                    and Color3.fromRGB(255,200,100) or Color3.fromRGB(100,255,100)
+                if routeCards[i] and routeCards[i].cooldown then
+                    routeCards[i].cooldown.Text = rem > 0 and string.format("%.0fs", rem) or "ready"
+                    routeCards[i].cooldown.TextColor3 = rem > 0
+                        and Color3.fromRGB(255, 200, 100) or Color3.fromRGB(100, 255, 100)
+                end
             end
             updateUI()
         end
@@ -910,60 +1486,178 @@ end)
 --  AUTOMATION LOOPS
 -- ════════════════════════════════════════════════════════
 
-coroutine.wrap(function()
-    while wait(0.5) do
-        if autoBlowValue then EventHandler:FireServer("BlowBubble") end
-        if autoSellValue and (autoSellPer/100)*StatsUtil:GetBubbleStorage(Data) <= Data.Bubble.Amount then
-            EventHandler:FireServer("SellBubble")
-        end
-    end
-end)()
-
-coroutine.wrap(function()
-    while wait(0.1) do
-        if autoclaimplaytimeval then
-            local count = 1
-            for _ in pairs(Data.PlaytimeRewards.Claimed) do count += 1 end
-            FunctionHandler:InvokeServer("ClaimPlaytime", count)
-        end
-        if autoclaimchestsval then
-            for i in pairs(require(SData.Chests)) do EventHandler:FireServer("ClaimChest", i) end
-        end
-    end
-end)()
-
-EventHandler.OnClientEvent:Connect(function(eventName, gifts)
-    if eventName == "RenderGifts" and autoClaimRiftGiftval then
-        for giftId in pairs(gifts) do
-            task.delay(0.1, function() EventHandler:FireServer("ClaimRiftGift", giftId) end)
-        end
+task.spawn(function()
+    while sg and sg.Parent do
+        task.wait(0.5)
+        pcall(function()
+            if autoBlowValue and EventHandler then
+                EventHandler:FireServer("BlowBubble")
+            end
+            if autoSellValue and StatsUtil and StatsUtil.GetBubbleStorage and Data then
+                local storage = StatsUtil:GetBubbleStorage(Data)
+                if storage and Data.Bubble and Data.Bubble.Amount then
+                    local threshold = (autoSellPer / 100) * storage
+                    if Data.Bubble.Amount >= threshold then
+                        EventHandler:FireServer("SellBubble")
+                    end
+                end
+            end
+        end)
     end
 end)
 
-coroutine.wrap(function()
-    while wait(0.1) do
-        if autoHatchValue and selectedEgg ~= "" then
-            EventHandler:FireServer("HatchEgg", selectedEgg, 1)
-        end
+task.spawn(function()
+    while sg and sg.Parent do
+        task.wait(0.1)
+        pcall(function()
+            if autoclaimplaytimeval and FunctionHandler and Data and Data.PlaytimeRewards then
+                local count = 1
+                if Data.PlaytimeRewards.Claimed then
+                    for _ in pairs(Data.PlaytimeRewards.Claimed) do
+                        count = count + 1
+                    end
+                end
+                FunctionHandler:InvokeServer("ClaimPlaytime", count)
+            end
+            if autoclaimchestsval and SData and SData:FindFirstChild("Chests") then
+                local chests = safeRequire(SData.Chests, {})
+                for i in pairs(chests) do
+                    if EventHandler then
+                        EventHandler:FireServer("ClaimChest", i)
+                    end
+                end
+            end
+        end)
     end
-end)()
+end)
 
-coroutine.wrap(function()
-    while wait(0.1) do
-        if autoGiftValue then
-            local amt = require(Utils.Stats.ItemUtil):GetOwnedAmount(Data, {Type="Powerup", Name="Mystery Box"})
-            local open = amt>=10 and 10 or amt>=5 and 5 or 1
-            if amt > 0 then
-                EventHandler:FireServer("UseGift", "Mystery Box", open)
-                wait(0.5)
-                for _ = 1,8 do mouse1click(); task.wait(0.5) end
+if EventHandler then
+    EventHandler.OnClientEvent:Connect(function(eventName, gifts)
+        if eventName == "RenderGifts" and autoClaimRiftGiftval then
+            for giftId in pairs(gifts or {}) do
+                task.delay(0.1, function()
+                    pcall(function()
+                        EventHandler:FireServer("ClaimRiftGift", giftId)
+                    end)
+                end)
             end
         end
+    end)
+end
+
+task.spawn(function()
+    while sg and sg.Parent do
+        task.wait(0.1)
+        pcall(function()
+            if autoHatchValue and selectedEgg ~= "" and EventHandler then
+                EventHandler:FireServer("HatchEgg", selectedEgg, 1)
+            end
+        end)
     end
-end)()
+end)
+
+task.spawn(function()
+    while sg and sg.Parent do
+        task.wait(0.1)
+        pcall(function()
+            if autoGiftValue then
+                local ItemUtil = Utils and Utils:FindFirstChild("Stats") and Utils.Stats:FindFirstChild("ItemUtil")
+                if ItemUtil then
+                    local itemUtil = safeRequire(ItemUtil, {})
+                    if itemUtil.GetOwnedAmount and Data then
+                        local amt = itemUtil:GetOwnedAmount(Data, {Type = "Powerup", Name = "Mystery Box"})
+                        local open = amt >= 10 and 10 or amt >= 5 and 5 or 1
+                        if amt > 0 and EventHandler then
+                            EventHandler:FireServer("UseGift", "Mystery Box", open)
+                            task.wait(0.5)
+                            for _ = 1, 8 do
+                                VirtualUser:ClickButton1(Vector2.new(), workspace.CurrentCamera.CFrame)
+                                task.wait(0.5)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+if workspace and workspace:FindFirstChild("Rendered") then
+    local rendered = workspace.Rendered
+    rendered.ChildAdded:Connect(function(child)
+        if autoCollectCoinsValue and child and Tutorial and Tutorial._activePickups then
+            pcall(function()
+                child:Destroy()
+                Tutorial._activePickups[tostring(child.Name)] = nil
+                if ReplicatedStorage and ReplicatedStorage:FindFirstChild("Remotes") then
+                    local remote = ReplicatedStorage.Remotes:FindFirstChild("Pickups") and ReplicatedStorage.Remotes.Pickups:FindFirstChild("CollectPickup")
+                    if remote then
+                        remote:FireServer(child.Name)
+                    end
+                end
+            end)
+        end
+    end)
+end
+
+-- ════════════════════════════════════════════════════════
+--  PLAYER JOIN/LEAVE HANDLERS
+-- ════════════════════════════════════════════════════════
+
+Players.PlayerAdded:Connect(function(plr)
+    if staffWatchEnabled and plr ~= player and isStaffUser(plr.Name) then
+        checkForStaff()
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+    if staffWatchEnabled then
+        task.wait(0.1)
+        checkForStaff()
+    end
+end)
 
 -- ════════════════════════════════════════════════════════
 --  INIT
 -- ════════════════════════════════════════════════════════
 
+staffWatchThread = task.spawn(staffWatchLoop)
+staffIndicator.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 updateUI()
+
+print("✅ BGSI All-in-One v2.0 loaded successfully!")
+print("👮 Staff Watch System enabled")
+print("🔄 Server Hop and Rejoin buttons added")
+
+-- Load notification
+local loadNotif = Instance.new("Frame")
+loadNotif.Size = UDim2.new(0, 280, 0, 60)
+loadNotif.Position = UDim2.new(0.5, -140, 0.1, 0)
+loadNotif.BackgroundColor3 = accentGrey
+loadNotif.BackgroundTransparency = 0.1
+loadNotif.BorderSizePixel = 0
+loadNotif.Parent = sg
+loadNotif.ZIndex = 100
+mkCorner(loadNotif, 8)
+
+local loadText = Instance.new("TextLabel")
+loadText.Size = UDim2.new(1, -20, 1, -10)
+loadText.Position = UDim2.new(0, 10, 0, 5)
+loadText.BackgroundTransparency = 1
+loadText.Text = "✅ BGSI v2.0 Loaded\nStaff Watch Active • Server Hop Ready"
+loadText.TextColor3 = textGrey
+loadText.TextSize = 12
+loadText.Font = Enum.Font.GothamBold
+loadText.TextWrapped = true
+loadText.Parent = loadNotif
+loadText.ZIndex = 101
+
+task.spawn(function()
+    task.wait(3)
+    for i = 1, 10 do
+        loadNotif.BackgroundTransparency = 0.1 + (i * 0.09)
+        loadText.TextTransparency = i * 0.1
+        task.wait(0.05)
+    end
+    loadNotif:Destroy()
+end)
