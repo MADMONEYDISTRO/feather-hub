@@ -1625,35 +1625,5 @@ staffWatchThread = task.spawn(staffWatchLoop)
 staffIndicator.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 updateUI()
 
--- Load notification
-local loadNotif = Instance.new("Frame")
-loadNotif.Size = UDim2.new(0, 280, 0, 60)
-loadNotif.Position = UDim2.new(0.5, -140, 0.1, 0)
-loadNotif.BackgroundColor3 = accentGrey
-loadNotif.BackgroundTransparency = 0.1
-loadNotif.BorderSizePixel = 0
-loadNotif.Parent = sg
-loadNotif.ZIndex = 100
-mkCorner(loadNotif, 8)
 
-local loadText = Instance.new("TextLabel")
-loadText.Size = UDim2.new(1, -20, 1, -10)
-loadText.Position = UDim2.new(0, 10, 0, 5)
-loadText.BackgroundTransparency = 1
-loadText.Text = "✅ BGSI v2.0 Loaded\nStaff Watch Active • Server Hop Ready"
-loadText.TextColor3 = textGrey
-loadText.TextSize = 12
-loadText.Font = Enum.Font.GothamBold
-loadText.TextWrapped = true
-loadText.Parent = loadNotif
-loadText.ZIndex = 101
-
-task.spawn(function()
-    task.wait(3)
-    for i = 1, 10 do
-        loadNotif.BackgroundTransparency = 0.1 + (i * 0.09)
-        loadText.TextTransparency = i * 0.1
-        task.wait(0.05)
-    end
-    loadNotif:Destroy()
 end)
