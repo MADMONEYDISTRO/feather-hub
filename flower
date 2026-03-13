@@ -1,33 +1,50 @@
--- ╔══════════════════════════════════════════════════╗
--- ║       BGSI FLOWER FARM  —  UI v4.0               ║
--- ║  Priority queue — fires each route the INSTANT   ║
--- ║  its cooldown expires, rarest always first.      ║
--- ╚══════════════════════════════════════════════════╝
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║         BGSI ALL-IN-ONE  —  MERGED v1.1                 ║
+-- ║   Flower Farm + Wheel + Bubbles + Automation + Pets      ║
+-- ╚══════════════════════════════════════════════════════════╝
 
-local TweenService     = game:GetService("TweenService")
-local Players          = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
+local TweenService      = game:GetService("TweenService")
+local Players           = game:GetService("Players")
+local UserInputService  = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+repeat wait() until game:IsLoaded()
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-local char      = player.Character or player.CharacterAdded:Wait()
-local root      = char:WaitForChild("HumanoidRootPart")
 
--- ══════════════════════════════════════════
+-- ════════════════════════════════════════════════════════
+--  EXTERNAL REFERENCES
+-- ════════════════════════════════════════════════════════
+
+local Shared      = ReplicatedStorage.Shared
+local SData       = Shared.Data
+local Utils       = Shared.Utils
+local Framework   = Shared.Framework
+local Client      = ReplicatedStorage.Client
+local Tutorial    = require(Client.Tutorial)
+
+local StatsUtil       = require(Utils.Stats.StatsUtil)
+local localData       = require(Client.Framework.Services.LocalData)
+local Data            = localData:Get()
+local EventHandler    = Framework.Network.Remote.RemoteEvent
+local FunctionHandler = Framework.Network.Remote.RemoteFunction
+
+local eggs = {}
+for eggName in pairs(require(SData.Eggs)) do
+    table.insert(eggs, eggName)
+end
+table.sort(eggs)
+
+-- ════════════════════════════════════════════════════════
 --  ROUTE DEFINITIONS
---  priority: lower number = runs first when multiple are ready
---  (Rose=1 always beats Sunflower=2 beats Violet=3)
--- ══════════════════════════════════════════
+-- ════════════════════════════════════════════════════════
 
 local ROUTES = {
     {
-        id       = 1,
-        name     = "Rose",
-        color    = Color3.fromRGB(248, 113, 113),
-        cooldown = 60,
-        priority = 1,          -- highest priority
-        tween_t  = 1.2,
-        delay    = 0.6,
+        id = 1, name = "Rose",
+        color = Color3.fromRGB(248, 113, 113),
+        cooldown = 60, priority = 1,
         waypoints = {
             CFrame.new(-61.51, 15.85, 3066.23),
             CFrame.new(-26.34, 15.85, 3055.38),
@@ -35,13 +52,9 @@ local ROUTES = {
         },
     },
     {
-        id       = 2,
-        name     = "Sunflower",
-        color    = Color3.fromRGB(251, 191, 36),
-        cooldown = 10,
-        priority = 2,
-        tween_t  = 2,
-        delay    = 1,
+        id = 2, name = "Sunflower",
+        color = Color3.fromRGB(251, 191, 36),
+        cooldown = 10, priority = 2,
         waypoints = {
             CFrame.new(-48.91, 20.87, 3170.7),
             CFrame.new(-2.68,  10.23, 3217.2),
@@ -50,703 +63,897 @@ local ROUTES = {
         },
     },
     {
-        id       = 3,
-        name     = "Violet",
-        color    = Color3.fromRGB(167, 139, 250),
-        cooldown = 5,
-        priority = 3,          -- lowest priority, fills idle time
-        tween_t  = 2,
-        delay    = 1,
+        id = 3, name = "Violet",
+        color = Color3.fromRGB(167, 139, 250),
+        cooldown = 5, priority = 3,
         waypoints = {
             CFrame.new(47.07,  15.68, 3075.36),
             CFrame.new(53.44,  15.68, 3054.97),
             CFrame.new(71.46,  15.68, 3064.12),
             CFrame.new(89.56,  19.84, 3076.19),
+            CFrame.new(40.73,  12.79, 3107.26),
+            CFrame.new(51.02,  15.99, 3156.23),
+            CFrame.new(61.23,  12.79, 3184.62),
+            CFrame.new(-36.06, 12.79, 3106.99),
         },
     },
 }
 
--- ══════════════════════════════════════════
---  STATE
--- ══════════════════════════════════════════
+-- ════════════════════════════════════════════════════════
+--  RETRY SYSTEM
+-- ════════════════════════════════════════════════════════
 
-local farmEnabled   = false
-local farmThread    = nil
-local totalCycles   = 0
-local routeCounts   = { 0, 0, 0 }
-
--- nextReadyAt[id] = tick() timestamp when that route is off cooldown
-local nextReadyAt   = {}
-
--- ══════════════════════════════════════════
---  COLORS
--- ══════════════════════════════════════════
-
-local C = {
-    bg      = Color3.fromRGB(12,  12,  18),
-    panel   = Color3.fromRGB(20,  20,  28),
-    bar     = Color3.fromRGB(26,  26,  36),
-    accent  = Color3.fromRGB(99,  102, 241),
-    accentD = Color3.fromRGB(67,  70,  180),
-    green   = Color3.fromRGB(52,  211, 153),
-    red     = Color3.fromRGB(248, 113, 113),
-    yellow  = Color3.fromRGB(251, 191,  36),
-    purple  = Color3.fromRGB(167, 139, 250),
-    text    = Color3.fromRGB(230, 230, 240),
-    muted   = Color3.fromRGB(100, 100, 120),
-    dim     = Color3.fromRGB(28,  28,  40),
+local RetrySystem = {
+    retryQueue      = {},
+    successfulSpots = {},
+    failedSpots     = {},
+    maxRetries      = 3,
+    retryCooldown   = 2,
+    lastRetryTime   = {},
 }
 
-local function tw(t, style, dir)
-    return TweenInfo.new(t or 0.22, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+local function getRoot()
+    local char = player.Character or player.CharacterAdded:Wait()
+    return char:WaitForChild("HumanoidRootPart")
 end
 
--- ══════════════════════════════════════════
---  SCREEN GUI
--- ══════════════════════════════════════════
+local function verifySpot(wp)
+    local char = player.Character
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    return root and (root.Position - wp.Position).Magnitude < 8
+end
+
+local function markForRetry(wp, routeId)
+    local key = tostring(wp)
+    RetrySystem.failedSpots[key] = (RetrySystem.failedSpots[key] or 0) + 1
+    if RetrySystem.failedSpots[key] > RetrySystem.maxRetries then return end
+    for _, item in ipairs(RetrySystem.retryQueue) do
+        if tostring(item.waypoint) == key then return end
+    end
+    table.insert(RetrySystem.retryQueue, {
+        waypoint  = wp, routeId = routeId,
+        failCount = RetrySystem.failedSpots[key], addedTime = tick()
+    })
+end
+
+local function markSuccessful(wp)
+    local key = tostring(wp)
+    RetrySystem.failedSpots[key] = nil
+    for i = #RetrySystem.retryQueue, 1, -1 do
+        if tostring(RetrySystem.retryQueue[i].waypoint) == key then
+            table.remove(RetrySystem.retryQueue, i)
+        end
+    end
+end
+
+local function getNextRetrySpot()
+    local now = tick()
+    for i, spot in ipairs(RetrySystem.retryQueue) do
+        local last = RetrySystem.lastRetryTime[tostring(spot.waypoint)] or 0
+        if now - last >= RetrySystem.retryCooldown then
+            table.remove(RetrySystem.retryQueue, i)
+            if verifySpot(spot.waypoint) then markSuccessful(spot.waypoint); return nil end
+            return spot
+        end
+    end
+end
+
+local function retrySpot(spot)
+    RetrySystem.lastRetryTime[tostring(spot.waypoint)] = tick()
+    getRoot().CFrame = spot.waypoint
+    task.wait(0.2)
+    if verifySpot(spot.waypoint) then markSuccessful(spot.waypoint); return true end
+    return false
+end
+
+-- ════════════════════════════════════════════════════════
+--  STATE
+-- ════════════════════════════════════════════════════════
+
+local farmEnabled  = false
+local farmThread, retryThread, wheelThread
+local totalCycles  = 0
+local routeCounts  = {0, 0, 0}
+local nextReadyAt  = {}
+local currentRoute = nil
+local speedMode    = "INSTANT"
+local interactionDelay = 0.2
+
+local autoBlowValue         = false
+local autoSellValue         = false
+local autoSellPer           = 50
+local autoCollectCoinsValue = false
+local autoclaimplaytimeval  = false
+local autoclaimchestsval    = false
+local autoClaimRiftGiftval  = false
+local autoHatchValue        = false
+local selectedEgg           = eggs[1] or ""
+local autoGiftValue         = false
+local autoWheelValue        = false
+local wheelSpins            = 0
+
+-- ════════════════════════════════════════════════════════
+--  GUI — same 350×330 window as original
+-- ════════════════════════════════════════════════════════
 
 local sg = Instance.new("ScreenGui")
-sg.Name           = "TweenFarmUI_v4"
-sg.ResetOnSpawn   = false
+sg.Name = "BGSIMerged"
+sg.ResetOnSpawn = false
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-sg.DisplayOrder   = 1000
-sg.Parent         = playerGui
+sg.Parent = playerGui
 
-local W, H = 360, 300
+local function mkCorner(p, r)
+    local c = Instance.new("UICorner", p)
+    c.CornerRadius = UDim.new(0, r or 6)
+end
 
 local main = Instance.new("Frame")
-main.Name             = "Main"
-main.Size             = UDim2.new(0, W, 0, H)
-main.Position         = UDim2.new(0.5, -W/2, 0.5, -H/2)
-main.BackgroundColor3 = C.bg
-main.BorderSizePixel  = 0
-main.Parent           = sg
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
+main.Size = UDim2.new(0,350,0,330)
+main.Position = UDim2.new(0.5,-175,0.5,-165)
+main.BackgroundColor3 = Color3.fromRGB(20,20,30)
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = sg
+mkCorner(main, 10)
 
-local border = Instance.new("UIStroke")
-border.Color     = Color3.fromRGB(50, 50, 70)
-border.Thickness = 1
-border.Parent    = main
-
--- ══════════════════════════════════════════
---  HEADER
--- ══════════════════════════════════════════
-
+-- Header
 local header = Instance.new("Frame")
-header.Size             = UDim2.new(1, 0, 0, 44)
-header.BackgroundColor3 = C.bar
-header.BorderSizePixel  = 0
-header.ZIndex           = 5
-header.Parent           = main
-Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
-
--- square off bottom corners
-local hCover = Instance.new("Frame")
-hCover.Size             = UDim2.new(1, 0, 0, 14)
-hCover.Position         = UDim2.new(0, 0, 1, -14)
-hCover.BackgroundColor3 = C.bar
-hCover.BorderSizePixel  = 0
-hCover.ZIndex           = 5
-hCover.Parent           = header
-
-local flowerLbl = Instance.new("TextLabel")
-flowerLbl.Size               = UDim2.new(0, 24, 1, 0)
-flowerLbl.Position           = UDim2.new(0, 12, 0, 0)
-flowerLbl.Text               = "🌸"
-flowerLbl.Font               = Enum.Font.GothamBold
-flowerLbl.TextSize           = 16
-flowerLbl.BackgroundTransparency = 1
-flowerLbl.ZIndex             = 6
-flowerLbl.Parent             = header
+header.Size = UDim2.new(1,0,0,35)
+header.BackgroundColor3 = Color3.fromRGB(30,30,40)
+header.BorderSizePixel = 0
+header.Parent = main
+mkCorner(header, 10)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -120, 1, 0)
-titleLbl.Position           = UDim2.new(0, 42, 0, 0)
-titleLbl.Text               = "BGSI Flower Farm"
-titleLbl.Font               = Enum.Font.GothamBold
-titleLbl.TextSize            = 14
-titleLbl.TextColor3         = C.text
-titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+titleLbl.Size = UDim2.new(1,-36,1,0)
+titleLbl.Position = UDim2.new(0,10,0,0)
+titleLbl.Text = "Feather Hub | BGSI"
+titleLbl.Font = Enum.Font.GothamBold
+titleLbl.TextSize = 13
+titleLbl.TextColor3 = Color3.new(1,1,1)
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 titleLbl.BackgroundTransparency = 1
-titleLbl.ZIndex             = 6
-titleLbl.Parent             = header
-
-local verTag = Instance.new("TextLabel")
-verTag.Size               = UDim2.new(0, 40, 0, 18)
-verTag.Position           = UDim2.new(1, -74, 0.5, -9)
-verTag.Text               = "v4.5"
-verTag.Font               = Enum.Font.GothamMedium
-verTag.TextSize           = 10
-verTag.TextColor3         = C.muted
-verTag.BackgroundColor3   = C.dim
-verTag.BorderSizePixel    = 0
-verTag.ZIndex             = 6
-verTag.Parent             = header
-Instance.new("UICorner", verTag).CornerRadius = UDim.new(0, 5)
+titleLbl.Parent = header
 
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0, 26, 0, 26)
-closeBtn.Position         = UDim2.new(1, -34, 0.5, -13)
-closeBtn.Text             = "x"
-closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.TextSize         = 11
-closeBtn.TextColor3       = C.muted
-closeBtn.BackgroundColor3 = C.dim
-closeBtn.BorderSizePixel  = 0
-closeBtn.AutoButtonColor  = false
-closeBtn.ZIndex           = 6
-closeBtn.Parent           = header
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+closeBtn.Size = UDim2.new(0,24,0,24)
+closeBtn.Position = UDim2.new(1,-29,0.5,-12)
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 13
+closeBtn.TextColor3 = Color3.fromRGB(200,200,200)
+closeBtn.BackgroundColor3 = Color3.fromRGB(50,50,60)
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = header
+mkCorner(closeBtn, 5)
+closeBtn.MouseButton1Click:Connect(function() farmEnabled = false; sg:Destroy() end)
 
-closeBtn.MouseEnter:Connect(function()
-    TweenService:Create(closeBtn, tw(), {BackgroundColor3 = Color3.fromRGB(80,20,20), TextColor3 = C.red}):Play()
-end)
-closeBtn.MouseLeave:Connect(function()
-    TweenService:Create(closeBtn, tw(), {BackgroundColor3 = C.dim, TextColor3 = C.muted}):Play()
-end)
-closeBtn.MouseButton1Click:Connect(function()
-    farmEnabled = false
-    sg:Destroy()
-end)
-
--- drag
-local dragging, dragInput, dragStart, startPos
-header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging  = true
-        dragStart = input.Position
-        startPos  = main.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
+local dragging, dragStart, startPos
+header.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true; dragStart = i.Position; startPos = main.Position
     end
 end)
-header.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
+header.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
 end)
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local d = input.Position - dragStart
-        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+UserInputService.InputChanged:Connect(function(i)
+    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = i.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
     end
 end)
 
--- ══════════════════════════════════════════
---  STATUS CARD
--- ══════════════════════════════════════════
+-- ════════════════════════════════════════════════════════
+--  TAB BAR  (22px, fits inside original window height)
+-- ════════════════════════════════════════════════════════
 
-local statusCard = Instance.new("Frame")
-statusCard.Size             = UDim2.new(1, -24, 0, 52)
-statusCard.Position         = UDim2.new(0, 12, 0, 54)
-statusCard.BackgroundColor3 = C.panel
-statusCard.BorderSizePixel  = 0
-statusCard.ZIndex           = 3
-statusCard.Parent           = main
-Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 10)
+local TAB_NAMES = {"Farm","Bubbles","Automation","Pets"}
+local tabBtns  = {}
+local tabPages = {}
 
-local strip = Instance.new("Frame")
-strip.Size             = UDim2.new(0, 3, 0.55, 0)
-strip.Position         = UDim2.new(0, 0, 0.225, 0)
-strip.BackgroundColor3 = C.accent
-strip.BorderSizePixel  = 0
-strip.ZIndex           = 4
-strip.Parent           = statusCard
-Instance.new("UICorner", strip).CornerRadius = UDim.new(0, 3)
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(1,-16,0,22)
+tabBar.Position = UDim2.new(0,8,0,38)
+tabBar.BackgroundColor3 = Color3.fromRGB(30,30,40)
+tabBar.BorderSizePixel = 0
+tabBar.Parent = main
+mkCorner(tabBar, 5)
 
-local statusTagLbl = Instance.new("TextLabel")
-statusTagLbl.Size               = UDim2.new(0.6, 0, 0, 14)
-statusTagLbl.Position           = UDim2.new(0, 14, 0, 7)
-statusTagLbl.Text               = "STATUS"
-statusTagLbl.Font               = Enum.Font.GothamBold
-statusTagLbl.TextSize           = 9
-statusTagLbl.TextColor3         = C.muted
-statusTagLbl.TextXAlignment     = Enum.TextXAlignment.Left
-statusTagLbl.BackgroundTransparency = 1
-statusTagLbl.ZIndex             = 4
-statusTagLbl.Parent             = statusCard
+local tl = Instance.new("UIListLayout", tabBar)
+tl.FillDirection = Enum.FillDirection.Horizontal
+tl.SortOrder = Enum.SortOrder.LayoutOrder
+tl.Padding = UDim.new(0,2)
+local tp = Instance.new("UIPadding", tabBar)
+tp.PaddingLeft = UDim.new(0,2); tp.PaddingRight = UDim.new(0,2)
+tp.PaddingTop  = UDim.new(0,2); tp.PaddingBottom = UDim.new(0,2)
 
-local statusLbl = Instance.new("TextLabel")
-statusLbl.Size               = UDim2.new(0.78, 0, 0, 20)
-statusLbl.Position           = UDim2.new(0, 14, 0, 22)
-statusLbl.Text               = "Idle — press ON to start"
-statusLbl.Font               = Enum.Font.GothamSemibold
-statusLbl.TextSize           = 12
-statusLbl.TextColor3         = C.muted
-statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
-statusLbl.BackgroundTransparency = 1
-statusLbl.ZIndex             = 4
-statusLbl.Parent             = statusCard
+local contentArea = Instance.new("Frame")
+contentArea.Size = UDim2.new(1,-16,1,-66)
+contentArea.Position = UDim2.new(0,8,0,62)
+contentArea.BackgroundTransparency = 1
+contentArea.Parent = main
 
-local cycleBox = Instance.new("Frame")
-cycleBox.Size             = UDim2.new(0, 54, 0, 38)
-cycleBox.Position         = UDim2.new(1, -62, 0.5, -19)
-cycleBox.BackgroundColor3 = C.dim
-cycleBox.BorderSizePixel  = 0
-cycleBox.ZIndex           = 4
-cycleBox.Parent           = statusCard
-Instance.new("UICorner", cycleBox).CornerRadius = UDim.new(0, 8)
+local function switchTab(name)
+    for n, btn in pairs(tabBtns) do
+        local on = n == name
+        btn.BackgroundColor3 = on and Color3.fromRGB(50,180,100) or Color3.fromRGB(40,40,50)
+        btn.TextColor3 = on and Color3.new(1,1,1) or Color3.fromRGB(140,140,140)
+    end
+    for n, page in pairs(tabPages) do page.Visible = n == name end
+end
 
-local cycleNumLbl = Instance.new("TextLabel")
-cycleNumLbl.Size               = UDim2.new(1, 0, 0, 20)
-cycleNumLbl.Position           = UDim2.new(0, 0, 0, 3)
-cycleNumLbl.Text               = "0"
-cycleNumLbl.Font               = Enum.Font.GothamBold
-cycleNumLbl.TextSize           = 16
-cycleNumLbl.TextColor3         = C.accent
-cycleNumLbl.BackgroundTransparency = 1
-cycleNumLbl.ZIndex             = 5
-cycleNumLbl.Parent             = cycleBox
+for i, name in ipairs(TAB_NAMES) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.25,-2,1,0)
+    btn.BackgroundColor3 = i==1 and Color3.fromRGB(50,180,100) or Color3.fromRGB(40,40,50)
+    btn.TextColor3 = i==1 and Color3.new(1,1,1) or Color3.fromRGB(140,140,140)
+    btn.Text = name; btn.Font = Enum.Font.GothamBold; btn.TextSize = 9
+    btn.BorderSizePixel = 0; btn.LayoutOrder = i; btn.Parent = tabBar
+    mkCorner(btn, 4)
+    tabBtns[name] = btn
 
-local cycleTagLbl = Instance.new("TextLabel")
-cycleTagLbl.Size               = UDim2.new(1, 0, 0, 12)
-cycleTagLbl.Position           = UDim2.new(0, 0, 0, 23)
-cycleTagLbl.Text               = "RUNS"
-cycleTagLbl.Font               = Enum.Font.GothamBold
-cycleTagLbl.TextSize           = 8
-cycleTagLbl.TextColor3         = C.muted
-cycleTagLbl.BackgroundTransparency = 1
-cycleTagLbl.ZIndex             = 5
-cycleTagLbl.Parent             = cycleBox
+    local page = Instance.new("Frame")
+    page.Size = UDim2.new(1,0,1,0)
+    page.BackgroundTransparency = 1
+    page.Visible = i==1
+    page.Parent = contentArea
+    tabPages[name] = page
 
--- ══════════════════════════════════════════
---  ROUTE CARDS
--- ══════════════════════════════════════════
+    btn.MouseButton1Click:Connect(function() switchTab(name) end)
+end
 
-local cardsContainer = Instance.new("Frame")
-cardsContainer.Size               = UDim2.new(1, -24, 0, 70)
-cardsContainer.Position           = UDim2.new(0, 12, 0, 116)
-cardsContainer.BackgroundTransparency = 1
-cardsContainer.ZIndex             = 3
-cardsContainer.Parent             = main
+-- ════════════════════════════════════════════════════════
+--  WIDGET HELPERS
+-- ════════════════════════════════════════════════════════
 
-local CARD_GAP = 6
-local cardW    = math.floor((W - 24 - CARD_GAP * 2) / 3)
-local routeCardObjs = {}
+local function mkSection(page, yOff, h)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,0,h)
+    f.Position = UDim2.new(0,0,0,yOff)
+    f.BackgroundColor3 = Color3.fromRGB(30,30,40)
+    f.BorderSizePixel = 0
+    f.Parent = page
+    mkCorner(f, 6)
+    return f
+end
+
+local function mkToggle(parent, yOff, label)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,-12,0,22)
+    row.Position = UDim2.new(0,6,0,yOff)
+    row.BackgroundTransparency = 1
+    row.Parent = parent
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,-40,1,0)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 10
+    lbl.TextColor3 = Color3.fromRGB(200,200,200)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Text = label; lbl.Parent = row
+
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(0,30,0,16)
+    track.Position = UDim2.new(1,-30,0.5,-8)
+    track.BackgroundColor3 = Color3.fromRGB(50,50,62)
+    track.BorderSizePixel = 0; track.Parent = row
+    mkCorner(track, 8)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0,12,0,12)
+    knob.Position = UDim2.new(0,2,0.5,-6)
+    knob.BackgroundColor3 = Color3.fromRGB(160,160,160)
+    knob.BorderSizePixel = 0; knob.Parent = track
+    mkCorner(knob, 6)
+
+    local state = false; local cbs = {}
+    local hit = Instance.new("TextButton")
+    hit.Size = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1; hit.Text = ""; hit.Parent = track
+    hit.MouseButton1Click:Connect(function()
+        state = not state
+        track.BackgroundColor3 = state and Color3.fromRGB(50,180,100) or Color3.fromRGB(50,50,62)
+        knob.Position = state and UDim2.new(0,16,0.5,-6) or UDim2.new(0,2,0.5,-6)
+        knob.BackgroundColor3 = state and Color3.new(1,1,1) or Color3.fromRGB(160,160,160)
+        for _,cb in ipairs(cbs) do cb(state) end
+    end)
+    return { onChanged = function(_, cb) table.insert(cbs, cb) end }
+end
+
+-- ════════════════════════════════════════════════════════
+--  FARM TAB
+-- ════════════════════════════════════════════════════════
+
+local farmPage = tabPages["Farm"]
+
+-- Status
+local statusSec = mkSection(farmPage, 0, 30)
+local statusText = Instance.new("TextLabel")
+statusText.Size = UDim2.new(1,-10,1,0)
+statusText.Position = UDim2.new(0,8,0,0)
+statusText.Text = "⏸ Idle – Press Start"
+statusText.Font = Enum.Font.GothamMedium; statusText.TextSize = 11
+statusText.TextColor3 = Color3.fromRGB(200,200,200)
+statusText.TextXAlignment = Enum.TextXAlignment.Left
+statusText.BackgroundTransparency = 1; statusText.Parent = statusSec
+
+-- Route cards
+local cardsSec = mkSection(farmPage, 34, 66)
+local routeCards = {}
+local CW = math.floor(334/3) -- card width slot
 
 for i, route in ipairs(ROUTES) do
-    local cf = Instance.new("Frame")
-    cf.Size             = UDim2.new(0, cardW, 1, 0)
-    cf.Position         = UDim2.new(0, (cardW + CARD_GAP) * (i - 1), 0, 0)
-    cf.BackgroundColor3 = C.panel
-    cf.BorderSizePixel  = 0
-    cf.ZIndex           = 4
-    cf.Parent           = cardsContainer
-    Instance.new("UICorner", cf).CornerRadius = UDim.new(0, 8)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(0, CW-5, 1,-8)
+    card.Position = UDim2.new(0, 3 + CW*(i-1), 0, 4)
+    card.BackgroundColor3 = Color3.fromRGB(25,25,35)
+    card.BorderSizePixel = 0; card.Parent = cardsSec
+    mkCorner(card, 5)
 
-    local topStrip = Instance.new("Frame")
-    topStrip.Size             = UDim2.new(1, 0, 0, 3)
-    topStrip.BackgroundColor3 = route.color
-    topStrip.BorderSizePixel  = 0
-    topStrip.ZIndex           = 5
-    topStrip.Parent           = cf
-    Instance.new("UICorner", topStrip).CornerRadius = UDim.new(0, 8)
+    local strip = Instance.new("Frame")
+    strip.Size = UDim2.new(1,0,0,3)
+    strip.BackgroundColor3 = route.color
+    strip.BorderSizePixel = 0; strip.Parent = card
+    mkCorner(strip, 3)
 
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size               = UDim2.new(1, -4, 0, 16)
-    nameLbl.Position           = UDim2.new(0, 6, 0, 8)
-    nameLbl.Text               = route.name
-    nameLbl.Font               = Enum.Font.GothamBold
-    nameLbl.TextSize           = 11
-    nameLbl.TextColor3         = route.color
-    nameLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.ZIndex             = 5
-    nameLbl.Parent             = cf
+    local nm = Instance.new("TextLabel")
+    nm.Size = UDim2.new(1,-4,0,16); nm.Position = UDim2.new(0,4,0,5)
+    nm.Text = route.name; nm.Font = Enum.Font.GothamBold; nm.TextSize = 10
+    nm.TextColor3 = route.color; nm.TextXAlignment = Enum.TextXAlignment.Left
+    nm.BackgroundTransparency = 1; nm.Parent = card
 
-    local cdLbl = Instance.new("TextLabel")
-    cdLbl.Size               = UDim2.new(1, -4, 0, 12)
-    cdLbl.Position           = UDim2.new(0, 6, 0, 25)
-    cdLbl.Text               = route.cooldown .. "s CD"
-    cdLbl.Font               = Enum.Font.Gotham
-    cdLbl.TextSize           = 9
-    cdLbl.TextColor3         = C.muted
-    cdLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    cdLbl.BackgroundTransparency = 1
-    cdLbl.ZIndex             = 5
-    cdLbl.Parent             = cf
+    local cd = Instance.new("TextLabel")
+    cd.Size = UDim2.new(1,-4,0,12); cd.Position = UDim2.new(0,4,0,22)
+    cd.Text = "ready"; cd.Font = Enum.Font.Gotham; cd.TextSize = 9
+    cd.TextColor3 = Color3.fromRGB(100,255,100)
+    cd.TextXAlignment = Enum.TextXAlignment.Left
+    cd.BackgroundTransparency = 1; cd.Parent = card
 
-    local countLbl = Instance.new("TextLabel")
-    countLbl.Size               = UDim2.new(1, -4, 0, 18)
-    countLbl.Position           = UDim2.new(0, 6, 0, 44)
-    countLbl.Text               = "×0"
-    countLbl.Font               = Enum.Font.GothamBold
-    countLbl.TextSize           = 14
-    countLbl.TextColor3         = C.text
-    countLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    countLbl.BackgroundTransparency = 1
-    countLbl.ZIndex             = 5
-    countLbl.Parent             = cf
+    local cnt = Instance.new("TextLabel")
+    cnt.Size = UDim2.new(1,-4,0,16); cnt.Position = UDim2.new(0,4,0,36)
+    cnt.Text = "0x"; cnt.Font = Enum.Font.GothamBold; cnt.TextSize = 13
+    cnt.TextColor3 = Color3.new(1,1,1)
+    cnt.TextXAlignment = Enum.TextXAlignment.Left
+    cnt.BackgroundTransparency = 1; cnt.Parent = card
 
-    -- cooldown countdown label
-    local cdCountLbl = Instance.new("TextLabel")
-    cdCountLbl.Size               = UDim2.new(1, -4, 0, 10)
-    cdCountLbl.Position           = UDim2.new(0, 6, 0, 38)
-    cdCountLbl.Text               = "ready"
-    cdCountLbl.Font               = Enum.Font.Gotham
-    cdCountLbl.TextSize           = 8
-    cdCountLbl.TextColor3         = C.green
-    cdCountLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    cdCountLbl.BackgroundTransparency = 1
-    cdCountLbl.ZIndex             = 5
-    cdCountLbl.Parent             = cf
-
-    local activeDot = Instance.new("Frame")
-    activeDot.Size             = UDim2.new(0, 6, 0, 6)
-    activeDot.Position         = UDim2.new(1, -10, 0, 8)
-    activeDot.BackgroundColor3 = route.color
-    activeDot.BackgroundTransparency = 1
-    activeDot.BorderSizePixel  = 0
-    activeDot.ZIndex           = 6
-    activeDot.Parent           = cf
-    Instance.new("UICorner", activeDot).CornerRadius = UDim.new(1, 0)
-
-    routeCardObjs[i] = {
-        frame       = cf,
-        nameLbl     = nameLbl,
-        countLbl    = countLbl,
-        cdLbl       = cdLbl,
-        cdCountLbl  = cdCountLbl,
-        activeDot   = activeDot,
-    }
+    routeCards[i] = {frame=card, count=cnt, cooldown=cd}
 end
 
-local function setActiveCard(idx)
-    for i, obj in ipairs(routeCardObjs) do
-        local on = (i == idx)
-        TweenService:Create(obj.frame, tw(0.15), {
-            BackgroundColor3 = on and Color3.fromRGB(30, 30, 44) or C.panel
-        }):Play()
-        obj.activeDot.BackgroundTransparency = on and 0 or 1
-    end
-end
+-- Speed buttons
+local speedSec = mkSection(farmPage, 104, 44)
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(0,50,0,14); speedLabel.Position = UDim2.new(0,6,0,4)
+speedLabel.Text = "Speed"; speedLabel.Font = Enum.Font.Gotham; speedLabel.TextSize = 9
+speedLabel.TextColor3 = Color3.fromRGB(110,110,130)
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.BackgroundTransparency = 1; speedLabel.Parent = speedSec
 
--- live cooldown ticker (runs independently)
-task.spawn(function()
-    while task.wait(0.25) do
-        if not sg.Parent then break end
-        local now = tick()
-        for i, route in ipairs(ROUTES) do
-            local ready = nextReadyAt[route.id] or 0
-            local remaining = ready - now
-            local obj = routeCardObjs[i]
-            if remaining <= 0 then
-                obj.cdCountLbl.Text      = "ready"
-                obj.cdCountLbl.TextColor3 = C.green
-            else
-                obj.cdCountLbl.Text      = string.format("%.1fs", remaining)
-                obj.cdCountLbl.TextColor3 = C.yellow
-            end
+local speedDefs = {
+    {name="SAFE",    col=Color3.fromRGB(70,130,200)},
+    {name="FAST",    col=Color3.fromRGB(50,180,100)},
+    {name="INSTANT", col=Color3.fromRGB(200,100,100)},
+}
+local speedBtns = {}
+for i, sd in ipairs(speedDefs) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0,72,0,22)
+    btn.Position = UDim2.new(0, 6+74*(i-1), 0, 18)
+    btn.Text = sd.name; btn.Font = Enum.Font.GothamBold; btn.TextSize = 9
+    btn.TextColor3 = (sd.name==speedMode) and Color3.new(1,1,1) or Color3.fromRGB(140,140,140)
+    btn.BackgroundColor3 = (sd.name==speedMode) and sd.col or Color3.fromRGB(40,40,50)
+    btn.BorderSizePixel = 0; btn.Parent = speedSec
+    mkCorner(btn, 4)
+    speedBtns[sd.name] = {btn=btn, col=sd.col}
+    btn.MouseButton1Click:Connect(function()
+        speedMode = sd.name
+        for n, sb in pairs(speedBtns) do
+            sb.btn.BackgroundColor3 = (n==sd.name) and sb.col or Color3.fromRGB(40,40,50)
+            sb.btn.TextColor3 = (n==sd.name) and Color3.new(1,1,1) or Color3.fromRGB(140,140,140)
         end
+    end)
+end
+
+-- ── Wheel Spin section ──────────────────────────────────
+local wheelSec = mkSection(farmPage, 152, 50)
+
+local wheelIcon = Instance.new("TextLabel")
+wheelIcon.Size = UDim2.new(1,-16,0,14); wheelIcon.Position = UDim2.new(0,6,0,4)
+wheelIcon.Text = "Spring Wheel Auto-Spin"
+wheelIcon.Font = Enum.Font.GothamBold; wheelIcon.TextSize = 10
+wheelIcon.TextColor3 = Color3.fromRGB(170,140,255)
+wheelIcon.TextXAlignment = Enum.TextXAlignment.Left
+wheelIcon.BackgroundTransparency = 1; wheelIcon.Parent = wheelSec
+
+mkToggle(wheelSec, 18, "Auto Spin Wheel (uses tickets)"):onChanged(function(s)
+    autoWheelValue = s
+end)
+
+local wheelCountLbl = Instance.new("TextLabel")
+wheelCountLbl.Size = UDim2.new(1,-16,0,14); wheelCountLbl.Position = UDim2.new(0,6,0,36)
+wheelCountLbl.Text = "Spins this session: 0"
+wheelCountLbl.Font = Enum.Font.Gotham; wheelCountLbl.TextSize = 9
+wheelCountLbl.TextColor3 = Color3.fromRGB(120,120,140)
+wheelCountLbl.TextXAlignment = Enum.TextXAlignment.Left
+wheelCountLbl.BackgroundTransparency = 1; wheelCountLbl.Parent = wheelSec
+
+-- Retry info
+local retrySec = mkSection(farmPage, 206, 22)
+local retryInfo = Instance.new("TextLabel")
+retryInfo.Size = UDim2.new(1,-10,1,0); retryInfo.Position = UDim2.new(0,6,0,0)
+retryInfo.Text = " Retry Queue: 0 spots"
+retryInfo.Font = Enum.Font.Gotham; retryInfo.TextSize = 9
+retryInfo.TextColor3 = Color3.fromRGB(200,200,100)
+retryInfo.TextXAlignment = Enum.TextXAlignment.Left
+retryInfo.BackgroundTransparency = 1; retryInfo.Parent = retrySec
+
+-- Start/stop
+local ctrlSec = mkSection(farmPage, 232, 36)
+local startBtn = Instance.new("TextButton")
+startBtn.Size = UDim2.new(0,110,0,26); startBtn.Position = UDim2.new(0.5,-55,0.5,-13)
+startBtn.Text = "▶ START"; startBtn.Font = Enum.Font.GothamBold; startBtn.TextSize = 12
+startBtn.TextColor3 = Color3.new(1,1,1)
+startBtn.BackgroundColor3 = Color3.fromRGB(50,180,100)
+startBtn.BorderSizePixel = 0; startBtn.Parent = ctrlSec
+mkCorner(startBtn, 6)
+
+-- Stats row
+local statsSec = mkSection(farmPage, 272, 18)
+local cyclesLabel = Instance.new("TextLabel")
+cyclesLabel.Size = UDim2.new(0.5,0,1,0); cyclesLabel.Position = UDim2.new(0,6,0,0)
+cyclesLabel.Text = "Total runs: 0"; cyclesLabel.Font = Enum.Font.Gotham; cyclesLabel.TextSize = 9
+cyclesLabel.TextColor3 = Color3.fromRGB(110,110,130)
+cyclesLabel.TextXAlignment = Enum.TextXAlignment.Left
+cyclesLabel.BackgroundTransparency = 1; cyclesLabel.Parent = statsSec
+
+local modeLabel = Instance.new("TextLabel")
+modeLabel.Size = UDim2.new(0.5,0,1,0); modeLabel.Position = UDim2.new(0.5,0,0,0)
+modeLabel.Text = "Mode: INSTANT"; modeLabel.Font = Enum.Font.Gotham; modeLabel.TextSize = 9
+modeLabel.TextColor3 = Color3.fromRGB(110,110,130)
+modeLabel.TextXAlignment = Enum.TextXAlignment.Right
+modeLabel.BackgroundTransparency = 1; modeLabel.Parent = statsSec
+
+-- ════════════════════════════════════════════════════════
+--  BUBBLES TAB
+-- ════════════════════════════════════════════════════════
+
+local bubPage = tabPages["Bubbles"]
+local bubSec = mkSection(bubPage, 0, 130)
+
+mkToggle(bubSec, 6,  "Auto Blow Bubbles"):onChanged(function(s) autoBlowValue = s end)
+mkToggle(bubSec, 32, "Auto Sell Bubbles"):onChanged(function(s) autoSellValue = s end)
+
+local sliderLbl = Instance.new("TextLabel")
+sliderLbl.Size = UDim2.new(1,-12,0,14); sliderLbl.Position = UDim2.new(0,6,0,60)
+sliderLbl.Text = "Sell at % of storage: 50%"
+sliderLbl.Font = Enum.Font.Gotham; sliderLbl.TextSize = 9
+sliderLbl.TextColor3 = Color3.fromRGB(170,170,170)
+sliderLbl.TextXAlignment = Enum.TextXAlignment.Left
+sliderLbl.BackgroundTransparency = 1; sliderLbl.Parent = bubSec
+
+local sliderTrack = Instance.new("Frame")
+sliderTrack.Size = UDim2.new(1,-12,0,6); sliderTrack.Position = UDim2.new(0,6,0,80)
+sliderTrack.BackgroundColor3 = Color3.fromRGB(40,40,52)
+sliderTrack.BorderSizePixel = 0; sliderTrack.Parent = bubSec
+mkCorner(sliderTrack, 3)
+
+local sliderFill = Instance.new("Frame")
+sliderFill.Size = UDim2.new(0.5,0,1,0)
+sliderFill.BackgroundColor3 = Color3.fromRGB(50,180,100)
+sliderFill.BorderSizePixel = 0; sliderFill.Parent = sliderTrack
+mkCorner(sliderFill, 3)
+
+local sliderKnob = Instance.new("TextButton")
+sliderKnob.Size = UDim2.new(0,14,0,14)
+sliderKnob.AnchorPoint = Vector2.new(0.5,0.5)
+sliderKnob.Position = UDim2.new(0.5,0,0.5,0)
+sliderKnob.BackgroundColor3 = Color3.new(1,1,1)
+sliderKnob.Text = ""; sliderKnob.BorderSizePixel = 0; sliderKnob.ZIndex = 3
+sliderKnob.Parent = sliderTrack
+mkCorner(sliderKnob, 7)
+
+local draggingSlider = false
+sliderKnob.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingSlider = true end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingSlider = false end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if draggingSlider and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local rel = math.clamp((i.Position.X - sliderTrack.AbsolutePosition.X) / sliderTrack.AbsoluteSize.X, 0, 1)
+        autoSellPer = math.floor(rel*99+1)
+        sliderFill.Size = UDim2.new(rel,0,1,0)
+        sliderKnob.Position = UDim2.new(rel,0,0.5,0)
+        sliderLbl.Text = string.format("Sell at %% of storage: %d%%", autoSellPer)
     end
 end)
 
--- ══════════════════════════════════════════
---  STEP DOTS
--- ══════════════════════════════════════════
+-- ════════════════════════════════════════════════════════
+--  AUTOMATION TAB
+-- ════════════════════════════════════════════════════════
 
-local stepsContainer = Instance.new("Frame")
-stepsContainer.Size               = UDim2.new(1, -24, 0, 32)
-stepsContainer.Position           = UDim2.new(0, 12, 0, 196)
-stepsContainer.BackgroundTransparency = 1
-stepsContainer.ZIndex             = 3
-stepsContainer.Parent             = main
+local autoPage = tabPages["Automation"]
+local autoSec = mkSection(autoPage, 0, 170)
 
-local MAX_STEPS = 4
-local stepObjs  = {}
-local sW = math.floor((W - 24 - (MAX_STEPS - 1) * 5) / MAX_STEPS)
+local unlockBtn = Instance.new("TextButton")
+unlockBtn.Size = UDim2.new(1,-12,0,26); unlockBtn.Position = UDim2.new(0,6,0,6)
+unlockBtn.Text = "  Unlock All Areas"
+unlockBtn.Font = Enum.Font.GothamBold; unlockBtn.TextSize = 11
+unlockBtn.TextColor3 = Color3.new(1,1,1)
+unlockBtn.BackgroundColor3 = Color3.fromRGB(70,130,200)
+unlockBtn.BorderSizePixel = 0; unlockBtn.Parent = autoSec
+mkCorner(unlockBtn, 5)
+unlockBtn.MouseButton1Click:Connect(function()
+    unlockBtn.Text = " Unlocking..."
+    unlockBtn.BackgroundColor3 = Color3.fromRGB(50,80,120)
+    task.spawn(function()
+        for _, v in pairs(workspace.Worlds["The Overworld"].Islands:GetChildren()) do
+            firetouchinterest(player.Character.HumanoidRootPart, v.Island.UnlockHitbox, 0)
+            task.wait(0.1)
+            firetouchinterest(player.Character.HumanoidRootPart, v.Island.UnlockHitbox, 1)
+            task.wait(10)
+        end
+        unlockBtn.Text = " Done"
+        task.wait(2)
+        unlockBtn.Text = "  Unlock All Areas"
+        unlockBtn.BackgroundColor3 = Color3.fromRGB(70,130,200)
+    end)
+end)
 
-for i = 1, MAX_STEPS do
-    local sf = Instance.new("Frame")
-    sf.Size             = UDim2.new(0, sW, 1, 0)
-    sf.Position         = UDim2.new(0, (sW + 5) * (i - 1), 0, 0)
-    sf.BackgroundColor3 = C.panel
-    sf.BorderSizePixel  = 0
-    sf.ZIndex           = 4
-    sf.Parent           = stepsContainer
-    Instance.new("UICorner", sf).CornerRadius = UDim.new(0, 7)
-
-    local numL = Instance.new("TextLabel")
-    numL.Size               = UDim2.new(1, 0, 1, 0)
-    numL.Text               = tostring(i)
-    numL.Font               = Enum.Font.GothamBold
-    numL.TextSize           = 12
-    numL.TextColor3         = C.muted
-    numL.BackgroundTransparency = 1
-    numL.ZIndex             = 5
-    numL.Parent             = sf
-
-    stepObjs[i] = { frame = sf, num = numL }
-end
-
-local function highlightStep(idx, color)
-    for i, obj in ipairs(stepObjs) do
-        local on = (i == idx)
-        TweenService:Create(obj.frame, tw(0.15), {BackgroundColor3 = on and (color or C.accentD) or C.panel}):Play()
-        TweenService:Create(obj.num,   tw(0.15), {TextColor3 = on and Color3.new(1,1,1) or C.muted}):Play()
-    end
-end
-
-local function resetSteps()
-    highlightStep(0)
-end
-
--- ══════════════════════════════════════════
---  TOGGLE ROW
--- ══════════════════════════════════════════
-
-local toggleRow = Instance.new("Frame")
-toggleRow.Size             = UDim2.new(1, -24, 0, 42)
-toggleRow.Position         = UDim2.new(0, 12, 0, 240)
-toggleRow.BackgroundColor3 = C.panel
-toggleRow.BorderSizePixel  = 0
-toggleRow.ZIndex           = 3
-toggleRow.Parent           = main
-Instance.new("UICorner", toggleRow).CornerRadius = UDim.new(0, 10)
-
-local farmLbl = Instance.new("TextLabel")
-farmLbl.Size               = UDim2.new(0.6, 0, 0, 18)
-farmLbl.Position           = UDim2.new(0, 14, 0, 5)
-farmLbl.Text               = "Smart Auto-Farm"
-farmLbl.Font               = Enum.Font.GothamSemibold
-farmLbl.TextSize           = 13
-farmLbl.TextColor3         = C.text
-farmLbl.TextXAlignment     = Enum.TextXAlignment.Left
-farmLbl.BackgroundTransparency = 1
-farmLbl.ZIndex             = 4
-farmLbl.Parent             = toggleRow
-
-local farmSubLbl = Instance.new("TextLabel")
-farmSubLbl.Size               = UDim2.new(0.72, 0, 0, 13)
-farmSubLbl.Position           = UDim2.new(0, 14, 0, 24)
-farmSubLbl.Text               = "Priority queue — rarest flowers always first"
-farmSubLbl.Font               = Enum.Font.Gotham
-farmSubLbl.TextSize           = 10
-farmSubLbl.TextColor3         = C.muted
-farmSubLbl.TextXAlignment     = Enum.TextXAlignment.Left
-farmSubLbl.BackgroundTransparency = 1
-farmSubLbl.ZIndex             = 4
-farmSubLbl.Parent             = toggleRow
-
-local pill = Instance.new("TextButton")
-pill.Size             = UDim2.new(0, 76, 0, 32)
-pill.Position         = UDim2.new(1, -88, 0.5, -16)
-pill.BackgroundColor3 = C.dim
-pill.BorderSizePixel  = 0
-pill.Text             = ""
-pill.AutoButtonColor  = false
-pill.ZIndex           = 4
-pill.Parent           = toggleRow
-Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
-
-local knob = Instance.new("Frame")
-knob.Size             = UDim2.new(0, 24, 0, 24)
-knob.Position         = UDim2.new(0, 4, 0.5, -12)
-knob.BackgroundColor3 = C.muted
-knob.BorderSizePixel  = 0
-knob.ZIndex           = 5
-knob.Parent           = pill
-Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
-local pillTxt = Instance.new("TextLabel")
-pillTxt.Size               = UDim2.new(0, 30, 1, 0)
-pillTxt.Position           = UDim2.new(1, -34, 0, 0)
-pillTxt.Text               = "OFF"
-pillTxt.Font               = Enum.Font.GothamBold
-pillTxt.TextSize           = 9
-pillTxt.TextColor3         = C.muted
-pillTxt.BackgroundTransparency = 1
-pillTxt.ZIndex             = 5
-pillTxt.Parent             = pill
-
--- ══════════════════════════════════════════
---  HELPERS
--- ══════════════════════════════════════════
-
-local function setStatus(txt, color)
-    statusLbl.Text       = txt
-    statusLbl.TextColor3 = color or C.text
-end
-
--- ══════════════════════════════════════════
---  PICK NEXT ROUTE  (the core scheduler)
---
---  Returns the highest-priority route that is
---  ready RIGHT NOW, or the one that will be
---  ready soonest (with how long to wait).
---
---  Return: route, waitSeconds
--- ══════════════════════════════════════════
-
-local function pickNextRoute()
-    local now = tick()
-
-    -- collect all routes sorted by priority (1=highest)
-    local sorted = {}
-    for _, r in ipairs(ROUTES) do
-        table.insert(sorted, r)
-    end
-    table.sort(sorted, function(a, b) return a.priority < b.priority end)
-
-    -- first pass: any route ready right now? take highest priority one
-    for _, r in ipairs(sorted) do
-        local ready = nextReadyAt[r.id] or 0
-        if now >= ready then
-            return r, 0
+mkToggle(autoSec, 38,  "Auto Collect Coins"):onChanged(function(s)
+    autoCollectCoinsValue = s
+    if s then
+        for i, v in pairs(Tutorial._activePickups) do
+            v:Destroy()
+            Tutorial._activePickups[tostring(i)] = nil
+            ReplicatedStorage.Remotes.Pickups.CollectPickup:FireServer(i)
         end
     end
+end)
+mkToggle(autoSec, 64,  "Auto Claim Playtime"):onChanged(function(s)   autoclaimplaytimeval = s end)
+mkToggle(autoSec, 90,  "Auto Claim Chests"):onChanged(function(s)     autoclaimchestsval   = s end)
+mkToggle(autoSec, 116, "Auto Claim Rift Gifts"):onChanged(function(s) autoClaimRiftGiftval = s end)
 
-    -- second pass: nothing ready — find the one that becomes ready soonest
-    -- but still respect priority for ties
-    local bestRoute = nil
-    local bestWait  = math.huge
-    for _, r in ipairs(sorted) do
-        local wait = (nextReadyAt[r.id] or 0) - now
-        if wait < bestWait then
-            bestWait  = wait
-            bestRoute = r
-        end
+workspace.Rendered:GetChildren()[14].ChildAdded:Connect(function(coin)
+    if autoCollectCoinsValue then
+        coin:Destroy()
+        Tutorial._activePickups[tostring(coin.Name)] = nil
+        ReplicatedStorage.Remotes.Pickups.CollectPickup:FireServer(coin.Name)
     end
+end)
 
-    return bestRoute, bestWait
+-- ════════════════════════════════════════════════════════
+--  PETS TAB
+-- ════════════════════════════════════════════════════════
+
+local petPage = tabPages["Pets"]
+local petSec = mkSection(petPage, 0, 200)
+
+local dropLbl = Instance.new("TextLabel")
+dropLbl.Size = UDim2.new(1,-12,0,14); dropLbl.Position = UDim2.new(0,6,0,6)
+dropLbl.Text = "Selected Egg:"
+dropLbl.Font = Enum.Font.Gotham; dropLbl.TextSize = 9
+dropLbl.TextColor3 = Color3.fromRGB(140,140,140)
+dropLbl.TextXAlignment = Enum.TextXAlignment.Left
+dropLbl.BackgroundTransparency = 1; dropLbl.Parent = petSec
+
+local eggDropBtn = Instance.new("TextButton")
+eggDropBtn.Size = UDim2.new(1,-12,0,24); eggDropBtn.Position = UDim2.new(0,6,0,22)
+eggDropBtn.BackgroundColor3 = Color3.fromRGB(40,40,52)
+eggDropBtn.Text = " "..(selectedEgg ~= "" and selectedEgg or "Select egg...")
+eggDropBtn.Font = Enum.Font.Gotham; eggDropBtn.TextSize = 10
+eggDropBtn.TextColor3 = Color3.fromRGB(220,220,220)
+eggDropBtn.TextXAlignment = Enum.TextXAlignment.Left
+eggDropBtn.BorderSizePixel = 0; eggDropBtn.Parent = petSec
+mkCorner(eggDropBtn, 5)
+
+local arrowL = Instance.new("TextLabel")
+arrowL.Size = UDim2.new(0,18,1,0); arrowL.Position = UDim2.new(1,-20,0,0)
+arrowL.Text = "▾"; arrowL.Font = Enum.Font.GothamBold; arrowL.TextSize = 11
+arrowL.TextColor3 = Color3.fromRGB(140,140,140)
+arrowL.BackgroundTransparency = 1; arrowL.Parent = eggDropBtn
+
+local dropList = Instance.new("Frame")
+dropList.Size = UDim2.new(1,-12,0,math.min(#eggs,5)*20)
+dropList.Position = UDim2.new(0,6,0,48)
+dropList.BackgroundColor3 = Color3.fromRGB(35,35,48)
+dropList.BorderSizePixel = 0; dropList.Visible = false
+dropList.ZIndex = 10; dropList.ClipsDescendants = true
+dropList.Parent = petSec
+mkCorner(dropList, 5)
+
+local scrollF = Instance.new("ScrollingFrame")
+scrollF.Size = UDim2.new(1,0,1,0)
+scrollF.BackgroundTransparency = 1; scrollF.ScrollBarThickness = 3
+scrollF.CanvasSize = UDim2.new(0,0,0,#eggs*20)
+scrollF.ZIndex = 11; scrollF.Parent = dropList
+Instance.new("UIListLayout", scrollF).SortOrder = Enum.SortOrder.LayoutOrder
+
+for i, egg in ipairs(eggs) do
+    local item = Instance.new("TextButton")
+    item.Size = UDim2.new(1,0,0,20); item.BackgroundTransparency = 1
+    item.Text = "  "..egg; item.Font = Enum.Font.Gotham; item.TextSize = 10
+    item.TextColor3 = Color3.fromRGB(210,210,210)
+    item.TextXAlignment = Enum.TextXAlignment.Left
+    item.BorderSizePixel = 0; item.LayoutOrder = i; item.ZIndex = 12
+    item.Parent = scrollF
+    item.MouseEnter:Connect(function() item.BackgroundTransparency=0; item.BackgroundColor3=Color3.fromRGB(50,50,65) end)
+    item.MouseLeave:Connect(function() item.BackgroundTransparency=1 end)
+    item.MouseButton1Click:Connect(function()
+        selectedEgg = egg; eggDropBtn.Text = " "..egg; dropList.Visible = false
+    end)
+end
+eggDropBtn.MouseButton1Click:Connect(function() dropList.Visible = not dropList.Visible end)
+
+local toggleBase = math.min(#eggs,5)*20 + 52
+mkToggle(petSec, toggleBase,    "Auto Hatch"):onChanged(function(s) autoHatchValue = s end)
+mkToggle(petSec, toggleBase+26, "Auto Open Mystery Boxes"):onChanged(function(s) autoGiftValue = s end)
+
+-- ════════════════════════════════════════════════════════
+--  UI UPDATE
+-- ════════════════════════════════════════════════════════
+
+local function setStatus(txt, col)
+    statusText.Text = txt
+    if col then statusText.TextColor3 = col end
 end
 
--- ══════════════════════════════════════════
---  RUN A SINGLE ROUTE
--- ══════════════════════════════════════════
+local function highlightRoute(id)
+    for i, card in ipairs(routeCards) do
+        card.frame.BackgroundColor3 = (i==id) and Color3.fromRGB(40,40,55) or Color3.fromRGB(25,25,35)
+    end
+end
+
+local function updateUI()
+    for i in ipairs(ROUTES) do routeCards[i].count.Text = routeCounts[i].."x" end
+    cyclesLabel.Text = "Total runs: "..totalCycles
+    modeLabel.Text   = "Mode: "..speedMode
+    retryInfo.Text   = string.format(" Retry Queue: %d spots", #RetrySystem.retryQueue)
+    wheelCountLbl.Text = "Spins this session: "..wheelSpins
+end
+
+-- ════════════════════════════════════════════════════════
+--  MOVEMENT
+-- ════════════════════════════════════════════════════════
+
+local function moveToPosition(targetCF, duration)
+    local root = getRoot()
+    if speedMode == "INSTANT" then
+        root.CFrame = targetCF; task.wait(0.1)
+    elseif speedMode == "FAST" then
+        local t = TweenService:Create(root, TweenInfo.new(duration or 0.5, Enum.EasingStyle.Linear), {CFrame=targetCF})
+        t:Play(); t.Completed:Wait(); task.wait(interactionDelay)
+    else
+        local t = TweenService:Create(root, TweenInfo.new(duration or 1.5, Enum.EasingStyle.Linear), {CFrame=targetCF})
+        t:Play(); t.Completed:Wait(); task.wait(interactionDelay + 0.2)
+    end
+end
+
+-- ════════════════════════════════════════════════════════
+--  ROUTE EXECUTION
+-- ════════════════════════════════════════════════════════
 
 local function runRoute(route)
-    local wp = route.waypoints
-    setActiveCard(route.id)
-    strip.BackgroundColor3 = route.color
-
-    -- mark cooldown immediately so the timer is accurate
+    if not farmEnabled then return end
+    highlightRoute(route.id)
+    setStatus("🌱 Farming "..route.name.."...", route.color)
     nextReadyAt[route.id] = tick() + route.cooldown
 
-    -- teleport to first waypoint
-    highlightStep(1, route.color)
-    setStatus("→ " .. route.name .. " (tp start)", route.color)
-    root.CFrame = wp[1]
-    task.wait(0.2)
-    if not farmEnabled then return end
-
-    -- tween remaining waypoints
-    for i = 2, #wp do
-        if not farmEnabled then return end
-        highlightStep(i, route.color)
-        setStatus("→ " .. route.name .. " (pt " .. (i-1) .. "→" .. i .. ")", route.color)
-
-        local t = TweenService:Create(
-            root,
-            TweenInfo.new(route.tween_t, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-            { CFrame = wp[i] }
-        )
-        t:Play()
-        t.Completed:Wait()
-        if not farmEnabled then return end
-        task.wait(route.delay)
+    for i, wp in ipairs(route.waypoints) do
+        if not farmEnabled then break end
+        setStatus(string.format("%s: point %d/%d", route.name, i, #route.waypoints), route.color)
+        moveToPosition(wp, speedMode=="SAFE" and 1.5 or 0.5)
+        task.wait(0.2)
+        if not verifySpot(wp) then
+            markForRetry(wp, route.id)
+            setStatus(string.format("⚠ %s pt %d → retry", route.name, i), Color3.fromRGB(255,200,100))
+        else
+            markSuccessful(wp)
+        end
+        updateUI()
     end
 
-    -- update UI counters
     routeCounts[route.id] = routeCounts[route.id] + 1
-    routeCardObjs[route.id].countLbl.Text = "×" .. routeCounts[route.id]
     totalCycles = totalCycles + 1
-    cycleNumLbl.Text = tostring(totalCycles)
-
-    resetSteps()
-    setActiveCard(0)
+    updateUI(); highlightRoute(0)
 end
 
--- ══════════════════════════════════════════
---  MAIN FARM LOOP
---
---  Each iteration:
---  1. Ask pickNextRoute() what to run and if
---     we need to wait first.
---  2. If wait > 0, show countdown and idle.
---     Yield in small slices so farmEnabled can
---     be checked while waiting.
---  3. Run the chosen route.
---  4. Immediately loop back — a higher-priority
---     route may now be ready.
--- ══════════════════════════════════════════
+-- ════════════════════════════════════════════════════════
+--  RETRY LOOP
+-- ════════════════════════════════════════════════════════
 
-local function runFarm()
-    -- All routes start as immediately available
-    for _, r in ipairs(ROUTES) do
-        nextReadyAt[r.id] = 0
-    end
-
+local function retryLoop()
     while farmEnabled do
-        local route, waitSecs = pickNextRoute()
+        if #RetrySystem.retryQueue > 0 and currentRoute == nil then
+            local spot = getNextRetrySpot()
+            if spot then
+                setStatus(string.format(" Retry attempt %d/%d", spot.failCount, RetrySystem.maxRetries),
+                    Color3.fromRGB(255,200,100))
+                local ok = retrySpot(spot)
+                setStatus(ok and " Retry OK!" or " Retry failed – queued again",
+                    ok and Color3.fromRGB(100,255,100) or Color3.fromRGB(255,150,50))
+                updateUI(); task.wait(1)
+            end
+        end
+        task.wait(0.5)
+    end
+end
 
-        if waitSecs > 0 then
-            -- show which flower we're waiting for
-            setStatus("Waiting " .. string.format("%.1f", waitSecs) .. "s for " .. route.name, C.yellow)
-            strip.BackgroundColor3 = route.color
+-- ════════════════════════════════════════════════════════
+--  WHEEL SPIN LOOP
+-- ════════════════════════════════════════════════════════
 
-            -- yield in 0.1s slices so we can react instantly if a
-            -- higher-priority route becomes ready mid-wait
-            local deadline = tick() + waitSecs
+local function wheelLoop()
+    while farmEnabled do
+        if autoWheelValue then
+            FunctionHandler:InvokeServer("SpringWheelSpin")
+            task.wait(0.5)
+            EventHandler:FireServer("ClaimSpringWheelSpinQueue")
+            wheelSpins = wheelSpins + 1
+            updateUI()
+            task.wait(1)
+        else
+            task.wait(0.5)
+        end
+    end
+end
+
+-- ════════════════════════════════════════════════════════
+--  PRIORITY QUEUE
+-- ════════════════════════════════════════════════════════
+
+local function getNextRoute()
+    local now = tick()
+    for _, route in ipairs(ROUTES) do
+        if now >= (nextReadyAt[route.id] or 0) then return route, 0 end
+    end
+    local soonest, soonestTime = nil, math.huge
+    for _, route in ipairs(ROUTES) do
+        local ra = nextReadyAt[route.id] or 0
+        if ra < soonestTime then soonestTime = ra; soonest = route end
+    end
+    return soonest, soonestTime - now
+end
+
+-- ════════════════════════════════════════════════════════
+--  MAIN FARM LOOP
+-- ════════════════════════════════════════════════════════
+
+local function farmLoop()
+    for _, route in ipairs(ROUTES) do nextReadyAt[route.id] = 0 end
+    while farmEnabled do
+        local route, waitTime = getNextRoute()
+        if waitTime > 0 then
+            setStatus(string.format("⏳ Idle %.1fs (%d retry)", waitTime, #RetrySystem.retryQueue),
+                Color3.fromRGB(255,200,100))
+            currentRoute = nil
+            local deadline = tick() + waitTime
             while farmEnabled and tick() < deadline do
-                -- re-check: did a higher-priority slot open up?
-                local nowRoute, nowWait = pickNextRoute()
-                if nowWait <= 0 then
-                    break  -- something is ready right now, go run it
-                end
+                local cr = getNextRoute()
+                if cr and cr.id ~= route.id and (nextReadyAt[cr.id] or 0) <= tick() then break end
                 task.wait(0.1)
             end
         end
-
-        if not farmEnabled then break end
-
-        -- re-pick in case priorities changed during the wait
-        local chosen, _ = pickNextRoute()
-        if chosen then
-            runRoute(chosen)
+        if farmEnabled then
+            local nextRoute = getNextRoute()
+            if nextRoute then
+                currentRoute = nextRoute; runRoute(nextRoute); currentRoute = nil
+            end
         end
     end
-
-    setStatus("Idle — press ON to start", C.muted)
-    resetSteps()
-    setActiveCard(0)
-    strip.BackgroundColor3 = C.accent
+    currentRoute = nil
+    setStatus("⏸ Idle – Press Start", Color3.fromRGB(200,200,200))
+    highlightRoute(0)
 end
 
--- ══════════════════════════════════════════
---  TOGGLE
--- ══════════════════════════════════════════
+-- ════════════════════════════════════════════════════════
+--  START / STOP
+-- ════════════════════════════════════════════════════════
 
-local function setToggle(on)
-    farmEnabled = on
-
-    if on then
-        TweenService:Create(pill, tw(), {BackgroundColor3 = C.green}):Play()
-        TweenService:Create(knob, tw(), {
-            Position         = UDim2.new(1, -28, 0.5, -12),
-            BackgroundColor3 = Color3.new(1, 1, 1),
-        }):Play()
-        pillTxt.Text       = "ON"
-        pillTxt.TextColor3 = Color3.new(1, 1, 1)
-        farmThread = task.spawn(runFarm)
+startBtn.MouseButton1Click:Connect(function()
+    farmEnabled = not farmEnabled
+    if farmEnabled then
+        startBtn.Text = " STOP"
+        startBtn.BackgroundColor3 = Color3.fromRGB(200,100,100)
+        setStatus("▶ Farming started", Color3.fromRGB(100,255,100))
+        if farmThread  then task.cancel(farmThread)  end
+        if retryThread then task.cancel(retryThread) end
+        if wheelThread then task.cancel(wheelThread) end
+        farmThread  = task.spawn(farmLoop)
+        retryThread = task.spawn(retryLoop)
+        wheelThread = task.spawn(wheelLoop)
     else
-        if farmThread then
-            task.cancel(farmThread)
-            farmThread = nil
-        end
-        TweenService:Create(pill, tw(), {BackgroundColor3 = C.dim}):Play()
-        TweenService:Create(knob, tw(), {
-            Position         = UDim2.new(0, 4, 0.5, -12),
-            BackgroundColor3 = C.muted,
-        }):Play()
-        pillTxt.Text       = "OFF"
-        pillTxt.TextColor3 = C.muted
-        strip.BackgroundColor3 = C.accent
-        setStatus("Idle — press ON to start", C.muted)
-        resetSteps()
-        setActiveCard(0)
+        startBtn.Text = "▶ START"
+        startBtn.BackgroundColor3 = Color3.fromRGB(50,180,100)
+        setStatus(" Idle – Press Start", Color3.fromRGB(200,200,200))
+        if farmThread  then task.cancel(farmThread);  farmThread  = nil end
+        if retryThread then task.cancel(retryThread); retryThread = nil end
+        if wheelThread then task.cancel(wheelThread); wheelThread = nil end
     end
-end
-
-pill.MouseButton1Click:Connect(function()
-    setToggle(not farmEnabled)
 end)
+
+-- ════════════════════════════════════════════════════════
+--  COOLDOWN TICKER
+-- ════════════════════════════════════════════════════════
+
+task.spawn(function()
+    while sg.Parent do
+        if farmEnabled then
+            local now = tick()
+            for i, route in ipairs(ROUTES) do
+                local rem = (nextReadyAt[route.id] or 0) - now
+                routeCards[i].cooldown.Text = rem > 0 and string.format("%.0fs", rem) or "ready"
+                routeCards[i].cooldown.TextColor3 = rem > 0
+                    and Color3.fromRGB(255,200,100) or Color3.fromRGB(100,255,100)
+            end
+            updateUI()
+        end
+        task.wait(0.25)
+    end
+end)
+
+-- ════════════════════════════════════════════════════════
+--  AUTOMATION LOOPS
+-- ════════════════════════════════════════════════════════
+
+coroutine.wrap(function()
+    while wait(0.5) do
+        if autoBlowValue then EventHandler:FireServer("BlowBubble") end
+        if autoSellValue and (autoSellPer/100)*StatsUtil:GetBubbleStorage(Data) <= Data.Bubble.Amount then
+            EventHandler:FireServer("SellBubble")
+        end
+    end
+end)()
+
+coroutine.wrap(function()
+    while wait(0.1) do
+        if autoclaimplaytimeval then
+            local count = 1
+            for _ in pairs(Data.PlaytimeRewards.Claimed) do count += 1 end
+            FunctionHandler:InvokeServer("ClaimPlaytime", count)
+        end
+        if autoclaimchestsval then
+            for i in pairs(require(SData.Chests)) do EventHandler:FireServer("ClaimChest", i) end
+        end
+    end
+end)()
+
+EventHandler.OnClientEvent:Connect(function(eventName, gifts)
+    if eventName == "RenderGifts" and autoClaimRiftGiftval then
+        for giftId in pairs(gifts) do
+            task.delay(0.1, function() EventHandler:FireServer("ClaimRiftGift", giftId) end)
+        end
+    end
+end)
+
+coroutine.wrap(function()
+    while wait(0.1) do
+        if autoHatchValue and selectedEgg ~= "" then
+            EventHandler:FireServer("HatchEgg", selectedEgg, 1)
+        end
+    end
+end)()
+
+coroutine.wrap(function()
+    while wait(0.1) do
+        if autoGiftValue then
+            local amt = require(Utils.Stats.ItemUtil):GetOwnedAmount(Data, {Type="Powerup", Name="Mystery Box"})
+            local open = amt>=10 and 10 or amt>=5 and 5 or 1
+            if amt > 0 then
+                EventHandler:FireServer("UseGift", "Mystery Box", open)
+                wait(0.5)
+                for _ = 1,8 do mouse1click(); task.wait(0.5) end
+            end
+        end
+    end
+end)()
+
+-- ════════════════════════════════════════════════════════
+--  INIT
+-- ════════════════════════════════════════════════════════
+
+updateUI()
+setStatus("⏸ Idle – Press Start", Color3.fromRGB(200,200,200))
+print("🌸 BGSI All-in-One loaded — Farm + Wheel + Bubbles + Automation + Pets")
