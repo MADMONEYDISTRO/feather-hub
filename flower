@@ -208,13 +208,25 @@ mkCorner(header, 10)
 local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1,-36,1,0)
 titleLbl.Position = UDim2.new(0,10,0,0)
-titleLbl.Text = "Feather Hub | BGSI"
+titleLbl.Text = "BGSI | Feather Hub"
 titleLbl.Font = Enum.Font.GothamBold
 titleLbl.TextSize = 13
 titleLbl.TextColor3 = Color3.new(1,1,1)
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 titleLbl.BackgroundTransparency = 1
 titleLbl.Parent = header
+
+local versionTag = Instance.new("TextLabel")
+versionTag.Size = UDim2.new(0,30,0,16)
+versionTag.Position = UDim2.new(1,-62,0.5,-8)
+versionTag.Text = "v5"
+versionTag.Font = Enum.Font.GothamBold
+versionTag.TextSize = 9
+versionTag.TextColor3 = Color3.fromRGB(120,120,140)
+versionTag.BackgroundColor3 = Color3.fromRGB(40,40,52)
+versionTag.BorderSizePixel = 0
+versionTag.Parent = header
+mkCorner(versionTag, 4)
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0,24,0,24)
@@ -579,7 +591,7 @@ local autoSec = mkSection(autoPage, 0, 170)
 
 local unlockBtn = Instance.new("TextButton")
 unlockBtn.Size = UDim2.new(1,-12,0,26); unlockBtn.Position = UDim2.new(0,6,0,6)
-unlockBtn.Text = "  Unlock All Areas"
+unlockBtn.Text = " Unlock All Areas"
 unlockBtn.Font = Enum.Font.GothamBold; unlockBtn.TextSize = 11
 unlockBtn.TextColor3 = Color3.new(1,1,1)
 unlockBtn.BackgroundColor3 = Color3.fromRGB(70,130,200)
@@ -738,7 +750,7 @@ end
 local function runRoute(route)
     if not farmEnabled then return end
     highlightRoute(route.id)
-    setStatus("🌱 Farming "..route.name.."...", route.color)
+    setStatus(" Farming "..route.name.."...", route.color)
     nextReadyAt[route.id] = tick() + route.cooldown
 
     for i, wp in ipairs(route.waypoints) do
@@ -748,7 +760,7 @@ local function runRoute(route)
         task.wait(0.2)
         if not verifySpot(wp) then
             markForRetry(wp, route.id)
-            setStatus(string.format("⚠ %s pt %d → retry", route.name, i), Color3.fromRGB(255,200,100))
+            setStatus(string.format(" %s pt %d → retry", route.name, i), Color3.fromRGB(255,200,100))
         else
             markSuccessful(wp)
         end
@@ -769,10 +781,10 @@ local function retryLoop()
         if #RetrySystem.retryQueue > 0 and currentRoute == nil then
             local spot = getNextRetrySpot()
             if spot then
-                setStatus(string.format(" Retry attempt %d/%d", spot.failCount, RetrySystem.maxRetries),
+                setStatus(string.format("Retry attempt %d/%d", spot.failCount, RetrySystem.maxRetries),
                     Color3.fromRGB(255,200,100))
                 local ok = retrySpot(spot)
-                setStatus(ok and " Retry OK!" or " Retry failed – queued again",
+                setStatus(ok and " Retry OK!" or "Retry failed – queued again",
                     ok and Color3.fromRGB(100,255,100) or Color3.fromRGB(255,150,50))
                 updateUI(); task.wait(1)
             end
@@ -826,7 +838,7 @@ local function farmLoop()
     while farmEnabled do
         local route, waitTime = getNextRoute()
         if waitTime > 0 then
-            setStatus(string.format("⏳ Idle %.1fs (%d retry)", waitTime, #RetrySystem.retryQueue),
+            setStatus(string.format("Idle %.1fs (%d retry)", waitTime, #RetrySystem.retryQueue),
                 Color3.fromRGB(255,200,100))
             currentRoute = nil
             local deadline = tick() + waitTime
@@ -867,7 +879,7 @@ startBtn.MouseButton1Click:Connect(function()
     else
         startBtn.Text = "▶ START"
         startBtn.BackgroundColor3 = Color3.fromRGB(50,180,100)
-        setStatus(" Idle – Press Start", Color3.fromRGB(200,200,200))
+        setStatus("⏸ Idle – Press Start", Color3.fromRGB(200,200,200))
         if farmThread  then task.cancel(farmThread);  farmThread  = nil end
         if retryThread then task.cancel(retryThread); retryThread = nil end
         if wheelThread then task.cancel(wheelThread); wheelThread = nil end
@@ -955,5 +967,3 @@ end)()
 -- ════════════════════════════════════════════════════════
 
 updateUI()
-setStatus("⏸ Idle – Press Start", Color3.fromRGB(200,200,200))
-print("🌸 BGSI All-in-One loaded — Farm + Wheel + Bubbles + Automation + Pets")
