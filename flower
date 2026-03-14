@@ -1,7 +1,7 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║         BGSI ALL-IN-ONE  —  COMPLETE v2.0               ║
--- ║   Flower Farm + Wheel + Bubbles + Automation + Pets      ║
--- ║            + Staff Watch + Server Hop                    ║
+-- ║         BGSI ALL-IN-ONE  —  COMPLETE v2.3               ║
+-- ║  St. Patrick Event + Coin Farmer + Bubbles + Auto + Pets ║
+-- ║              + Staff Watch + Server Hop                  ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 local TweenService      = game:GetService("TweenService")
@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService       = game:GetService("HttpService")
 local TeleportService   = game:GetService("TeleportService")
 local VirtualUser       = game:GetService("VirtualUser")
+local RunService        = game:GetService("RunService")
 
 repeat wait() until game:IsLoaded()
 
@@ -19,277 +20,1557 @@ local playerGui = player:WaitForChild("PlayerGui")
 local currentPlaceId = game.PlaceId
 
 -- ════════════════════════════════════════════════════════
---  STAFF WATCH CONFIGURATION
+--  STAFF WATCH CONFIG
 -- ════════════════════════════════════════════════════════
 
 local STAFF_LIST = {
-    -- group staff rumble
-    "ObscureEntity", "sircfenner", "PrimE_RBLX", "Blizzyrd", "Sylently",
-    "Nosniy", "KrixYaz", "quamatic", "FutureWebsiteOwner", "Not_Nert",
-    "Mallowiie", "SkeletalReality", "DevCrut", "Beeism", 
-    
-
+    "ObscureEntity","sircfenner","PrimE_RBLX","Blizzyrd","Sylently",
+    "Nosniy","KrixYaz","quamatic","FutureWebsiteOwner","Not_Nert",
+    "Mallowiie","SkeletalReality","DevCrut","Beeism",
 }
-
-local staffWatchEnabled = true
-local staffDetected = false
-local lastStaffCheck = 0
-local checkInterval = 2
-local autoServerHop = true
-local hopDelay = 3
+local BANNED_KEYWORDS    = { "mod","admin","staff","dev" }
+local staffWatchEnabled  = true
+local staffDetected      = false
+local lastStaffCheck     = 0
+local checkInterval      = 2
+local autoServerHop      = true
+local hopDelay           = 3
 local currentServerStaff = {}
-local notificationShown = false
-local staffWatchThread = nil
+local notificationShown  = false
+local staffWatchThread   = nil
 
 -- ════════════════════════════════════════════════════════
 --  EXTERNAL REFERENCES
 -- ════════════════════════════════════════════════════════
 
-local Shared = ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")
-local SData = Shared:FindFirstChild("Data")
-local Utils = Shared:FindFirstChild("Utils")
+local Shared    = ReplicatedStorage:FindFirstChild("Shared") or ReplicatedStorage:WaitForChild("Shared")
+local SData     = Shared:FindFirstChild("Data")
+local Utils     = Shared:FindFirstChild("Utils")
 local Framework = Shared:FindFirstChild("Framework")
-local Client = ReplicatedStorage:FindFirstChild("Client")
+local Client    = ReplicatedStorage:FindFirstChild("Client")
 
--- Safe requires
-local Tutorial = {}
-local StatsUtil = {}
-local localData = {}
-local Data = {}
-local EventHandler = nil
+local Tutorial     = {}
+local StatsUtil    = {}
+local localData    = {}
+local Data         = {}
+local EventHandler    = nil
 local FunctionHandler = nil
 
 local function safeRequire(module, default)
-    local success, result = pcall(function()
-        return require(module)
-    end)
-    return success and result or (default or {})
+    local ok, res = pcall(require, module)
+    return ok and res or (default or {})
 end
 
 if Client and Client:FindFirstChild("Tutorial") then
     Tutorial = safeRequire(Client.Tutorial)
 end
-
 if Utils and Utils:FindFirstChild("Stats") and Utils.Stats:FindFirstChild("StatsUtil") then
     StatsUtil = safeRequire(Utils.Stats.StatsUtil)
 end
-
 if Framework and Framework:FindFirstChild("Services") and Framework.Services:FindFirstChild("LocalData") then
     localData = safeRequire(Framework.Services.LocalData)
     if localData and type(localData) == "table" and localData.Get then
         Data = localData:Get() or {}
     end
 end
-
 if Framework and Framework.Network and Framework.Network.Remote then
-    EventHandler = Framework.Network.Remote:FindFirstChild("RemoteEvent")
+    EventHandler    = Framework.Network.Remote:FindFirstChild("RemoteEvent")
     FunctionHandler = Framework.Network.Remote:FindFirstChild("RemoteFunction")
 end
+if not EventHandler    then EventHandler    = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:FindFirstChild("RemoteEvent") end
+if not FunctionHandler then FunctionHandler = ReplicatedStorage:FindFirstChild("RemoteFunction") end
 
-if not EventHandler then
-    EventHandler = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:FindFirstChild("RemoteEvent")
-end
+-- Direct path remote for egg hatching
+local RemoteEvent = ReplicatedStorage:WaitForChild("Shared")
+    :WaitForChild("Framework"):WaitForChild("Network")
+    :WaitForChild("Remote"):WaitForChild("RemoteEvent")
 
-if not FunctionHandler then
-    FunctionHandler = ReplicatedStorage:FindFirstChild("RemoteFunction")
-end
-
--- Get eggs list
 local eggs = {}
 local eggsModule = SData and SData:FindFirstChild("Eggs")
 if eggsModule then
     local eggsData = safeRequire(eggsModule, {})
-    for eggName in pairs(eggsData) do
-        table.insert(eggs, eggName)
-    end
+    for eggName in pairs(eggsData) do table.insert(eggs, eggName) end
 end
 table.sort(eggs)
-
--- ════════════════════════════════════════════════════════
---  ROUTE DEFINITIONS
--- ════════════════════════════════════════════════════════
-
-local ROUTES = {
-    {
-        id = 1, name = "Rose",
-        color = Color3.fromRGB(248, 113, 113),
-        cooldown = 60, priority = 1,
-        waypoints = {
-            CFrame.new(-61.51, 15.85, 3066.23),
-            CFrame.new(-26.34, 15.85, 3055.38),
-            CFrame.new(-47.62, 15.85, 3055.04),
-        },
-    },
-    {
-        id = 2, name = "Sunflower",
-        color = Color3.fromRGB(251, 191, 36),
-        cooldown = 10, priority = 2,
-        waypoints = {
-            CFrame.new(-48.91, 20.87, 3170.7),
-            CFrame.new(-2.68,  10.23, 3217.2),
-            CFrame.new(16.45,  10.23, 3200.8),
-            CFrame.new(85.53,  20.87, 3170.34),
-        },
-    },
-    {
-        id = 3, name = "Violet",
-        color = Color3.fromRGB(167, 139, 250),
-        cooldown = 5, priority = 3,
-        waypoints = {
-            CFrame.new(47.07,  15.68, 3075.36),
-            CFrame.new(53.44,  15.68, 3054.97),
-            CFrame.new(71.46,  15.68, 3064.12),
-            CFrame.new(89.56,  19.84, 3076.19),
-            CFrame.new(40.73,  12.79, 3107.26),
-            CFrame.new(51.02,  15.99, 3156.23),
-            CFrame.new(61.23,  12.79, 3184.62),
-            CFrame.new(-36.06, 12.79, 3106.99),
-        },
-    },
-}
-
--- ════════════════════════════════════════════════════════
---  RETRY SYSTEM
--- ════════════════════════════════════════════════════════
-
-local RetrySystem = {
-    retryQueue = {},
-    successfulSpots = {},
-    failedSpots = {},
-    maxRetries = 3,
-    retryCooldown = 2,
-    lastRetryTime = {},
-}
-
-local function getRoot()
-    local char = player.Character or player.CharacterAdded:Wait()
-    return char:WaitForChild("HumanoidRootPart")
-end
-
-local function verifySpot(wp)
-    local char = player.Character
-    if not char then return false end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    return root and (root.Position - wp.Position).Magnitude < 8
-end
-
-local function markForRetry(wp, routeId)
-    local key = tostring(wp)
-    RetrySystem.failedSpots[key] = (RetrySystem.failedSpots[key] or 0) + 1
-    if RetrySystem.failedSpots[key] > RetrySystem.maxRetries then return end
-    for _, item in ipairs(RetrySystem.retryQueue) do
-        if tostring(item.waypoint) == key then return end
-    end
-    table.insert(RetrySystem.retryQueue, {
-        waypoint = wp, routeId = routeId,
-        failCount = RetrySystem.failedSpots[key], addedTime = tick()
-    })
-end
-
-local function markSuccessful(wp)
-    local key = tostring(wp)
-    RetrySystem.failedSpots[key] = nil
-    for i = #RetrySystem.retryQueue, 1, -1 do
-        if tostring(RetrySystem.retryQueue[i].waypoint) == key then
-            table.remove(RetrySystem.retryQueue, i)
-        end
-    end
-end
-
-local function getNextRetrySpot()
-    local now = tick()
-    for i, spot in ipairs(RetrySystem.retryQueue) do
-        local last = RetrySystem.lastRetryTime[tostring(spot.waypoint)] or 0
-        if now - last >= RetrySystem.retryCooldown then
-            table.remove(RetrySystem.retryQueue, i)
-            if verifySpot(spot.waypoint) then
-                markSuccessful(spot.waypoint)
-                return nil
-            end
-            return spot
-        end
-    end
-end
-
-local function retrySpot(spot)
-    RetrySystem.lastRetryTime[tostring(spot.waypoint)] = tick()
-    getRoot().CFrame = spot.waypoint
-    task.wait(0.2)
-    if verifySpot(spot.waypoint) then
-        markSuccessful(spot.waypoint)
-        return true
-    end
-    return false
-end
 
 -- ════════════════════════════════════════════════════════
 --  STATE
 -- ════════════════════════════════════════════════════════
 
-local farmEnabled = false
-local farmThread, retryThread, wheelThread
-local totalCycles = 0
-local routeCounts = {0, 0, 0}
-local nextReadyAt = {}
-local currentRoute = nil
-local speedMode = "INSTANT"
-local interactionDelay = 0.2
-
+-- Bubbles
 local autoBlowValue = false
 local autoSellValue = false
-local autoSellPer = 50
+local autoSellPer   = 50
+
+-- Automation
 local autoCollectCoinsValue = false
-local autoclaimplaytimeval = false
-local autoclaimchestsval = false
-local autoClaimRiftGiftval = false
+local autoclaimplaytimeval  = false
+local autoclaimchestsval    = false
+local autoClaimRiftGiftval  = false
+
+-- Pets
 local autoHatchValue = false
-local selectedEgg = eggs[1] or ""
-local autoGiftValue = false
-local autoWheelValue = false
-local wheelSpins = 0
+local selectedEgg    = eggs[1] or ""
+local autoGiftValue  = false
+
+-- St. Patrick — Fortune Egg
+local fortuneEnabled       = false
+local fortuneThread        = nil
+local fortuneTarget        = 0
+local fortuneBatchSize     = 3
+local fortuneOriginCF      = nil
+local FORTUNE_EGG_CF       = CFrame.new(-819.3, -118.97, 2706.94)
+
+-- St. Patrick — Coin Farmer
+local coinFarmEnabled  = false
+local coinFarmThread   = nil
+local coinsFarmed      = 0
+local coinFarmOriginCF = nil
+local coinLockCF       = nil   -- current snap target for coin farmer heartbeat
+local coinLockConn     = nil
+
+-- Genie Island — Gem/Coin Farmer
+local genieFarmEnabled  = false
+local genieFarmThread   = nil
+local genieCollected    = 0
+local genieFarmOriginCF = nil
+local GENIE_START_CF    = CFrame.new(
+    59.5629196, 15969.8564, 11.4287491,
+    -0.794635117, 0, -0.607087851,
+     0,           1,  0,
+     0.607087851, 0, -0.794635117
+)
+local genieLockCF       = nil   -- current snap target for genie farmer heartbeat
+local genieLockConn     = nil
+
+-- Coin target meshname and parent folder info
+local COIN_MESH_NAME   = "Meshes/bgscoin16_Cylinder.006"
+local COIN_PARENT_ID   = "eebf2b5a-517c-4a9c-a70b-bfd12e4a3a89"  -- for reference
+local COIN_FOLDER_NAME = "Chunker"   -- folder inside Rendered
+local TWEEN_SPEED      = 0.15        -- seconds to tween to each coin
 
 -- ════════════════════════════════════════════════════════
---  SERVER HOP FUNCTIONS
+--  SERVER HOP
 -- ════════════════════════════════════════════════════════
 
 local function getServers()
-    local success, result = pcall(function()
-        local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?limit=100", currentPlaceId)
-        local response = game:HttpGetAsync(url)
-        return HttpService:JSONDecode(response)
+    local ok, res = pcall(function()
+        local url = ("https://games.roblox.com/v1/games/%d/servers/Public?limit=100"):format(currentPlaceId)
+        return HttpService:JSONDecode(game:HttpGetAsync(url))
     end)
-    
-    if success and result and result.data then
-        return result.data
-    end
-    return {}
+    return (ok and res and res.data) or {}
 end
 
 local function serverHop()
-    farmEnabled = false
     task.wait(0.5)
-    
     local servers = getServers()
-    local currentJobId = game.JobId
-    local availableServers = {}
-    
-    for _, server in ipairs(servers) do
-        if server.id ~= currentJobId and server.playing < server.maxPlayers then
-            table.insert(availableServers, server)
+    local avail   = {}
+    for _, s in ipairs(servers) do
+        if s.id ~= game.JobId and s.playing < s.maxPlayers then
+            table.insert(avail, s)
         end
     end
-    
-    if #availableServers > 0 then
-        local targetServer = availableServers[math.random(1, #availableServers)]
-        TeleportService:TeleportToPlaceInstance(currentPlaceId, targetServer.id, player)
+    if #avail > 0 then
+        TeleportService:TeleportToPlaceInstance(currentPlaceId, avail[math.random(1,#avail)].id, player)
     end
 end
 
 local function rejoin()
-    farmEnabled = false
     task.wait(0.5)
     TeleportService:Teleport(currentPlaceId, player)
 end
+
+-- ════════════════════════════════════════════════════════
+--  HELPERS — character / root
+-- ════════════════════════════════════════════════════════
+
+local function getRoot()
+    local char = player.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function saveOrigin()
+    local root = getRoot()
+    return root and root.CFrame or nil
+end
+
+local function teleportTo(cf)
+    local root = getRoot()
+    if root then root.CFrame = cf end
+end
+
+local function tweenTo(cf, t)
+    local root = getRoot()
+    if not root then return end
+    local tw = TweenService:Create(root, TweenInfo.new(t or TWEEN_SPEED, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = cf})
+    tw:Play()
+    tw.Completed:Wait()
+end
+
+-- ════════════════════════════════════════════════════════
+--  GLOBAL ANTI-TELEPORT SYSTEM
+--  Three independent layers to catch the game moving us
+--  to the forbidden lobby CFrame (-40.88, 2902.75, 0.68).
+-- ════════════════════════════════════════════════════════
+
+local FORBIDDEN_ZONE   = Vector3.new(-40.88, 2902.75, 0.68)
+local FORBIDDEN_RADIUS = 200  -- wide net — anything within 200 studs of that point
+
+local function getSnapTarget()
+    if coinFarmEnabled  and coinLockCF   then return coinLockCF   end
+    if genieFarmEnabled and genieLockCF  then return genieLockCF  end
+    if fortuneEnabled                    then return FORTUNE_EGG_CF end
+    return nil
+end
+
+local function isInForbiddenZone(pos)
+    return (pos - FORBIDDEN_ZONE).Magnitude < FORBIDDEN_RADIUS
+end
+
+local function snapBackIfForbidden()
+    local root   = getRoot()
+    local target = getSnapTarget()
+    if not root or not target then return end
+    if isInForbiddenZone(root.Position) then
+        root.CFrame = target
+    end
+end
+
+-- Layer 1: Heartbeat — fires every frame (~60/sec)
+RunService.Heartbeat:Connect(function()
+    if not (coinFarmEnabled or genieFarmEnabled or fortuneEnabled) then return end
+    snapBackIfForbidden()
+end)
+
+-- Layer 2: RootPart CFrame property changed — fires the instant the server moves us
+-- Re-hooks whenever character respawns
+local rootChangedConn = nil
+
+local function hookRootChanged(char)
+    if rootChangedConn then rootChangedConn:Disconnect(); rootChangedConn = nil end
+    local root = char and char:WaitForChild("HumanoidRootPart", 5)
+    if not root then return end
+    rootChangedConn = root:GetPropertyChangedSignal("CFrame"):Connect(function()
+        if not (coinFarmEnabled or genieFarmEnabled or fortuneEnabled) then return end
+        -- Small delay lets the game finish its teleport before we snap back
+        task.defer(snapBackIfForbidden)
+    end)
+end
+
+-- Hook current character immediately
+if player.Character then
+    hookRootChanged(player.Character)
+end
+
+-- Re-hook on respawn (character swap also resets position)
+player.CharacterAdded:Connect(function(char)
+    task.wait(0.1)
+    hookRootChanged(char)
+    -- If a farmer was running when we respawned, snap straight back to farm
+    local target = getSnapTarget()
+    if target then
+        local root = char:WaitForChild("HumanoidRootPart", 5)
+        if root then
+            task.wait(0.2)  -- let spawn animation play one tick
+            root.CFrame = target
+        end
+    end
+end)
+
+-- Layer 3: Coarse polling every 0.1s as final backstop
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if coinFarmEnabled or genieFarmEnabled or fortuneEnabled then
+            snapBackIfForbidden()
+        end
+    end
+end)
+
+-- ════════════════════════════════════════════════════════
+--  COIN / CLOVER FARMING — find collectibles anywhere under Rendered
+-- ════════════════════════════════════════════════════════
+
+-- St. Patrick collectibles — no elevation filter needed (ground level)
+local STPATRICK_NAMES = {
+    ["Meshes/bgscoin16_Cylinder.006"] = true,
+    ["Meshes/bgscoin16_Cylinder.008"] = true,
+    ["Meshes/Clovers_Cube.122"]       = true,
+    ["Meshes/Clovers_Cube.126"]       = true,
+    ["Clover"]                        = true,
+    ["Meshes/Clovers_Cube.158"]       = true,
+    ["Meshes/Pot_Icosphere.005"]      = true,
+    ["Meshes/Pot_Plane.149"]          = true,
+    ["Meshes/Pot_Plane.150"]          = true,
+    ["Meshes/Pot_Plane.151"]          = true,
+    ["Meshes/Pot_Plane.152"]          = true,
+    ["Meshes/Pot_Plane.153"]          = true,
+    ["Meshes/Pot_Plane.154"]          = true,
+    ["Meshes/Crate4_Cube.005"]        = true,
+}
+
+-- Genie Island collectibles — ONLY collected when Y > 10000
+local GENIE_NAMES = {
+    ["Meshes/Gem Chest2_Cube.001"]              = true,
+    ["Meshes/Gem Chest2_Circle.003"]            = true,
+    ["Meshes/Gem Box1_Circle.005"]              = true,
+    ["Meshes/Gem Box1_Cube.002"]                = true,
+    ["Meshes/bgscoin17_Cube.001"]               = true,
+    ["Meshes/bgscoin17_Cylinder.009"]           = true,
+    ["Meshes/Gem Safe2_Cylinder.006 (1)"]       = true,
+    ["Meshes/Gem Safe2_Circle.001"]             = true,
+    ["Meshes/no way this gem will look normal4"]= true,
+}
+
+local GENIE_MIN_Y = 10000  -- Genie Island is at ~Y 15969
+
+-- Model GUIDs to target (teleport to their pivot) — always Genie Island level
+local COLLECTIBLE_MODELS = {
+    ["a5c2b32c-8ae7-440f-b616-ba52a191a536"] = true,
+}
+
+-- Returns a list of CFrames to visit
+local function getCoins()
+    local found = {}
+    local seen  = {}
+    local searchRoot = workspace:FindFirstChild("Rendered") or workspace
+
+    for _, obj in ipairs(searchRoot:GetDescendants()) do
+        local cf = nil
+
+        if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and not seen[obj] then
+            if STPATRICK_NAMES[obj.Name] then
+                -- St. Patrick — collect at any elevation
+                seen[obj] = true
+                cf = obj.CFrame
+            elseif GENIE_NAMES[obj.Name] and obj.Position.Y > GENIE_MIN_Y then
+                -- Genie Island — only collect at island elevation
+                seen[obj] = true
+                cf = obj.CFrame
+            end
+
+        elseif obj:IsA("Model") and COLLECTIBLE_MODELS[obj.Name] and not seen[obj] then
+            seen[obj] = true
+            if obj.PrimaryPart then
+                cf = obj.PrimaryPart.CFrame
+            else
+                local ok, pivot = pcall(function() return obj:GetPivot() end)
+                if ok and pivot then
+                    cf = pivot
+                else
+                    for _, child in ipairs(obj:GetDescendants()) do
+                        if child:IsA("BasePart") then cf = child.CFrame; break end
+                    end
+                end
+            end
+        end
+
+        if cf then table.insert(found, cf) end
+    end
+
+    return found
+end
+
+-- Debug: prints every unique BasePart/MeshPart and Model name under Rendered to console (F9)
+-- Use to discover new collectible names — check Y value to know if St.Patrick or Genie Island
+local function debugDumpNames()
+    local searchRoot = workspace:FindFirstChild("Rendered") or workspace
+    local partCounts  = {}
+    local modelCounts = {}
+    for _, obj in ipairs(searchRoot:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("MeshPart") then
+            partCounts[obj.Name] = (partCounts[obj.Name] or 0) + 1
+        elseif obj:IsA("Model") then
+            modelCounts[obj.Name] = (modelCounts[obj.Name] or 0) + 1
+        end
+    end
+    print("=== BGSI Parts ===")
+    for name, count in pairs(partCounts) do
+        print(string.format("  [%dx]  %q", count, name))
+    end
+    print("=== BGSI Models ===")
+    for name, count in pairs(modelCounts) do
+        print(string.format("  [%dx]  %q", count, name))
+    end
+    print("================================")
+end
+
+-- ════════════════════════════════════════════════════════
+--  GUI COLOURS
+-- ════════════════════════════════════════════════════════
+
+local bgColor      = Color3.fromRGB(25, 25, 30)
+local headerColor  = Color3.fromRGB(35, 35, 42)
+local sectionColor = Color3.fromRGB(40, 40, 48)
+local accentGrey   = Color3.fromRGB(60, 60, 70)
+local textGrey     = Color3.fromRGB(180, 180, 190)
+local darkGrey     = Color3.fromRGB(30, 30, 35)
+local greenAccent  = Color3.fromRGB(34, 180, 80)
+local goldAccent   = Color3.fromRGB(220, 170, 40)
+local shamrockGreen= Color3.fromRGB(22, 160, 60)
+
+-- ════════════════════════════════════════════════════════
+--  SCREEN GUI + MAIN FRAME
+-- ════════════════════════════════════════════════════════
+
+local sg = Instance.new("ScreenGui")
+sg.Name              = "BGSIMerged"
+sg.ResetOnSpawn      = false
+sg.ZIndexBehavior    = Enum.ZIndexBehavior.Sibling
+sg.IgnoreGuiInset    = true   -- fixes mobile notch/inset issues
+sg.Parent            = playerGui
+
+local function mkCorner(p, r)
+    local c = Instance.new("UICorner", p)
+    c.CornerRadius = UDim.new(0, r or 6)
+end
+
+-- Detect mobile: scale GUI wider on small screens
+local screenSize   = workspace.CurrentCamera.ViewportSize
+local isMobile     = screenSize.X < 700 or UserInputService.TouchEnabled
+local guiWidth     = isMobile and math.min(screenSize.X - 10, 380) or 380
+local guiHeight    = isMobile and math.min(screenSize.Y - 60, 460) or 460
+local guiStartX    = isMobile and 5 or math.floor(screenSize.X/2 - guiWidth/2)
+local guiStartY    = isMobile and 30 or math.floor(screenSize.Y/2 - guiHeight/2)
+
+local main = Instance.new("Frame")
+main.Size             = UDim2.new(0, guiWidth, 0, guiHeight)
+main.Position         = UDim2.new(0, guiStartX, 0, guiStartY)
+main.BackgroundColor3 = bgColor
+main.BorderSizePixel  = 0
+main.Active           = true
+main.Parent           = sg
+mkCorner(main, 10)
+
+-- ── Header ───────────────────────────────────────────────
+
+local header = Instance.new("Frame")
+header.Size             = UDim2.new(1, 0, 0, 40)
+header.BackgroundColor3 = headerColor
+header.BorderSizePixel  = 0
+header.Parent           = main
+mkCorner(header, 10)
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size               = UDim2.new(0, 150, 1, 0)
+titleLbl.Position           = UDim2.new(0, 10, 0, 0)
+titleLbl.Text               = "BGSI | Feather Hub"
+titleLbl.Font               = Enum.Font.GothamBold
+titleLbl.TextSize           = 13
+titleLbl.TextColor3         = textGrey
+titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+titleLbl.BackgroundTransparency = 1
+titleLbl.Parent             = header
+
+local versionTag = Instance.new("TextLabel")
+versionTag.Size             = UDim2.new(0, 35, 0, 18)
+versionTag.Position         = UDim2.new(1, -225, 0.5, -9)
+versionTag.Text             = "v2.3"
+versionTag.Font             = Enum.Font.GothamBold
+versionTag.TextSize         = 10
+versionTag.TextColor3       = Color3.fromRGB(140,140,150)
+versionTag.BackgroundColor3 = darkGrey
+versionTag.BorderSizePixel  = 0
+versionTag.Parent           = header
+mkCorner(versionTag, 4)
+
+local rejoinBtn = Instance.new("TextButton")
+rejoinBtn.Size             = UDim2.new(0, 55, 0, 24)
+rejoinBtn.Position         = UDim2.new(1, -180, 0.5, -12)
+rejoinBtn.Text             = "Rejoin"
+rejoinBtn.Font             = Enum.Font.GothamBold
+rejoinBtn.TextSize         = 11
+rejoinBtn.TextColor3       = textGrey
+rejoinBtn.BackgroundColor3 = accentGrey
+rejoinBtn.BorderSizePixel  = 0
+rejoinBtn.Parent           = header
+mkCorner(rejoinBtn, 4)
+rejoinBtn.MouseButton1Click:Connect(function() rejoinBtn.Text="⟳" task.spawn(rejoin) end)
+
+local hopBtn = Instance.new("TextButton")
+hopBtn.Size             = UDim2.new(0, 68, 0, 24)
+hopBtn.Position         = UDim2.new(1, -110, 0.5, -12)
+hopBtn.Text             = "Server Hop"
+hopBtn.Font             = Enum.Font.GothamBold
+hopBtn.TextSize         = 10
+hopBtn.TextColor3       = textGrey
+hopBtn.BackgroundColor3 = accentGrey
+hopBtn.BorderSizePixel  = 0
+hopBtn.Parent           = header
+mkCorner(hopBtn, 4)
+hopBtn.MouseButton1Click:Connect(function() hopBtn.Text="⟳" task.spawn(serverHop) end)
+
+local staffIndicator = Instance.new("Frame")
+staffIndicator.Size             = UDim2.new(0, 10, 0, 10)
+staffIndicator.Position         = UDim2.new(1, -36, 0.5, -5)
+staffIndicator.BackgroundColor3 = Color3.fromRGB(0,255,0)
+staffIndicator.BorderSizePixel  = 0
+staffIndicator.Parent           = header
+mkCorner(staffIndicator, 5)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size             = UDim2.new(0, 22, 0, 22)
+closeBtn.Position         = UDim2.new(1, -27, 0.5, -11)
+closeBtn.Text             = "X"
+closeBtn.Font             = Enum.Font.GothamBold
+closeBtn.TextSize         = 12
+closeBtn.TextColor3       = textGrey
+closeBtn.BackgroundColor3 = darkGrey
+closeBtn.BorderSizePixel  = 0
+closeBtn.Parent           = header
+mkCorner(closeBtn, 4)
+-- NOTE: closeBtn.MouseButton1Click is wired AFTER all stop functions are defined below
+
+-- Drag — supports both mouse and touch
+local dragging, dragStart, startPos
+
+local function onDragBegan(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = i.Position
+        startPos  = main.Position
+    end
+end
+
+local function onDragEnded(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end
+
+local function onDragChanged(i)
+    if dragging and (
+        i.UserInputType == Enum.UserInputType.MouseMovement or
+        i.UserInputType == Enum.UserInputType.Touch
+    ) then
+        local d = i.Position - dragStart
+        main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + d.X,
+            startPos.Y.Scale, startPos.Y.Offset + d.Y
+        )
+    end
+end
+
+header.InputBegan:Connect(onDragBegan)
+header.InputEnded:Connect(onDragEnded)
+UserInputService.InputChanged:Connect(onDragChanged)
+UserInputService.InputEnded:Connect(onDragEnded)
+
+-- ════════════════════════════════════════════════════════
+--  TAB BAR
+-- ════════════════════════════════════════════════════════
+
+local TAB_NAMES = {"🍀 Event","Bubbles","Automation","Pets"}
+local tabBtns   = {}
+local tabPages  = {}
+
+local tabBar = Instance.new("Frame")
+tabBar.Size             = UDim2.new(1,-20,0,28)
+tabBar.Position         = UDim2.new(0,10,0,45)
+tabBar.BackgroundColor3 = headerColor
+tabBar.BorderSizePixel  = 0
+tabBar.Parent           = main
+mkCorner(tabBar,5)
+
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.SortOrder     = Enum.SortOrder.LayoutOrder
+tabLayout.Padding       = UDim.new(0,4)
+tabLayout.Parent        = tabBar
+
+local contentArea = Instance.new("Frame")
+contentArea.Size                = UDim2.new(1,-20,1,-88)
+contentArea.Position            = UDim2.new(0,10,0,80)
+contentArea.BackgroundTransparency = 1
+contentArea.Parent              = main
+
+local function switchTab(name)
+    for n, btn in pairs(tabBtns) do
+        local on = (n==name)
+        btn.BackgroundColor3 = on and accentGrey or darkGrey
+        btn.TextColor3       = on and Color3.new(1,1,1) or textGrey
+    end
+    for n, page in pairs(tabPages) do
+        page.Visible = (n==name)
+    end
+end
+
+for i, name in ipairs(TAB_NAMES) do
+    local btn = Instance.new("TextButton")
+    btn.Size             = UDim2.new(0.25,-3,1,-4)
+    btn.BackgroundColor3 = i==1 and accentGrey or darkGrey
+    btn.TextColor3       = i==1 and Color3.new(1,1,1) or textGrey
+    btn.Text             = name
+    btn.Font             = Enum.Font.GothamBold
+    btn.TextSize         = 10
+    btn.BorderSizePixel  = 0
+    btn.Parent           = tabBar
+    mkCorner(btn,4)
+    tabBtns[name] = btn
+
+    local page = Instance.new("ScrollingFrame")
+    page.Size                  = UDim2.new(1,0,1,0)
+    page.BackgroundTransparency = 1
+    page.Visible               = i==1
+    page.Parent                = contentArea
+    page.ScrollBarThickness    = 4
+    page.CanvasSize            = UDim2.new(0,0,0,0)
+    page.AutomaticCanvasSize   = Enum.AutomaticSize.Y
+    page.ScrollBarImageColor3  = accentGrey
+    tabPages[name] = page
+
+    btn.MouseButton1Click:Connect(function() switchTab(name) end)
+end
+
+-- ════════════════════════════════════════════════════════
+--  WIDGET BUILDERS
+-- ════════════════════════════════════════════════════════
+
+local function mkSection(parent, yOff, h, title)
+    local f = Instance.new("Frame")
+    f.Size             = UDim2.new(1,-10,0,h)
+    f.Position         = UDim2.new(0,5,0,yOff)
+    f.BackgroundColor3 = sectionColor
+    f.BorderSizePixel  = 0
+    f.Parent           = parent
+    mkCorner(f,6)
+    if title then
+        local tl = Instance.new("TextLabel")
+        tl.Size               = UDim2.new(1,-12,0,20)
+        tl.Position           = UDim2.new(0,8,0,4)
+        tl.Text               = title
+        tl.Font               = Enum.Font.GothamBold
+        tl.TextSize           = 11
+        tl.TextColor3         = textGrey
+        tl.TextXAlignment     = Enum.TextXAlignment.Left
+        tl.BackgroundTransparency = 1
+        tl.Parent             = f
+    end
+    return f
+end
+
+local function mkToggle(parent, yOff, label, default)
+    local rowH = isMobile and 32 or 24
+    local row = Instance.new("Frame")
+    row.Size                = UDim2.new(1,-16,0,rowH)
+    row.Position            = UDim2.new(0,8,0,yOff)
+    row.BackgroundTransparency = 1
+    row.Parent              = parent
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size              = UDim2.new(1,-44,1,0)
+    lbl.BackgroundTransparency = 1
+    lbl.Font              = Enum.Font.Gotham
+    lbl.TextSize          = 11
+    lbl.TextColor3        = textGrey
+    lbl.TextXAlignment    = Enum.TextXAlignment.Left
+    lbl.Text              = label
+    lbl.TextTruncate      = Enum.TextTruncate.AtEnd
+    lbl.Parent            = row
+
+    local track = Instance.new("Frame")
+    track.Size             = UDim2.new(0,32,0,18)
+    track.Position         = UDim2.new(1,-32,0.5,-9)
+    track.BackgroundColor3 = default and accentGrey or darkGrey
+    track.BorderSizePixel  = 0
+    track.Parent           = row
+    mkCorner(track,9)
+
+    local knob = Instance.new("Frame")
+    knob.Size             = UDim2.new(0,14,0,14)
+    knob.Position         = default and UDim2.new(0,16,0.5,-7) or UDim2.new(0,2,0.5,-7)
+    knob.BackgroundColor3 = default and Color3.new(1,1,1) or textGrey
+    knob.BorderSizePixel  = 0
+    knob.Parent           = track
+    mkCorner(knob,7)
+
+    local state = default or false
+    local cbs   = {}
+
+    local hit = Instance.new("TextButton")
+    hit.Size               = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1
+    hit.Text               = ""
+    hit.Parent             = track
+    hit.MouseButton1Click:Connect(function()
+        state = not state
+        track.BackgroundColor3 = state and accentGrey or darkGrey
+        knob.Position          = state and UDim2.new(0,16,0.5,-7) or UDim2.new(0,2,0.5,-7)
+        knob.BackgroundColor3  = state and Color3.new(1,1,1) or textGrey
+        for _, cb in ipairs(cbs) do pcall(cb,state) end
+    end)
+
+    return {
+        onChanged = function(_, cb) table.insert(cbs,cb) end,
+        getState  = function() return state end,
+        setState  = function(_, v)
+            if state==v then return end
+            state = v
+            track.BackgroundColor3 = state and accentGrey or darkGrey
+            knob.Position          = state and UDim2.new(0,16,0.5,-7) or UDim2.new(0,2,0.5,-7)
+            knob.BackgroundColor3  = state and Color3.new(1,1,1) or textGrey
+            for _, cb in ipairs(cbs) do pcall(cb,state) end
+        end,
+    }
+end
+
+local function mkLabel(parent, yOff, text, col, sz)
+    local l = Instance.new("TextLabel")
+    l.Size               = UDim2.new(1,-16,0,18)
+    l.Position           = UDim2.new(0,8,0,yOff)
+    l.Text               = text
+    l.Font               = Enum.Font.Gotham
+    l.TextSize           = sz or 10
+    l.TextColor3         = col or textGrey
+    l.TextXAlignment     = Enum.TextXAlignment.Left
+    l.BackgroundTransparency = 1
+    l.TextWrapped        = true
+    l.Parent             = parent
+    return l
+end
+
+local function mkButton(parent, yOff, h, text, bgCol)
+    local b = Instance.new("TextButton")
+    b.Size             = UDim2.new(1,-16,0,h)
+    b.Position         = UDim2.new(0,8,0,yOff)
+    b.Text             = text
+    b.Font             = Enum.Font.GothamBold
+    b.TextSize         = 12
+    b.TextColor3       = Color3.new(1,1,1)
+    b.BackgroundColor3 = bgCol or accentGrey
+    b.BorderSizePixel  = 0
+    b.Parent           = parent
+    mkCorner(b,5)
+    return b
+end
+
+local function mkInput(parent, yOff, placeholder)
+    local box = Instance.new("TextBox")
+    box.Size              = UDim2.new(1,-16,0,26)
+    box.Position          = UDim2.new(0,8,0,yOff)
+    box.BackgroundColor3  = darkGrey
+    box.Text              = ""
+    box.PlaceholderText   = placeholder or ""
+    box.Font              = Enum.Font.Gotham
+    box.TextSize          = 12
+    box.TextColor3        = textGrey
+    box.PlaceholderColor3 = Color3.fromRGB(100,100,110)
+    box.ClearTextOnFocus  = false
+    box.BorderSizePixel   = 0
+    box.Parent            = parent
+    mkCorner(box,5)
+    return box
+end
+
+local function mkDivider(parent, yOff)
+    local d = Instance.new("Frame")
+    d.Size             = UDim2.new(1,-16,0,1)
+    d.Position         = UDim2.new(0,8,0,yOff)
+    d.BackgroundColor3 = accentGrey
+    d.BorderSizePixel  = 0
+    d.Parent           = parent
+    return d
+end
+
+-- ════════════════════════════════════════════════════════
+--  🍀 ST. PATRICK EVENT TAB
+-- ════════════════════════════════════════════════════════
+
+local eventPage = tabPages["🍀 Event"]
+local eY = 5
+
+-- ── Fortune Egg Hatcher ───────────────────────────────────
+
+local fortuneSec = mkSection(eventPage, eY, 232, "🥚 Fortune Egg Auto Hatcher")
+eY = eY + 238
+
+mkLabel(fortuneSec, 28, "Egg: Fortune Egg  |  Teleports back on stop ✓", Color3.fromRGB(100,220,100), 10)
+
+mkLabel(fortuneSec, 50, "Eggs per fire (1–10):", textGrey, 10)
+local batchInput = mkInput(fortuneSec, 68, "e.g. 3")
+batchInput.Text = "3"
+
+mkLabel(fortuneSec, 100, "Total to hatch (0 = unlimited):", textGrey, 10)
+local targetInput = mkInput(fortuneSec, 118, "e.g. 100  |  0 = ∞")
+targetInput.Text = "0"
+
+local fortuneStatusLbl = mkLabel(fortuneSec, 152, "⏸ Idle", Color3.fromRGB(150,150,160), 10)
+local fortuneCountLbl  = mkLabel(fortuneSec, 170, "Session hatches: 0  |  Attempts: 0", Color3.fromRGB(150,150,160), 10)
+
+local fortuneBtn = mkButton(fortuneSec, 192, 28, "▶  START FORTUNE HATCH", shamrockGreen)
+
+-- Reads the real total hatch count from the player's leaderboard/data
+-- Tries multiple known paths BGSI uses for hatch stats
+local function getRealHatchCount()
+    -- 1. Try leaderboard IntValue on the player
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local hatches = leaderstats:FindFirstChild("Hatches")
+            or leaderstats:FindFirstChild("Eggs Hatched")
+            or leaderstats:FindFirstChild("EggsHatched")
+            or leaderstats:FindFirstChild("Total Hatches")
+        if hatches and hatches.Value then
+            return hatches.Value
+        end
+    end
+
+    -- 2. Try live LocalData
+    pcall(function()
+        if localData and localData.Get then
+            local d = localData:Get()
+            if d then
+                -- Common BGSI data paths
+                if d.Stats and d.Stats.EggsHatched then return d.Stats.EggsHatched end
+                if d.EggsHatched                   then return d.EggsHatched end
+                if d.Hatches                       then return d.Hatches end
+                if d.Stats and d.Stats.Hatches     then return d.Stats.Hatches end
+            end
+        end
+    end)
+
+    -- 3. Fallback — check all IntValue/NumberValue descendants of player
+    for _, v in ipairs(player:GetDescendants()) do
+        local n = v.Name:lower()
+        if (v:IsA("IntValue") or v:IsA("NumberValue")) and
+           (n:find("hatch") or n:find("egg")) then
+            return v.Value
+        end
+    end
+
+    return nil  -- couldn't find it
+end
+
+-- Fortune egg loop
+local fortuneHatchSnapshot = 0   -- leaderboard value at session start
+local fortuneAttempts      = 0   -- raw fire count (always tracked as fallback)
+local fortuneLockConn      = nil -- hoisted so stop button can disconnect it
+
+local function stopFortuneLock()
+    fortuneEnabled = false
+    if fortuneLockConn then
+        fortuneLockConn:Disconnect()
+        fortuneLockConn = nil
+    end
+    -- Unfreeze character
+    pcall(function()
+        local char = player.Character
+        if char then
+            local hum  = char:FindFirstChildOfClass("Humanoid")
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if hum  then hum.WalkSpeed = 16; hum.JumpPower = 50; hum.AutoRotate = true end
+            if root then root.Anchored = false end
+        end
+    end)
+end
+
+local function fortuneLoop()
+    fortuneAttempts = 0
+
+    -- Snapshot real hatch count at start so we can diff it
+    fortuneHatchSnapshot = getRealHatchCount() or 0
+
+    local function getSessionHatches()
+        local cur = getRealHatchCount()
+        if cur then
+            return math.max(0, cur - fortuneHatchSnapshot)
+        end
+        return nil  -- data not readable, will show attempts instead
+    end
+
+    local function updateCounter()
+        local real = getSessionHatches()
+        if real then
+            fortuneCountLbl.Text      = ("Session hatches: %d  |  Attempts: %d"):format(real, fortuneAttempts)
+            fortuneCountLbl.TextColor3 = greenAccent
+        else
+            -- Fallback: show attempts with a note
+            fortuneCountLbl.Text      = ("Attempts: %d  (leaderboard unreadable)"):format(fortuneAttempts)
+            fortuneCountLbl.TextColor3 = Color3.fromRGB(200,200,100)
+        end
+    end
+
+    -- Heartbeat: if anything teleports us away from the egg, snap back immediately
+    fortuneLockConn = RunService.Heartbeat:Connect(function()
+        if not fortuneEnabled then return end
+        local root = getRoot()
+        if root and (root.Position - FORTUNE_EGG_CF.Position).Magnitude > 10 then
+            root.CFrame = FORTUNE_EGG_CF
+            fortuneStatusLbl.Text       = "⚠️ Out of range — snapping back..."
+            fortuneStatusLbl.TextColor3 = Color3.fromRGB(255,200,50)
+        end
+    end)
+
+    while fortuneEnabled and sg.Parent do
+        local batch = math.clamp(math.floor(tonumber(batchInput.Text) or 3), 1, 10)
+
+        -- Snap to egg CFrame every iteration
+        pcall(function()
+            local root = getRoot()
+            if root then root.CFrame = FORTUNE_EGG_CF end
+        end)
+        task.wait(0.05)
+
+        -- Fire hatch
+        pcall(function()
+            RemoteEvent:FireServer("HatchEgg", "Fortune Egg", batch)
+        end)
+
+        fortuneAttempts = fortuneAttempts + batch
+        updateCounter()
+        fortuneStatusLbl.Text       = "🔄 Hatching..."
+        fortuneStatusLbl.TextColor3 = greenAccent
+
+        -- Check target against REAL hatches if readable, else attempts
+        local sessionReal = getSessionHatches()
+        local checkVal    = sessionReal or fortuneAttempts
+        if fortuneTarget > 0 and checkVal >= fortuneTarget then
+            fortuneEnabled = false
+            fortuneLockConn:Disconnect()
+            if fortuneOriginCF then
+                pcall(function() teleportTo(fortuneOriginCF) end)
+            end
+            local finalReal = getSessionHatches()
+            fortuneStatusLbl.Text       = ("✅ Done! %d hatched — returned"):format(finalReal or fortuneAttempts)
+            fortuneStatusLbl.TextColor3 = goldAccent
+            fortuneBtn.Text             = "▶  START FORTUNE HATCH"
+            fortuneBtn.BackgroundColor3 = shamrockGreen
+            break
+        end
+
+        task.wait(0.08)
+    end
+
+    -- Stopped mid-run
+    fortuneLockConn:Disconnect()
+    if not fortuneEnabled and fortuneOriginCF then
+        pcall(function() teleportTo(fortuneOriginCF) end)
+        fortuneStatusLbl.Text       = "⏸ Stopped — returned to origin"
+        fortuneStatusLbl.TextColor3 = textGrey
+    end
+end
+
+fortuneBtn.MouseButton1Click:Connect(function()
+    fortuneEnabled = not fortuneEnabled
+    if fortuneEnabled then
+        fortuneOriginCF  = saveOrigin()   -- save position BEFORE teleporting
+        fortuneTarget    = math.max(0, math.floor(tonumber(targetInput.Text) or 0))
+        fortuneBatchSize = math.clamp(math.floor(tonumber(batchInput.Text) or 3), 1, 10)
+        fortuneBtn.Text             = "⏹  STOP"
+        fortuneBtn.BackgroundColor3 = Color3.fromRGB(200,80,80)
+        fortuneStatusLbl.Text      = "▶ Starting..."
+        fortuneStatusLbl.TextColor3 = greenAccent
+        if fortuneThread then task.cancel(fortuneThread) end
+        fortuneThread = task.spawn(fortuneLoop)
+    else
+        fortuneBtn.Text             = "▶  START FORTUNE HATCH"
+        fortuneBtn.BackgroundColor3 = shamrockGreen
+        stopFortuneLock()                                              -- disconnect & unfreeze first
+        if fortuneThread then task.cancel(fortuneThread); fortuneThread = nil end
+        if fortuneOriginCF then
+            pcall(function() teleportTo(fortuneOriginCF) end)
+        end
+        fortuneStatusLbl.Text      = "⏸ Stopped — returned to origin"
+        fortuneStatusLbl.TextColor3 = textGrey
+    end
+end)
+
+-- ── Coin Farmer ───────────────────────────────────────────
+
+local coinSec = mkSection(eventPage, eY, 210, "🪙 St. Patrick Coin Farmer")
+eY = eY + 216
+
+mkLabel(coinSec, 28,
+    "Tweens to coins + clovers inside\nChunker > Rendered. Returns on stop.",
+    Color3.fromRGB(220,170,40), 10)
+
+mkLabel(coinSec, 66,
+    "Snaps directly to each coin — resistant\nto accidental teleports away ✓",
+    Color3.fromRGB(100,220,100), 10)
+
+local coinStatusLbl = mkLabel(coinSec, 118, "⏸ Idle", Color3.fromRGB(150,150,160), 10)
+local coinCountLbl  = mkLabel(coinSec, 136, "Collected: 0", Color3.fromRGB(150,150,160), 10)
+
+local coinFarmBtn = mkButton(coinSec, 140, 28, "▶  START COIN FARM", goldAccent)
+coinFarmBtn.TextColor3 = Color3.fromRGB(30,20,0)
+
+-- Debug button — prints all part names under Rendered to console (F9)
+local debugBtn = mkButton(coinSec, 174, 22, "🔍 Debug: Print Part Names to Console", accentGrey)
+debugBtn.TextSize = 9
+debugBtn.MouseButton1Click:Connect(function()
+    debugBtn.Text = "⏳ Scanning..."
+    task.spawn(function()
+        debugDumpNames()
+        -- also show live count in UI
+        local n = #getCoins()
+        debugBtn.Text = ("✅ Done — found %d matching parts (check F9)"):format(n)
+        task.wait(4)
+        debugBtn.Text = "🔍 Debug: Print Part Names to Console"
+    end)
+end)
+
+-- Coin farm loop
+-- Uses direct CFrame snapping (no tween) so an accidental teleport away
+-- never stalls the loop — next iteration just snaps to the next coin anyway.
+-- A RunService heartbeat connection also enforces position between iterations.
+
+local function startCoinLock()
+    if coinLockConn then coinLockConn:Disconnect() end
+    coinLockConn = RunService.Heartbeat:Connect(function()
+        if not coinFarmEnabled then
+            coinLockConn:Disconnect()
+            coinLockConn = nil
+            coinLockCF   = nil
+            return
+        end
+        if coinLockCF then
+            local root = getRoot()
+            if root then
+                local dist = (root.Position - coinLockCF.Position).Magnitude
+                if dist > 5 then
+                    -- Something teleported us away — snap back instantly
+                    root.CFrame = coinLockCF
+                    coinStatusLbl.Text       = "⚠️ Out of range — snapping back..."
+                    coinStatusLbl.TextColor3 = Color3.fromRGB(255,200,50)
+                end
+            end
+        end
+    end)
+end
+
+local function stopCoinLock()
+    -- Clear target FIRST so heartbeat stops snapping even if it fires one more time
+    coinLockCF = nil
+    if coinLockConn then
+        coinLockConn:Disconnect()
+        coinLockConn = nil
+    end
+    -- Unfreeze character — restore normal physics
+    pcall(function()
+        local char = player.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if hum then
+                hum.WalkSpeed   = 16   -- restore default walk speed
+                hum.JumpPower   = 50   -- restore default jump power
+                hum.AutoRotate  = true
+            end
+            if root then
+                root.Anchored = false  -- make sure root isn't stuck anchored
+            end
+        end
+    end)
+end
+
+local function coinFarmLoop()
+    coinsFarmed = 0
+    startCoinLock()
+
+    while coinFarmEnabled and sg.Parent do
+        local coins = getCoins()
+
+        if #coins == 0 then
+            coinStatusLbl.Text       = "🔍 Scanning for collectibles..."
+            coinStatusLbl.TextColor3 = Color3.fromRGB(200,200,100)
+            task.wait(0.8)
+        else
+            coinStatusLbl.Text       = ("🍀 Farming %d collectibles..."):format(#coins)
+            coinStatusLbl.TextColor3 = goldAccent
+
+            for _, cf in ipairs(coins) do
+                if not coinFarmEnabled then break end
+                -- Lock heartbeat to this position
+                coinLockCF = cf
+
+                -- Direct snap
+                pcall(function()
+                    local root = getRoot()
+                    if root then root.CFrame = cf end
+                end)
+
+                coinsFarmed = coinsFarmed + 1
+                coinCountLbl.Text = ("Collected: %d"):format(coinsFarmed)
+
+                task.wait(0.07)
+            end
+
+            -- Keep coinLockCF pointing at last coin during rescan pause
+            -- so the heartbeat keeps protecting us while we wait
+            task.wait(0.4) -- brief pause then rescan for respawned coins
+        end
+    end
+
+    stopCoinLock()
+end
+
+coinFarmBtn.MouseButton1Click:Connect(function()
+    coinFarmEnabled = not coinFarmEnabled
+    if coinFarmEnabled then
+        coinFarmOriginCF = saveOrigin()   -- save position before farming
+        coinFarmBtn.Text             = "⏹  STOP COIN FARM"
+        coinFarmBtn.BackgroundColor3 = Color3.fromRGB(180,80,40)
+        coinFarmBtn.TextColor3       = Color3.new(1,1,1)
+        coinStatusLbl.Text           = "▶ Starting..."
+        coinStatusLbl.TextColor3     = goldAccent
+        if coinFarmThread then task.cancel(coinFarmThread) end
+        coinFarmThread = task.spawn(coinFarmLoop)
+    else
+        coinFarmEnabled               = false   -- set false FIRST so heartbeat stops acting
+        coinFarmBtn.Text             = "▶  START COIN FARM"
+        coinFarmBtn.BackgroundColor3 = goldAccent
+        coinFarmBtn.TextColor3       = Color3.fromRGB(30,20,0)
+        stopCoinLock()                          -- disconnect & unfreeze before thread cancel
+        if coinFarmThread then task.cancel(coinFarmThread); coinFarmThread = nil end
+        -- Return to saved origin
+        if coinFarmOriginCF then
+            pcall(function() teleportTo(coinFarmOriginCF) end)
+        end
+        coinStatusLbl.Text      = "⏸ Stopped — returned to origin"
+        coinStatusLbl.TextColor3 = textGrey
+    end
+end)
+
+-- ── Genie Island Gem / Coin Farmer ───────────────────────
+
+local genieSec = mkSection(eventPage, eY, 148, "💎 Genie Island Gem & Coin Farmer")
+eY = eY + 154
+
+mkLabel(genieSec, 28,
+    "Teleports to Genie Island & farms\ngems + coins. Returns on stop ✓",
+    Color3.fromRGB(160, 120, 255), 10)
+
+local genieStatusLbl = mkLabel(genieSec, 64, "⏸ Idle", Color3.fromRGB(150,150,160), 10)
+local genieCountLbl  = mkLabel(genieSec, 82, "Collected: 0", Color3.fromRGB(150,150,160), 10)
+
+local genieFarmBtn = mkButton(genieSec, 100, 28, "▶  START GENIE FARM", Color3.fromRGB(130, 80, 220))
+
+-- Genie Island uses the same getCoins() + same lock pattern as St Patrick farm
+
+local function startGenieLock()
+    if genieLockConn then genieLockConn:Disconnect() end
+    genieLockConn = RunService.Heartbeat:Connect(function()
+        if not genieFarmEnabled then
+            genieLockConn:Disconnect(); genieLockConn = nil; genieLockCF = nil; return
+        end
+        if genieLockCF then
+            local root = getRoot()
+            if root and (root.Position - genieLockCF.Position).Magnitude > 5 then
+                root.CFrame = genieLockCF
+                genieStatusLbl.Text       = "⚠️ Out of range — snapping back..."
+                genieStatusLbl.TextColor3 = Color3.fromRGB(255,200,50)
+            end
+        end
+    end)
+end
+
+local function stopGenieLock()
+    genieLockCF = nil
+    if genieLockConn then genieLockConn:Disconnect(); genieLockConn = nil end
+    pcall(function()
+        local char = player.Character
+        if char then
+            local hum  = char:FindFirstChildOfClass("Humanoid")
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if hum  then hum.WalkSpeed=16; hum.JumpPower=50; hum.AutoRotate=true end
+            if root then root.Anchored=false end
+        end
+    end)
+end
+
+local function genieFarmLoop()
+    genieCollected = 0
+    -- Teleport to Genie Island start position first
+    pcall(function()
+        local root = getRoot()
+        if root then root.CFrame = GENIE_START_CF end
+    end)
+    task.wait(0.3)
+    startGenieLock()
+
+    while genieFarmEnabled and sg.Parent do
+        local gems = getCoins()  -- reuses same search — Genie Island names already in table
+
+        if #gems == 0 then
+            genieStatusLbl.Text       = "🔍 Scanning for gems/coins..."
+            genieStatusLbl.TextColor3 = Color3.fromRGB(200,200,100)
+            task.wait(0.8)
+        else
+            genieStatusLbl.Text       = ("💎 Farming %d collectibles..."):format(#gems)
+            genieStatusLbl.TextColor3 = Color3.fromRGB(160,120,255)
+
+            for _, cf in ipairs(gems) do
+                if not genieFarmEnabled then break end
+                genieLockCF = cf
+                pcall(function()
+                    local root = getRoot()
+                    if root then root.CFrame = cf end
+                end)
+                genieCollected = genieCollected + 1
+                genieCountLbl.Text = ("Collected: %d"):format(genieCollected)
+                task.wait(0.07)
+            end
+
+            -- Keep genieLockCF active during rescan pause
+            task.wait(0.4)
+        end
+    end
+
+    stopGenieLock()
+end
+
+genieFarmBtn.MouseButton1Click:Connect(function()
+    genieFarmEnabled = not genieFarmEnabled
+    if genieFarmEnabled then
+        genieFarmOriginCF            = saveOrigin()
+        genieFarmBtn.Text            = "⏹  STOP GENIE FARM"
+        genieFarmBtn.BackgroundColor3 = Color3.fromRGB(180,50,180)
+        genieStatusLbl.Text          = "▶ Teleporting to Genie Island..."
+        genieStatusLbl.TextColor3    = Color3.fromRGB(160,120,255)
+        if genieFarmThread then task.cancel(genieFarmThread) end
+        genieFarmThread = task.spawn(genieFarmLoop)
+    else
+        genieFarmEnabled              = false
+        genieFarmBtn.Text             = "▶  START GENIE FARM"
+        genieFarmBtn.BackgroundColor3 = Color3.fromRGB(130,80,220)
+        stopGenieLock()
+        if genieFarmThread then task.cancel(genieFarmThread); genieFarmThread = nil end
+        if genieFarmOriginCF then
+            pcall(function() teleportTo(genieFarmOriginCF) end)
+        end
+        genieStatusLbl.Text      = "⏸ Stopped — returned to origin"
+        genieStatusLbl.TextColor3 = textGrey
+    end
+end)
+
+eventPage.CanvasSize = UDim2.new(0,0,0,eY+10)
+
+-- ── Wire close button now that all stop functions exist ──
+closeBtn.MouseButton1Click:Connect(function()
+    -- Stop all farmers first
+    coinFarmEnabled  = false
+    genieFarmEnabled = false
+    fortuneEnabled   = false
+    staffWatchEnabled = false
+    pcall(stopCoinLock)
+    pcall(stopGenieLock)
+    pcall(stopFortuneLock)
+    -- Cancel all threads
+    if coinFarmThread   then task.cancel(coinFarmThread);   coinFarmThread   = nil end
+    if genieFarmThread  then task.cancel(genieFarmThread);  genieFarmThread  = nil end
+    if fortuneThread    then task.cancel(fortuneThread);    fortuneThread    = nil end
+    if staffWatchThread then task.cancel(staffWatchThread); staffWatchThread = nil end
+    if rootChangedConn  then rootChangedConn:Disconnect();  rootChangedConn  = nil end
+    sg:Destroy()
+end)
+
+-- ════════════════════════════════════════════════════════
+--  BUBBLES TAB
+-- ════════════════════════════════════════════════════════
+
+local bubPage = tabPages["Bubbles"]
+local bY = 5
+
+local bubSec = mkSection(bubPage, bY, 165, "Bubble Controls")
+bY = bY + 171
+
+local blowToggle = mkToggle(bubSec, 28, "Auto Blow Bubbles", false)
+blowToggle:onChanged(function(s) autoBlowValue = s end)
+
+local sellToggle = mkToggle(bubSec, 58, "Auto Sell Bubbles", false)
+sellToggle:onChanged(function(s) autoSellValue = s end)
+
+local sliderLbl = Instance.new("TextLabel")
+sliderLbl.Size               = UDim2.new(1,-16,0,16)
+sliderLbl.Position           = UDim2.new(0,8,0,90)
+sliderLbl.Text               = "Sell frequency: every ~500 blows"
+sliderLbl.Font               = Enum.Font.Gotham
+sliderLbl.TextSize           = 10
+sliderLbl.TextColor3         = textGrey
+sliderLbl.TextXAlignment     = Enum.TextXAlignment.Left
+sliderLbl.BackgroundTransparency = 1
+sliderLbl.Parent             = bubSec
+
+local sliderTrack = Instance.new("Frame")
+sliderTrack.Size             = UDim2.new(1,-16,0,6)
+sliderTrack.Position         = UDim2.new(0,8,0,112)
+sliderTrack.BackgroundColor3 = darkGrey
+sliderTrack.BorderSizePixel  = 0
+sliderTrack.Parent           = bubSec
+mkCorner(sliderTrack,3)
+
+local sliderFill = Instance.new("Frame")
+sliderFill.Size             = UDim2.new(0.5,0,1,0)
+sliderFill.BackgroundColor3 = accentGrey
+sliderFill.BorderSizePixel  = 0
+sliderFill.Parent           = sliderTrack
+mkCorner(sliderFill,3)
+
+local knobSize = isMobile and 22 or 16
+local sliderKnob = Instance.new("TextButton")
+sliderKnob.Size             = UDim2.new(0, knobSize, 0, knobSize)
+sliderKnob.AnchorPoint      = Vector2.new(0.5, 0.5)
+sliderKnob.Position         = UDim2.new(0.5,0,0.5,0)
+sliderKnob.BackgroundColor3 = textGrey
+sliderKnob.Text             = ""
+sliderKnob.BorderSizePixel  = 0
+sliderKnob.ZIndex           = 3
+sliderKnob.Parent           = sliderTrack
+mkCorner(sliderKnob,8)
+
+local draggingSlider = false
+
+local function updateSlider(xPos)
+    local rel = math.clamp((xPos - sliderTrack.AbsolutePosition.X) / sliderTrack.AbsoluteSize.X, 0, 1)
+    autoSellPer         = math.floor(rel * 99 + 1)
+    sliderFill.Size     = UDim2.new(rel, 0, 1, 0)
+    sliderKnob.Position = UDim2.new(rel, 0, 0.5, 0)
+    local every = math.max(5, math.floor((autoSellPer / 100) * 1000))
+    sliderLbl.Text = ("Sell every ~%d blows"):format(every)
+end
+
+sliderKnob.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        draggingSlider = true
+    end
+end)
+-- Also allow tapping anywhere on the track to jump the knob
+sliderTrack.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        draggingSlider = true
+        updateSlider(i.Position.X)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1
+    or i.UserInputType == Enum.UserInputType.Touch then
+        draggingSlider = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if draggingSlider and (
+        i.UserInputType == Enum.UserInputType.MouseMovement or
+        i.UserInputType == Enum.UserInputType.Touch
+    ) then
+        updateSlider(i.Position.X)
+    end
+end)
+
+local sliderValLbl = Instance.new("TextLabel")
+sliderValLbl.Size               = UDim2.new(1,-16,0,14)
+sliderValLbl.Position           = UDim2.new(0,8,0,124)
+sliderValLbl.Text               = "Every ~500 blows"
+sliderValLbl.Font               = Enum.Font.Gotham
+sliderValLbl.TextSize           = 10
+sliderValLbl.TextColor3         = Color3.fromRGB(140,140,150)
+sliderValLbl.TextXAlignment     = Enum.TextXAlignment.Left
+sliderValLbl.BackgroundTransparency = 1
+sliderValLbl.Parent             = bubSec
+
+task.spawn(function()
+    while sg and sg.Parent do
+        local every = math.max(5, math.floor((autoSellPer/100)*1000))
+        sliderValLbl.Text = ("Every ~%d blows"):format(every)
+        task.wait(0.25)
+    end
+end)
+
+bubPage.CanvasSize = UDim2.new(0,0,0,bY+10)
+
+-- ════════════════════════════════════════════════════════
+--  AUTOMATION TAB
+-- ════════════════════════════════════════════════════════
+
+local autoPage = tabPages["Automation"]
+local aY = 5
+
+-- World Unlocker
+local unlockSec = mkSection(autoPage, aY, 56, "World Unlocker")
+aY = aY + 62
+
+local unlockBtn = mkButton(unlockSec, 28, 22, "🔓 Unlock All Areas", accentGrey)
+unlockBtn.TextSize = 11
+unlockBtn.MouseButton1Click:Connect(function()
+    unlockBtn.Text             = "⏳ Unlocking..."
+    unlockBtn.BackgroundColor3 = darkGrey
+    task.spawn(function()
+        local worlds = workspace:FindFirstChild("Worlds")
+        if worlds then
+            local ow = worlds:FindFirstChild("The Overworld")
+            if ow then
+                local islands = ow:FindFirstChild("Islands")
+                if islands then
+                    for _, v in pairs(islands:GetChildren()) do
+                        local uh = v:FindFirstChild("UnlockHitbox")
+                        if uh and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            firetouchinterest(player.Character.HumanoidRootPart, uh, 0)
+                            task.wait(0.1)
+                            firetouchinterest(player.Character.HumanoidRootPart, uh, 1)
+                            task.wait(0.5)
+                        end
+                    end
+                end
+            end
+        end
+        unlockBtn.Text             = "✅ Done"
+        unlockBtn.BackgroundColor3 = Color3.fromRGB(50,180,100)
+        task.wait(2)
+        unlockBtn.Text             = "🔓 Unlock All Areas"
+        unlockBtn.BackgroundColor3 = accentGrey
+    end)
+end)
+
+-- Auto Collectors
+local collectSec = mkSection(autoPage, aY, 158, "Auto Collectors")
+aY = aY + 164
+
+local coinToggle = mkToggle(collectSec, 28, "Auto Collect Coins", false)
+coinToggle:onChanged(function(s) autoCollectCoinsValue = s end)
+
+local playtimeToggle = mkToggle(collectSec, 60, "Auto Claim Playtime", false)
+playtimeToggle:onChanged(function(s) autoclaimplaytimeval = s end)
+
+local chestToggle = mkToggle(collectSec, 92, "Auto Claim Chests", false)
+chestToggle:onChanged(function(s) autoclaimchestsval = s end)
+
+local riftToggle = mkToggle(collectSec, 124, "Auto Claim Rift Gifts", false)
+riftToggle:onChanged(function(s) autoClaimRiftGiftval = s end)
+
+-- Staff Watch
+local staffSec = mkSection(autoPage, aY, 152, "👮 Staff Watch")
+aY = aY + 158
+
+local staffListLbl
+
+local staffToggle = mkToggle(staffSec, 28, "Enable Staff Watch", true)
+staffToggle:onChanged(function(s)
+    staffWatchEnabled = s
+    if s and not staffWatchThread then
+        staffWatchThread = task.spawn(function()
+            while staffWatchEnabled do checkForStaff() task.wait(checkInterval) end
+        end)
+    elseif not s and staffWatchThread then
+        task.cancel(staffWatchThread)
+        staffWatchThread = nil
+    end
+    staffIndicator.BackgroundColor3 = s
+        and (staffDetected and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0))
+        or Color3.fromRGB(100,100,100)
+end)
+
+local autoHopToggle = mkToggle(staffSec, 60, "Auto Server Hop on Staff", true)
+autoHopToggle:onChanged(function(s) autoServerHop = s end)
+
+mkDivider(staffSec, 90)
+
+staffListLbl = Instance.new("TextLabel")
+staffListLbl.Size               = UDim2.new(1,-16,0,48)
+staffListLbl.Position           = UDim2.new(0,8,0,98)
+staffListLbl.Text               = "Staff in server: None"
+staffListLbl.Font               = Enum.Font.Gotham
+staffListLbl.TextSize           = 10
+staffListLbl.TextColor3         = Color3.fromRGB(100,255,100)
+staffListLbl.TextXAlignment     = Enum.TextXAlignment.Left
+staffListLbl.TextWrapped        = true
+staffListLbl.BackgroundTransparency = 1
+staffListLbl.Parent             = staffSec
+
+autoPage.CanvasSize = UDim2.new(0,0,0,aY+10)
+
+-- ════════════════════════════════════════════════════════
+--  PETS TAB
+-- ════════════════════════════════════════════════════════
+
+local petPage = tabPages["Pets"]
+local pY = 5
+
+local eggSec = mkSection(petPage, pY, 122, "Egg Hatching")
+pY = pY + 128
+
+mkLabel(eggSec, 28, "Selected Egg:", textGrey, 10)
+
+local eggDropBtn = Instance.new("TextButton")
+eggDropBtn.Size             = UDim2.new(1,-16,0,28)
+eggDropBtn.Position         = UDim2.new(0,8,0,48)
+eggDropBtn.BackgroundColor3 = darkGrey
+eggDropBtn.Text             = "  " .. (selectedEgg~="" and selectedEgg or "Select egg...")
+eggDropBtn.Font             = Enum.Font.Gotham
+eggDropBtn.TextSize         = 11
+eggDropBtn.TextColor3       = textGrey
+eggDropBtn.TextXAlignment   = Enum.TextXAlignment.Left
+eggDropBtn.BorderSizePixel  = 0
+eggDropBtn.Parent           = eggSec
+mkCorner(eggDropBtn,5)
+
+local arrowLbl = Instance.new("TextLabel")
+arrowLbl.Size               = UDim2.new(0,20,1,0)
+arrowLbl.Position           = UDim2.new(1,-24,0,0)
+arrowLbl.Text               = "▾"
+arrowLbl.Font               = Enum.Font.GothamBold
+arrowLbl.TextSize           = 12
+arrowLbl.TextColor3         = textGrey
+arrowLbl.BackgroundTransparency = 1
+arrowLbl.Parent             = eggDropBtn
+
+local dropList = Instance.new("Frame")
+dropList.Size             = UDim2.new(1,-16,0,math.min(#eggs,5)*26)
+dropList.Position         = UDim2.new(0,8,0,78)
+dropList.BackgroundColor3 = darkGrey
+dropList.BorderSizePixel  = 0
+dropList.Visible          = false
+dropList.ZIndex           = 20
+dropList.ClipsDescendants = true
+dropList.Parent           = eggSec
+mkCorner(dropList,5)
+
+local scrollF = Instance.new("ScrollingFrame")
+scrollF.Size               = UDim2.new(1,0,1,0)
+scrollF.BackgroundTransparency = 1
+scrollF.ScrollBarThickness = 3
+scrollF.CanvasSize         = UDim2.new(0,0,0,#eggs*26)
+scrollF.ZIndex             = 21
+scrollF.Parent             = dropList
+
+local eggLL = Instance.new("UIListLayout")
+eggLL.SortOrder = Enum.SortOrder.LayoutOrder
+eggLL.Parent    = scrollF
+
+for i, egg in ipairs(eggs) do
+    local item = Instance.new("TextButton")
+    item.Size               = UDim2.new(1,0,0,26)
+    item.BackgroundTransparency = 1
+    item.Text               = "  "..egg
+    item.Font               = Enum.Font.Gotham
+    item.TextSize           = 11
+    item.TextColor3         = textGrey
+    item.TextXAlignment     = Enum.TextXAlignment.Left
+    item.BorderSizePixel    = 0
+    item.LayoutOrder        = i
+    item.ZIndex             = 22
+    item.Parent             = scrollF
+    item.MouseEnter:Connect(function() item.BackgroundTransparency=0; item.BackgroundColor3=accentGrey end)
+    item.MouseLeave:Connect(function() item.BackgroundTransparency=1 end)
+    item.MouseButton1Click:Connect(function()
+        selectedEgg = egg
+        eggDropBtn.Text = "  "..egg
+        dropList.Visible = false
+    end)
+end
+eggDropBtn.MouseButton1Click:Connect(function() dropList.Visible = not dropList.Visible end)
+
+local hatchToggle = mkToggle(eggSec, 96, "Auto Hatch (generic)", false)
+hatchToggle:onChanged(function(s) autoHatchValue = s end)
+
+local giftSec = mkSection(petPage, pY, 56, "Mystery Boxes")
+pY = pY + 62
+
+local giftToggle = mkToggle(giftSec, 28, "Auto Open Mystery Boxes", false)
+giftToggle:onChanged(function(s) autoGiftValue = s end)
+
+petPage.CanvasSize = UDim2.new(0,0,0,pY+10)
 
 -- ════════════════════════════════════════════════════════
 --  STAFF WATCH SYSTEM
@@ -297,1265 +1578,193 @@ end
 
 local function isStaffUser(username)
     username = username:lower()
-    
-    for _, staff in ipairs(STAFF_LIST) do
-        if staff:lower() == username then
-            return true
-        end
+    for _, s in ipairs(STAFF_LIST) do
+        if s:lower()==username then return true end
     end
-    
-    for _, keyword in ipairs(BANNED_KEYWORDS) do
-        if username:find(keyword, 1, true) then
-            return true
-        end
+    for _, kw in ipairs(BANNED_KEYWORDS) do
+        if username:find(kw,1,true) then return true end
     end
-    
     return false
 end
 
-local function checkForStaff()
-    local currentTime = tick()
-    if currentTime - lastStaffCheck < checkInterval then
-        return currentServerStaff
-    end
-    lastStaffCheck = currentTime
-    
-    local staffInServer = {}
+function checkForStaff()
+    local now = tick()
+    if now - lastStaffCheck < checkInterval then return currentServerStaff end
+    lastStaffCheck = now
+
+    local found = {}
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= player and isStaffUser(plr.Name) then
-            table.insert(staffInServer, plr.Name)
+        if plr~=player and isStaffUser(plr.Name) then
+            table.insert(found, plr.Name)
         end
     end
-    
-    currentServerStaff = staffInServer
-    
-    if #staffInServer > 0 and autoServerHop and farmEnabled and not notificationShown then
-        staffDetected = true
+    currentServerStaff = found
+
+    if staffListLbl then
+        if #found > 0 then
+            staffListLbl.Text      = "Staff in server:\n"..table.concat(found,", ")
+            staffListLbl.TextColor3 = Color3.fromRGB(255,100,100)
+            staffIndicator.BackgroundColor3 = staffWatchEnabled and Color3.fromRGB(255,0,0) or Color3.fromRGB(100,100,100)
+        else
+            staffListLbl.Text      = "Staff in server: None"
+            staffListLbl.TextColor3 = Color3.fromRGB(100,255,100)
+            staffIndicator.BackgroundColor3 = staffWatchEnabled and Color3.fromRGB(0,255,0) or Color3.fromRGB(100,100,100)
+        end
+    end
+
+    if #found>0 and autoServerHop and not notificationShown then
+        staffDetected     = true
         notificationShown = true
-        
-        local notification = Instance.new("Frame")
-        notification.Size = UDim2.new(0, 300, 0, 120)
-        notification.Position = UDim2.new(0.5, -150, 0.2, 0)
-        notification.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        notification.BackgroundTransparency = 0.1
-        notification.BorderSizePixel = 0
-        notification.Parent = sg
-        notification.ZIndex = 100
-        
-        local notificationCorner = Instance.new("UICorner")
-        notificationCorner.CornerRadius = UDim.new(0, 8)
-        notificationCorner.Parent = notification
-        
-        local text = Instance.new("TextLabel")
-        text.Size = UDim2.new(1, -20, 1, -20)
-        text.Position = UDim2.new(0, 10, 0, 10)
-        text.BackgroundTransparency = 1
-        text.Text = string.format("⚠️ STAFF DETECTED ⚠️\n\n%s\n\nServer hopping in %d seconds...",
-            table.concat(staffInServer, ", "), hopDelay)
-        text.TextColor3 = Color3.new(1, 1, 1)
-        text.TextSize = 14
-        text.Font = Enum.Font.GothamBold
-        text.TextWrapped = true
-        text.Parent = notification
-        text.ZIndex = 101
-        
-        local cancelBtn = Instance.new("TextButton")
-        cancelBtn.Size = UDim2.new(0, 60, 0, 25)
-        cancelBtn.Position = UDim2.new(1, -70, 1, -30)
-        cancelBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        cancelBtn.Text = "Cancel"
-        cancelBtn.TextColor3 = Color3.new(1, 1, 1)
-        cancelBtn.Font = Enum.Font.GothamBold
-        cancelBtn.TextSize = 11
-        cancelBtn.Parent = notification
-        cancelBtn.ZIndex = 101
-        
-        local cancelCorner = Instance.new("UICorner")
-        cancelCorner.CornerRadius = UDim.new(0, 4)
-        cancelCorner.Parent = cancelBtn
-        
-        cancelBtn.MouseButton1Click:Connect(function()
-            notification:Destroy()
+
+        local notif = Instance.new("Frame")
+        notif.Size             = UDim2.new(0,300,0,120)
+        notif.Position         = UDim2.new(0.5,-150,0.2,0)
+        notif.BackgroundColor3 = Color3.fromRGB(200,50,50)
+        notif.BackgroundTransparency = 0.1
+        notif.BorderSizePixel  = 0
+        notif.Parent           = sg
+        notif.ZIndex           = 100
+        mkCorner(notif,8)
+
+        local notifText = Instance.new("TextLabel")
+        notifText.Size               = UDim2.new(1,-20,1,-40)
+        notifText.Position           = UDim2.new(0,10,0,10)
+        notifText.BackgroundTransparency = 1
+        notifText.Text               = ("⚠️ STAFF DETECTED ⚠️\n%s\nHopping in %d..."):format(table.concat(found,", "),hopDelay)
+        notifText.TextColor3         = Color3.new(1,1,1)
+        notifText.TextSize           = 13
+        notifText.Font               = Enum.Font.GothamBold
+        notifText.TextWrapped        = true
+        notifText.Parent             = notif
+        notifText.ZIndex             = 101
+
+        local cancelB = Instance.new("TextButton")
+        cancelB.Size             = UDim2.new(0,70,0,26)
+        cancelB.Position         = UDim2.new(0.5,-35,1,-32)
+        cancelB.BackgroundColor3 = Color3.fromRGB(90,90,90)
+        cancelB.Text             = "Cancel"
+        cancelB.TextColor3       = Color3.new(1,1,1)
+        cancelB.Font             = Enum.Font.GothamBold
+        cancelB.TextSize         = 11
+        cancelB.Parent           = notif
+        cancelB.ZIndex           = 101
+        mkCorner(cancelB,4)
+        cancelB.MouseButton1Click:Connect(function()
+            notif:Destroy()
             notificationShown = false
-            staffDetected = false
+            staffDetected     = false
         end)
-        
+
         task.spawn(function()
-            for i = hopDelay, 1, -1 do
+            for i = hopDelay,1,-1 do
                 if not notificationShown then break end
-                text.Text = string.format("⚠️ STAFF DETECTED ⚠️\n\n%s\n\nServer hopping in %d seconds...",
-                    table.concat(staffInServer, ", "), i)
+                notifText.Text = ("⚠️ STAFF DETECTED ⚠️\n%s\nHopping in %d..."):format(table.concat(found,", "),i)
                 task.wait(1)
             end
             if notificationShown then
-                notification:Destroy()
+                notif:Destroy()
                 serverHop()
             end
         end)
-    elseif #staffInServer == 0 then
-        staffDetected = false
+    elseif #found==0 then
+        staffDetected     = false
         notificationShown = false
     end
-    
-    return staffInServer
+
+    return found
 end
-
-local function staffWatchLoop()
-    while staffWatchEnabled do
-        checkForStaff()
-        task.wait(checkInterval)
-    end
-end
-
--- ════════════════════════════════════════════════════════
---  GUI — Main Window (Feather Grey UI)
--- ════════════════════════════════════════════════════════
-
-local sg = Instance.new("ScreenGui")
-sg.Name = "BGSIMerged"
-sg.ResetOnSpawn = false
-sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-sg.Parent = playerGui
-
-local function mkCorner(p, r)
-    local c = Instance.new("UICorner", p)
-    c.CornerRadius = UDim.new(0, r or 6)
-end
-
--- Feather grey color scheme
-local bgColor = Color3.fromRGB(25, 25, 30)      -- Dark grey background
-local headerColor = Color3.fromRGB(35, 35, 42)  -- Slightly lighter grey
-local sectionColor = Color3.fromRGB(40, 40, 48) -- Medium grey sections
-local accentGrey = Color3.fromRGB(60, 60, 70)   -- Button grey
-local textGrey = Color3.fromRGB(180, 180, 190)  -- Light grey text
-local darkGrey = Color3.fromRGB(30, 30, 35)     -- Dark element grey
-
-local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 380, 0, 400)
-main.Position = UDim2.new(0.5, -190, 0.5, -200)
-main.BackgroundColor3 = bgColor
-main.BorderSizePixel = 0
-main.Active = true
-main.Parent = sg
-mkCorner(main, 10)
-
--- Header with matching grey buttons
-local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 40)
-header.BackgroundColor3 = headerColor
-header.BorderSizePixel = 0
-header.Parent = main
-mkCorner(header, 10)
-
-local titleLbl = Instance.new("TextLabel")
-titleLbl.Size = UDim2.new(0, 140, 1, 0)
-titleLbl.Position = UDim2.new(0, 10, 0, 0)
-titleLbl.Text = "BGSI | Feather Hub"
-titleLbl.Font = Enum.Font.GothamBold
-titleLbl.TextSize = 13
-titleLbl.TextColor3 = textGrey
-titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-titleLbl.BackgroundTransparency = 1
-titleLbl.Parent = header
-
--- Version tag
-local versionTag = Instance.new("TextLabel")
-versionTag.Size = UDim2.new(0, 35, 0, 18)
-versionTag.Position = UDim2.new(1, -220, 0.5, -9)
-versionTag.Text = "v2.0"
-versionTag.Font = Enum.Font.GothamBold
-versionTag.TextSize = 10
-versionTag.TextColor3 = Color3.fromRGB(140, 140, 150)
-versionTag.BackgroundColor3 = darkGrey
-versionTag.BorderSizePixel = 0
-versionTag.Parent = header
-mkCorner(versionTag, 4)
-
--- Rejoin Button (smaller, grey)
-local rejoinBtn = Instance.new("TextButton")
-rejoinBtn.Size = UDim2.new(0, 60, 0, 24)
-rejoinBtn.Position = UDim2.new(1, -175, 0.5, -12)
-rejoinBtn.Text = "Rejoin"
-rejoinBtn.Font = Enum.Font.GothamBold
-rejoinBtn.TextSize = 11
-rejoinBtn.TextColor3 = textGrey
-rejoinBtn.BackgroundColor3 = accentGrey
-rejoinBtn.BorderSizePixel = 0
-rejoinBtn.Parent = header
-mkCorner(rejoinBtn, 4)
-
-rejoinBtn.MouseButton1Click:Connect(function()
-    rejoinBtn.Text = "⟳"
-    task.spawn(function()
-        rejoin()
-    end)
-end)
-
--- Server Hop Button (smaller, grey)
-local hopBtn = Instance.new("TextButton")
-hopBtn.Size = UDim2.new(0, 70, 0, 24)
-hopBtn.Position = UDim2.new(1, -105, 0.5, -12)
-hopBtn.Text = "Server Hop"
-hopBtn.Font = Enum.Font.GothamBold
-hopBtn.TextSize = 11
-hopBtn.TextColor3 = textGrey
-hopBtn.BackgroundColor3 = accentGrey
-hopBtn.BorderSizePixel = 0
-hopBtn.Parent = header
-mkCorner(hopBtn, 4)
-
-hopBtn.MouseButton1Click:Connect(function()
-    hopBtn.Text = "⟳"
-    task.spawn(function()
-        serverHop()
-    end)
-end)
-
--- Staff Watch Indicator
-local staffIndicator = Instance.new("Frame")
-staffIndicator.Size = UDim2.new(0, 10, 0, 10)
-staffIndicator.Position = UDim2.new(1, -25, 0.5, -5)
-staffIndicator.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-staffIndicator.BorderSizePixel = 0
-staffIndicator.Parent = header
-mkCorner(staffIndicator, 5)
-
--- Close button
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 22, 0, 22)
-closeBtn.Position = UDim2.new(1, -27, 0.5, -11)
-closeBtn.Text = "X"
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 12
-closeBtn.TextColor3 = textGrey
-closeBtn.BackgroundColor3 = darkGrey
-closeBtn.BorderSizePixel = 0
-closeBtn.Parent = header
-mkCorner(closeBtn, 4)
-
-closeBtn.MouseButton1Click:Connect(function() 
-    farmEnabled = false
-    staffWatchEnabled = false
-    sg:Destroy() 
-end)
-
--- Dragging
-local dragging, dragStart, startPos
-header.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = i.Position
-        startPos = main.Position
-    end
-end)
-
-header.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(i)
-    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local d = i.Position - dragStart
-        main.Position = UDim2.new(
-            startPos.X.Scale, 
-            startPos.X.Offset + d.X, 
-            startPos.Y.Scale, 
-            startPos.Y.Offset + d.Y
-        )
-    end
-end)
-
--- ════════════════════════════════════════════════════════
---  TAB BAR
--- ════════════════════════════════════════════════════════
-
-local TAB_NAMES = {"Farm", "Bubbles", "Automation", "Pets"}
-local tabBtns = {}
-local tabPages = {}
-
-local tabBar = Instance.new("Frame")
-tabBar.Size = UDim2.new(1, -20, 0, 28)
-tabBar.Position = UDim2.new(0, 10, 0, 45)
-tabBar.BackgroundColor3 = headerColor
-tabBar.BorderSizePixel = 0
-tabBar.Parent = main
-mkCorner(tabBar, 5)
-
-local tabLayout = Instance.new("UIListLayout")
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-tabLayout.Padding = UDim.new(0, 4)
-tabLayout.Parent = tabBar
-
-local contentArea = Instance.new("Frame")
-contentArea.Size = UDim2.new(1, -20, 1, -90)
-contentArea.Position = UDim2.new(0, 10, 0, 78)
-contentArea.BackgroundTransparency = 1
-contentArea.Parent = main
-
-local function switchTab(name)
-    for n, btn in pairs(tabBtns) do
-        local on = n == name
-        btn.BackgroundColor3 = on and accentGrey or darkGrey
-        btn.TextColor3 = on and Color3.new(1, 1, 1) or textGrey
-    end
-    for n, page in pairs(tabPages) do
-        page.Visible = n == name
-    end
-end
-
-for i, name in ipairs(TAB_NAMES) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.25, -3, 1, -4)
-    btn.BackgroundColor3 = i == 1 and accentGrey or darkGrey
-    btn.TextColor3 = i == 1 and Color3.new(1, 1, 1) or textGrey
-    btn.Text = name
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 11
-    btn.BorderSizePixel = 0
-    btn.Parent = tabBar
-    mkCorner(btn, 4)
-    tabBtns[name] = btn
-
-    local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.BackgroundTransparency = 1
-    page.Visible = i == 1
-    page.Parent = contentArea
-    page.ScrollBarThickness = 4
-    page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    page.ScrollBarImageColor3 = accentGrey
-    tabPages[name] = page
-
-    btn.MouseButton1Click:Connect(function() 
-        switchTab(name) 
-    end)
-end
-
--- ════════════════════════════════════════════════════════
---  WIDGET HELPERS
--- ════════════════════════════════════════════════════════
-
-local function mkSection(parent, yOff, h, title)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, -10, 0, h)
-    f.Position = UDim2.new(0, 5, 0, yOff)
-    f.BackgroundColor3 = sectionColor
-    f.BorderSizePixel = 0
-    f.Parent = parent
-    mkCorner(f, 6)
-    
-    if title then
-        local titleLbl = Instance.new("TextLabel")
-        titleLbl.Size = UDim2.new(1, -12, 0, 20)
-        titleLbl.Position = UDim2.new(0, 6, 0, 2)
-        titleLbl.Text = title
-        titleLbl.Font = Enum.Font.GothamBold
-        titleLbl.TextSize = 11
-        titleLbl.TextColor3 = textGrey
-        titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-        titleLbl.BackgroundTransparency = 1
-        titleLbl.Parent = f
-    end
-    
-    return f
-end
-
-local function mkToggle(parent, yOff, label, default)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -12, 0, 22)
-    row.Position = UDim2.new(0, 6, 0, yOff)
-    row.BackgroundTransparency = 1
-    row.Parent = parent
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -40, 1, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 10
-    lbl.TextColor3 = textGrey
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Text = label
-    lbl.Parent = row
-
-    local track = Instance.new("Frame")
-    track.Size = UDim2.new(0, 30, 0, 16)
-    track.Position = UDim2.new(1, -30, 0.5, -8)
-    track.BackgroundColor3 = default and accentGrey or darkGrey
-    track.BorderSizePixel = 0
-    track.Parent = row
-    mkCorner(track, 8)
-
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0, 12, 0, 12)
-    knob.Position = default and UDim2.new(0, 16, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    knob.BackgroundColor3 = default and Color3.new(1, 1, 1) or textGrey
-    knob.BorderSizePixel = 0
-    knob.Parent = track
-    mkCorner(knob, 6)
-
-    local state = default or false
-    local cbs = {}
-    
-    local hit = Instance.new("TextButton")
-    hit.Size = UDim2.new(1, 0, 1, 0)
-    hit.BackgroundTransparency = 1
-    hit.Text = ""
-    hit.Parent = track
-    hit.MouseButton1Click:Connect(function()
-        state = not state
-        track.BackgroundColor3 = state and accentGrey or darkGrey
-        knob.Position = state and UDim2.new(0, 16, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-        knob.BackgroundColor3 = state and Color3.new(1, 1, 1) or textGrey
-        for _, cb in ipairs(cbs) do
-            pcall(cb, state)
-        end
-    end)
-    
-    return {
-        onChanged = function(_, cb)
-            table.insert(cbs, cb)
-        end,
-        getState = function() return state end,
-        setState = function(_, newState)
-            if state ~= newState then
-                state = newState
-                track.BackgroundColor3 = state and accentGrey or darkGrey
-                knob.Position = state and UDim2.new(0, 16, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-                knob.BackgroundColor3 = state and Color3.new(1, 1, 1) or textGrey
-                for _, cb in ipairs(cbs) do
-                    pcall(cb, state)
-                end
-            end
-        end
-    }
-end
-
--- ════════════════════════════════════════════════════════
---  FARM TAB (FIXED POSITIONING)
--- ════════════════════════════════════════════════════════
-
-local farmPage = tabPages["Farm"]
-local currentY = 5
-
--- Status section
-local statusSec = mkSection(farmPage, currentY, 40, "Farm Status")
-currentY = currentY + 45
-
-local statusText = Instance.new("TextLabel")
-statusText.Size = UDim2.new(1, -20, 1, 0)
-statusText.Position = UDim2.new(0, 10, 0, 0)
-statusText.Text = "⏸ Idle – Press Start"
-statusText.Font = Enum.Font.GothamMedium
-statusText.TextSize = 12
-statusText.TextColor3 = textGrey
-statusText.TextXAlignment = Enum.TextXAlignment.Center  -- Centered!
-statusText.BackgroundTransparency = 1
-statusText.Parent = statusSec
-
--- Route cards
-local cardsSec = mkSection(farmPage, currentY, 90, "Flower Routes")
-currentY = currentY + 95
-
-local routeCards = {}
-local CW = math.floor(340 / 3)
-
-for i, route in ipairs(ROUTES) do
-    local card = Instance.new("Frame")
-    card.Size = UDim2.new(0, CW - 8, 0, 75)
-    card.Position = UDim2.new(0, 8 + (CW * (i-1)), 0, 8)
-    card.BackgroundColor3 = darkGrey
-    card.BorderSizePixel = 0
-    card.Parent = cardsSec
-    mkCorner(card, 5)
-
-    -- Fixed: Remove the extra line by making strip properly contained
-    local strip = Instance.new("Frame")
-    strip.Size = UDim2.new(1, 0, 0, 3)
-    strip.BackgroundColor3 = route.color
-    strip.BorderSizePixel = 0
-    strip.Parent = card
-    strip.ClipsDescendants = true  -- This prevents overflow
-    mkCorner(strip, 3)
-
-    local nm = Instance.new("TextLabel")
-    nm.Size = UDim2.new(1, -8, 0, 18)
-    nm.Position = UDim2.new(0, 4, 0, 5)
-    nm.Text = route.name
-    nm.Font = Enum.Font.GothamBold
-    nm.TextSize = 12
-    nm.TextColor3 = route.color
-    nm.TextXAlignment = Enum.TextXAlignment.Left
-    nm.BackgroundTransparency = 1
-    nm.Parent = card
-
-    local cd = Instance.new("TextLabel")
-    cd.Size = UDim2.new(1, -8, 0, 14)
-    cd.Position = UDim2.new(0, 4, 0, 24)
-    cd.Text = "ready"
-    cd.Font = Enum.Font.Gotham
-    cd.TextSize = 10
-    cd.TextColor3 = Color3.fromRGB(100, 255, 100)
-    cd.TextXAlignment = Enum.TextXAlignment.Left
-    cd.BackgroundTransparency = 1
-    cd.Parent = card
-
-    local cnt = Instance.new("TextLabel")
-    cnt.Size = UDim2.new(1, -8, 0, 18)
-    cnt.Position = UDim2.new(0, 4, 0, 42)
-    cnt.Text = "0x"
-    cnt.Font = Enum.Font.GothamBold
-    cnt.TextSize = 15
-    cnt.TextColor3 = textGrey
-    cnt.TextXAlignment = Enum.TextXAlignment.Left
-    cnt.BackgroundTransparency = 1
-    cnt.Parent = card
-
-    routeCards[i] = {frame = card, count = cnt, cooldown = cd}
-end
-
--- Speed buttons
-local speedSec = mkSection(farmPage, currentY, 55, "Movement Speed")
-currentY = currentY + 60
-
-local speedDefs = {
-    {name = "SAFE", col = Color3.fromRGB(70, 130, 200)},
-    {name = "FAST", col = Color3.fromRGB(50, 180, 100)},
-    {name = "INSTANT", col = Color3.fromRGB(200, 100, 100)},
-}
-
-local speedBtns = {}
-for i, sd in ipairs(speedDefs) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 85, 0, 26)
-    btn.Position = UDim2.new(0, 10 + 90 * (i-1), 0, 22)
-    btn.Text = sd.name
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 11
-    btn.TextColor3 = (sd.name == speedMode) and Color3.new(1, 1, 1) or textGrey
-    btn.BackgroundColor3 = (sd.name == speedMode) and sd.col or accentGrey
-    btn.BorderSizePixel = 0
-    btn.Parent = speedSec
-    mkCorner(btn, 4)
-    speedBtns[sd.name] = {btn = btn, col = sd.col}
-    
-    btn.MouseButton1Click:Connect(function()
-        speedMode = sd.name
-        for n, sb in pairs(speedBtns) do
-            sb.btn.BackgroundColor3 = (n == sd.name) and sb.col or accentGrey
-            sb.btn.TextColor3 = (n == sd.name) and Color3.new(1, 1, 1) or textGrey
-        end
-    end)
-end
-
--- Wheel Spin section
-local wheelSec = mkSection(farmPage, currentY, 55, "Spring Wheel")
-currentY = currentY + 60
-
-local wheelToggle = mkToggle(wheelSec, 8, "Auto Spin Wheel (uses tickets)", false)
-wheelToggle:onChanged(function(s)
-    autoWheelValue = s
-end)
-
-local wheelCountLbl = Instance.new("TextLabel")
-wheelCountLbl.Size = UDim2.new(1, -20, 0, 18)
-wheelCountLbl.Position = UDim2.new(0, 10, 0, 30)
-wheelCountLbl.Text = "Spins this session: 0"
-wheelCountLbl.Font = Enum.Font.Gotham
-wheelCountLbl.TextSize = 10
-wheelCountLbl.TextColor3 = textGrey
-wheelCountLbl.TextXAlignment = Enum.TextXAlignment.Left
-wheelCountLbl.BackgroundTransparency = 1
-wheelCountLbl.Parent = wheelSec
-
--- Retry info
-local retrySec = mkSection(farmPage, currentY, 35, "Retry System")
-currentY = currentY + 40
-
-local retryInfo = Instance.new("TextLabel")
-retryInfo.Size = UDim2.new(1, -20, 1, 0)
-retryInfo.Position = UDim2.new(0, 10, 0, 0)
-retryInfo.Text = "Retry Queue: 0 spots"
-retryInfo.Font = Enum.Font.Gotham
-retryInfo.TextSize = 10
-retryInfo.TextColor3 = Color3.fromRGB(200, 200, 100)  -- Keep yellow
-retryInfo.TextXAlignment = Enum.TextXAlignment.Center  -- Centered!
-retryInfo.BackgroundTransparency = 1
-retryInfo.Parent = retrySec
-
--- Start/Stop button
-local ctrlSec = mkSection(farmPage, currentY, 50)
-currentY = currentY + 55
-
-local startBtn = Instance.new("TextButton")
-startBtn.Size = UDim2.new(0, 130, 0, 32)
-startBtn.Position = UDim2.new(0.5, -65, 0.5, -16)
-startBtn.Text = "▶ START"
-startBtn.Font = Enum.Font.GothamBold
-startBtn.TextSize = 14
-startBtn.TextColor3 = textGrey
-startBtn.BackgroundColor3 = accentGrey
-startBtn.BorderSizePixel = 0
-startBtn.Parent = ctrlSec
-mkCorner(startBtn, 6)
-
--- Stats row
-local statsSec = mkSection(farmPage, currentY, 30)
-currentY = currentY + 35
-
-local cyclesLabel = Instance.new("TextLabel")
-cyclesLabel.Size = UDim2.new(0.5, -10, 1, 0)
-cyclesLabel.Position = UDim2.new(0, 10, 0, 0)
-cyclesLabel.Text = "Total runs: 0"
-cyclesLabel.Font = Enum.Font.Gotham
-cyclesLabel.TextSize = 10
-cyclesLabel.TextColor3 = textGrey
-cyclesLabel.TextXAlignment = Enum.TextXAlignment.Left
-cyclesLabel.BackgroundTransparency = 1
-cyclesLabel.Parent = statsSec
-
-local modeLabel = Instance.new("TextLabel")
-modeLabel.Size = UDim2.new(0.5, -10, 1, 0)
-modeLabel.Position = UDim2.new(0.5, 0, 0, 0)
-modeLabel.Text = "Mode: INSTANT"
-modeLabel.Font = Enum.Font.Gotham
-modeLabel.TextSize = 10
-modeLabel.TextColor3 = textGrey
-modeLabel.TextXAlignment = Enum.TextXAlignment.Right
-modeLabel.BackgroundTransparency = 1
-modeLabel.Parent = statsSec
-
-farmPage.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
-
--- ════════════════════════════════════════════════════════
---  BUBBLES TAB
--- ════════════════════════════════════════════════════════
-
-local bubPage = tabPages["Bubbles"]
-currentY = 5
-
-local bubSec = mkSection(bubPage, currentY, 150, "Bubble Controls")
-currentY = currentY + 155
-
-local blowToggle = mkToggle(bubSec, 8, "Auto Blow Bubbles", false)
-blowToggle:onChanged(function(s) autoBlowValue = s end)
-
-local sellToggle = mkToggle(bubSec, 35, "Auto Sell Bubbles", false)
-sellToggle:onChanged(function(s) autoSellValue = s end)
-
-local sliderLbl = Instance.new("TextLabel")
-sliderLbl.Size = UDim2.new(1, -20, 0, 18)
-sliderLbl.Position = UDim2.new(0, 10, 0, 70)
-sliderLbl.Text = "Sell at % of storage: 50%"
-sliderLbl.Font = Enum.Font.Gotham
-sliderLbl.TextSize = 10
-sliderLbl.TextColor3 = textGrey
-sliderLbl.TextXAlignment = Enum.TextXAlignment.Left
-sliderLbl.BackgroundTransparency = 1
-sliderLbl.Parent = bubSec
-
-local sliderTrack = Instance.new("Frame")
-sliderTrack.Size = UDim2.new(1, -20, 0, 6)
-sliderTrack.Position = UDim2.new(0, 10, 0, 95)
-sliderTrack.BackgroundColor3 = darkGrey
-sliderTrack.BorderSizePixel = 0
-sliderTrack.Parent = bubSec
-mkCorner(sliderTrack, 3)
-
-local sliderFill = Instance.new("Frame")
-sliderFill.Size = UDim2.new(0.5, 0, 1, 0)
-sliderFill.BackgroundColor3 = accentGrey
-sliderFill.BorderSizePixel = 0
-sliderFill.Parent = sliderTrack
-mkCorner(sliderFill, 3)
-
-local sliderKnob = Instance.new("TextButton")
-sliderKnob.Size = UDim2.new(0, 16, 0, 16)
-sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
-sliderKnob.Position = UDim2.new(0.5, 0, 0.5, 0)
-sliderKnob.BackgroundColor3 = textGrey
-sliderKnob.Text = ""
-sliderKnob.BorderSizePixel = 0
-sliderKnob.ZIndex = 3
-sliderKnob.Parent = sliderTrack
-mkCorner(sliderKnob, 8)
-
-local draggingSlider = false
-sliderKnob.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        draggingSlider = true
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        draggingSlider = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(i)
-    if draggingSlider and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local rel = math.clamp((i.Position.X - sliderTrack.AbsolutePosition.X) / sliderTrack.AbsoluteSize.X, 0, 1)
-        autoSellPer = math.floor(rel * 99 + 1)
-        sliderFill.Size = UDim2.new(rel, 0, 1, 0)
-        sliderKnob.Position = UDim2.new(rel, 0, 0.5, 0)
-        sliderLbl.Text = string.format("Sell at %% of storage: %d%%", autoSellPer)
-    end
-end)
-
-bubPage.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
-
--- ════════════════════════════════════════════════════════
---  AUTOMATION TAB
--- ════════════════════════════════════════════════════════
-
-local autoPage = tabPages["Automation"]
-currentY = 5
-
--- Unlock Areas button
-local unlockSec = mkSection(autoPage, currentY, 50, "World Unlocker")
-currentY = currentY + 55
-
-local unlockBtn = Instance.new("TextButton")
-unlockBtn.Size = UDim2.new(1, -20, 0, 28)
-unlockBtn.Position = UDim2.new(0, 10, 0, 12)
-unlockBtn.Text = "🔓 Unlock All Areas"
-unlockBtn.Font = Enum.Font.GothamBold
-unlockBtn.TextSize = 12
-unlockBtn.TextColor3 = textGrey
-unlockBtn.BackgroundColor3 = accentGrey
-unlockBtn.BorderSizePixel = 0
-unlockBtn.Parent = unlockSec
-mkCorner(unlockBtn, 5)
-
-unlockBtn.MouseButton1Click:Connect(function()
-    unlockBtn.Text = "⏳ Unlocking..."
-    unlockBtn.BackgroundColor3 = darkGrey
-    task.spawn(function()
-        local worlds = workspace:FindFirstChild("Worlds")
-        if worlds then
-            local overworld = worlds:FindFirstChild("The Overworld")
-            if overworld then
-                local islands = overworld:FindFirstChild("Islands")
-                if islands then
-                    for _, v in pairs(islands:GetChildren()) do
-                        local unlockHitbox = v:FindFirstChild("UnlockHitbox")
-                        if unlockHitbox and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            firetouchinterest(player.Character.HumanoidRootPart, unlockHitbox, 0)
-                            task.wait(0.1)
-                            firetouchinterest(player.Character.HumanoidRootPart, unlockHitbox, 1)
-                            task.wait(0.5)
-                        end
-                    end
-                end
-            end
-        end
-        unlockBtn.Text = "✅ Done"
-        unlockBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 100)
-        task.wait(2)
-        unlockBtn.Text = "🔓 Unlock All Areas"
-        unlockBtn.BackgroundColor3 = accentGrey
-    end)
-end)
-
--- Auto Collect
-local collectSec = mkSection(autoPage, currentY, 110, "Auto Collectors")
-currentY = currentY + 115
-
-local coinToggle = mkToggle(collectSec, 8, "Auto Collect Coins", false)
-coinToggle:onChanged(function(s) autoCollectCoinsValue = s end)
-
-local playtimeToggle = mkToggle(collectSec, 35, "Auto Claim Playtime", false)
-playtimeToggle:onChanged(function(s) autoclaimplaytimeval = s end)
-
-local chestToggle = mkToggle(collectSec, 62, "Auto Claim Chests", false)
-chestToggle:onChanged(function(s) autoclaimchestsval = s end)
-
-local riftToggle = mkToggle(collectSec, 89, "Auto Claim Rift Gifts", false)
-riftToggle:onChanged(function(s) autoClaimRiftGiftval = s end)
-
--- Staff Watch Section
-local staffSec = mkSection(autoPage, currentY, 110, "👮 Staff Watch System")
-currentY = currentY + 115
-
-local staffToggle = mkToggle(staffSec, 8, "Enable Staff Watch", true)
-staffToggle:onChanged(function(s)
-    staffWatchEnabled = s
-    if s and not staffWatchThread then
-        staffWatchThread = task.spawn(staffWatchLoop)
-    elseif not s and staffWatchThread then
-        task.cancel(staffWatchThread)
-        staffWatchThread = nil
-    end
-    staffIndicator.BackgroundColor3 = s and (staffDetected and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)) or Color3.fromRGB(100, 100, 100)
-end)
-
-local autoHopToggle = mkToggle(staffSec, 35, "Auto Server Hop on Staff", true)
-autoHopToggle:onChanged(function(s) autoServerHop = s end)
-
-local staffListLbl = Instance.new("TextLabel")
-staffListLbl.Size = UDim2.new(1, -20, 0, 40)
-staffListLbl.Position = UDim2.new(0, 10, 0, 65)
-staffListLbl.Text = "Staff in server: None"
-staffListLbl.Font = Enum.Font.Gotham
-staffListLbl.TextSize = 10
-staffListLbl.TextColor3 = Color3.fromRGB(100, 255, 100)
-staffListLbl.TextXAlignment = Enum.TextXAlignment.Left
-staffListLbl.TextWrapped = true
-staffListLbl.BackgroundTransparency = 1
-staffListLbl.Parent = staffSec
-
-autoPage.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
-
--- ════════════════════════════════════════════════════════
---  PETS TAB
--- ════════════════════════════════════════════════════════
-
-local petPage = tabPages["Pets"]
-currentY = 5
-
-local eggSec = mkSection(petPage, currentY, 110, "Egg Hatching")
-currentY = currentY + 115
-
-local dropLbl = Instance.new("TextLabel")
-dropLbl.Size = UDim2.new(1, -20, 0, 18)
-dropLbl.Position = UDim2.new(0, 10, 0, 8)
-dropLbl.Text = "Selected Egg:"
-dropLbl.Font = Enum.Font.Gotham
-dropLbl.TextSize = 10
-dropLbl.TextColor3 = textGrey
-dropLbl.TextXAlignment = Enum.TextXAlignment.Left
-dropLbl.BackgroundTransparency = 1
-dropLbl.Parent = eggSec
-
-local eggDropBtn = Instance.new("TextButton")
-eggDropBtn.Size = UDim2.new(1, -20, 0, 28)
-eggDropBtn.Position = UDim2.new(0, 10, 0, 28)
-eggDropBtn.BackgroundColor3 = darkGrey
-eggDropBtn.Text = " " .. (selectedEgg ~= "" and selectedEgg or "Select egg...")
-eggDropBtn.Font = Enum.Font.Gotham
-eggDropBtn.TextSize = 11
-eggDropBtn.TextColor3 = textGrey
-eggDropBtn.TextXAlignment = Enum.TextXAlignment.Left
-eggDropBtn.BorderSizePixel = 0
-eggDropBtn.Parent = eggSec
-mkCorner(eggDropBtn, 5)
-
-local arrowL = Instance.new("TextLabel")
-arrowL.Size = UDim2.new(0, 20, 1, 0)
-arrowL.Position = UDim2.new(1, -22, 0, 0)
-arrowL.Text = "▾"
-arrowL.Font = Enum.Font.GothamBold
-arrowL.TextSize = 12
-arrowL.TextColor3 = textGrey
-arrowL.BackgroundTransparency = 1
-arrowL.Parent = eggDropBtn
-
-local dropList = Instance.new("Frame")
-dropList.Size = UDim2.new(1, -20, 0, math.min(#eggs, 5) * 24)
-dropList.Position = UDim2.new(0, 10, 0, 58)
-dropList.BackgroundColor3 = darkGrey
-dropList.BorderSizePixel = 0
-dropList.Visible = false
-dropList.ZIndex = 10
-dropList.ClipsDescendants = true
-dropList.Parent = eggSec
-mkCorner(dropList, 5)
-
-local scrollF = Instance.new("ScrollingFrame")
-scrollF.Size = UDim2.new(1, 0, 1, 0)
-scrollF.BackgroundTransparency = 1
-scrollF.ScrollBarThickness = 3
-scrollF.CanvasSize = UDim2.new(0, 0, 0, #eggs * 24)
-scrollF.ZIndex = 11
-scrollF.Parent = dropList
-
-local eggLayout = Instance.new("UIListLayout")
-eggLayout.SortOrder = Enum.SortOrder.LayoutOrder
-eggLayout.Parent = scrollF
-
-for i, egg in ipairs(eggs) do
-    local item = Instance.new("TextButton")
-    item.Size = UDim2.new(1, 0, 0, 24)
-    item.BackgroundTransparency = 1
-    item.Text = "  " .. egg
-    item.Font = Enum.Font.Gotham
-    item.TextSize = 11
-    item.TextColor3 = textGrey
-    item.TextXAlignment = Enum.TextXAlignment.Left
-    item.BorderSizePixel = 0
-    item.LayoutOrder = i
-    item.ZIndex = 12
-    item.Parent = scrollF
-    
-    item.MouseEnter:Connect(function()
-        item.BackgroundTransparency = 0
-        item.BackgroundColor3 = accentGrey
-    end)
-    
-    item.MouseLeave:Connect(function()
-        item.BackgroundTransparency = 1
-    end)
-    
-    item.MouseButton1Click:Connect(function()
-        selectedEgg = egg
-        eggDropBtn.Text = " " .. egg
-        dropList.Visible = false
-    end)
-end
-
-eggDropBtn.MouseButton1Click:Connect(function()
-    dropList.Visible = not dropList.Visible
-end)
-
--- Auto Hatch toggle
-local hatchToggle = mkToggle(eggSec, 70, "Auto Hatch", false)
-hatchToggle:onChanged(function(s) autoHatchValue = s end)
-
--- Mystery Box section
-local giftSec = mkSection(petPage, currentY, 50, "Mystery Boxes")
-currentY = currentY + 55
-
-local giftToggle = mkToggle(giftSec, 8, "Auto Open Mystery Boxes", false)
-giftToggle:onChanged(function(s) autoGiftValue = s end)
-
-petPage.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
-
--- ════════════════════════════════════════════════════════
---  UI UPDATE FUNCTIONS
--- ════════════════════════════════════════════════════════
-
-local function setStatus(txt, col)
-    if statusText then
-        statusText.Text = txt
-        if col then
-            statusText.TextColor3 = col
-        end
-    end
-end
-
-local function highlightRoute(id)
-    for i, card in ipairs(routeCards) do
-        card.frame.BackgroundColor3 = (i == id) and accentGrey or darkGrey
-    end
-end
-
-local function updateUI()
-    for i in ipairs(ROUTES) do
-        if routeCards[i] and routeCards[i].count then
-            routeCards[i].count.Text = routeCounts[i] .. "x"
-        end
-    end
-    if cyclesLabel then cyclesLabel.Text = "Total runs: " .. totalCycles end
-    if modeLabel then modeLabel.Text = "Mode: " .. speedMode end
-    if retryInfo then retryInfo.Text = string.format("Retry Queue: %d spots", #RetrySystem.retryQueue) end
-    if wheelCountLbl then wheelCountLbl.Text = "Spins this session: " .. wheelSpins end
-    
-    if staffListLbl then
-        if #currentServerStaff > 0 then
-            staffListLbl.Text = "Staff in server: " .. table.concat(currentServerStaff, ", ")
-            staffListLbl.TextColor3 = Color3.fromRGB(255, 100, 100)
-            staffIndicator.BackgroundColor3 = staffWatchEnabled and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(100, 100, 100)
-        else
-            staffListLbl.Text = "Staff in server: None"
-            staffListLbl.TextColor3 = Color3.fromRGB(100, 255, 100)
-            staffIndicator.BackgroundColor3 = staffWatchEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(100, 100, 100)
-        end
-    end
-end
-
--- ════════════════════════════════════════════════════════
---  MOVEMENT
--- ════════════════════════════════════════════════════════
-
-local function moveToPosition(targetCF, duration)
-    local root = getRoot()
-    if not root then return end
-    
-    if speedMode == "INSTANT" then
-        root.CFrame = targetCF
-        task.wait(0.1)
-    elseif speedMode == "FAST" then
-        local t = TweenService:Create(root, TweenInfo.new(duration or 0.5, Enum.EasingStyle.Linear), {CFrame = targetCF})
-        t:Play()
-        t.Completed:Wait()
-        task.wait(interactionDelay)
-    else
-        local t = TweenService:Create(root, TweenInfo.new(duration or 1.5, Enum.EasingStyle.Linear), {CFrame = targetCF})
-        t:Play()
-        t.Completed:Wait()
-        task.wait(interactionDelay + 0.2)
-    end
-end
-
--- ════════════════════════════════════════════════════════
---  ROUTE EXECUTION
--- ════════════════════════════════════════════════════════
-
-local function runRoute(route)
-    if not farmEnabled then return end
-    highlightRoute(route.id)
-    setStatus(" Farming " .. route.name .. "...", route.color)
-    nextReadyAt[route.id] = tick() + route.cooldown
-
-    for i, wp in ipairs(route.waypoints) do
-        if not farmEnabled then break end
-        setStatus(string.format("%s: point %d/%d", route.name, i, #route.waypoints), route.color)
-        moveToPosition(wp, speedMode == "SAFE" and 1.5 or 0.5)
-        task.wait(0.2)
-        if not verifySpot(wp) then
-            markForRetry(wp, route.id)
-            setStatus(string.format(" %s pt %d → retry", route.name, i), Color3.fromRGB(255, 200, 100))
-        else
-            markSuccessful(wp)
-        end
-        updateUI()
-    end
-
-    routeCounts[route.id] = routeCounts[route.id] + 1
-    totalCycles = totalCycles + 1
-    updateUI()
-    highlightRoute(0)
-end
-
--- ════════════════════════════════════════════════════════
---  RETRY LOOP
--- ════════════════════════════════════════════════════════
-
-local function retryLoop()
-    while farmEnabled do
-        if #RetrySystem.retryQueue > 0 and currentRoute == nil then
-            local spot = getNextRetrySpot()
-            if spot then
-                setStatus(string.format("Retry attempt %d/%d", spot.failCount, RetrySystem.maxRetries),
-                    Color3.fromRGB(255, 200, 100))
-                local ok = retrySpot(spot)
-                setStatus(ok and " Retry OK!" or "Retry failed – queued again",
-                    ok and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 150, 50))
-                updateUI()
-                task.wait(1)
-            end
-        end
-        task.wait(0.5)
-    end
-end
-
--- ════════════════════════════════════════════════════════
---  WHEEL SPIN LOOP
--- ════════════════════════════════════════════════════════
-
-local function wheelLoop()
-    while farmEnabled do
-        if autoWheelValue then
-            pcall(function()
-                if FunctionHandler then
-                    FunctionHandler:InvokeServer("SpringWheelSpin")
-                end
-                task.wait(0.5)
-                if EventHandler then
-                    EventHandler:FireServer("ClaimSpringWheelSpinQueue")
-                end
-                wheelSpins = wheelSpins + 1
-                updateUI()
-            end)
-            task.wait(1)
-        else
-            task.wait(0.5)
-        end
-    end
-end
-
--- ════════════════════════════════════════════════════════
---  PRIORITY QUEUE
--- ════════════════════════════════════════════════════════
-
-local function getNextRoute()
-    local now = tick()
-    for _, route in ipairs(ROUTES) do
-        if now >= (nextReadyAt[route.id] or 0) then
-            return route, 0
-        end
-    end
-    local soonest, soonestTime = nil, math.huge
-    for _, route in ipairs(ROUTES) do
-        local ra = nextReadyAt[route.id] or 0
-        if ra < soonestTime then
-            soonestTime = ra
-            soonest = route
-        end
-    end
-    return soonest, soonestTime - now
-end
-
--- ════════════════════════════════════════════════════════
---  MAIN FARM LOOP
--- ════════════════════════════════════════════════════════
-
-local function farmLoop()
-    for _, route in ipairs(ROUTES) do
-        nextReadyAt[route.id] = 0
-    end
-    while farmEnabled do
-        local route, waitTime = getNextRoute()
-        if waitTime > 0 then
-            setStatus(string.format("Idle %.1fs (%d retry)", waitTime, #RetrySystem.retryQueue),
-                Color3.fromRGB(255, 200, 100))
-            currentRoute = nil
-            local deadline = tick() + waitTime
-            while farmEnabled and tick() < deadline do
-                local cr = getNextRoute()
-                if cr and cr.id ~= route.id and (nextReadyAt[cr.id] or 0) <= tick() then
-                    break
-                end
-                task.wait(0.1)
-            end
-        end
-        if farmEnabled then
-            local nextRoute = getNextRoute()
-            if nextRoute then
-                currentRoute = nextRoute
-                runRoute(nextRoute)
-                currentRoute = nil
-            end
-        end
-    end
-    currentRoute = nil
-    setStatus("⏸ Idle – Press Start", Color3.fromRGB(200, 200, 200))
-    highlightRoute(0)
-end
-
--- ════════════════════════════════════════════════════════
---  START / STOP
--- ════════════════════════════════════════════════════════
-
-startBtn.MouseButton1Click:Connect(function()
-    farmEnabled = not farmEnabled
-    if farmEnabled then
-        startBtn.Text = "⏹ STOP"
-        startBtn.BackgroundColor3 = Color3.fromRGB(180, 100, 100)
-        setStatus("▶ Farming started", Color3.fromRGB(100, 255, 100))
-        
-        if farmThread then task.cancel(farmThread) end
-        if retryThread then task.cancel(retryThread) end
-        if wheelThread then task.cancel(wheelThread) end
-        
-        farmThread = task.spawn(farmLoop)
-        retryThread = task.spawn(retryLoop)
-        wheelThread = task.spawn(wheelLoop)
-        
-        if staffWatchEnabled and not staffWatchThread then
-            staffWatchThread = task.spawn(staffWatchLoop)
-        end
-    else
-        startBtn.Text = "▶ START"
-        startBtn.BackgroundColor3 = accentGrey
-        setStatus("⏸ Idle – Press Start", textGrey)
-        
-        if farmThread then task.cancel(farmThread); farmThread = nil end
-        if retryThread then task.cancel(retryThread); retryThread = nil end
-        if wheelThread then task.cancel(wheelThread); wheelThread = nil end
-    end
-end)
-
--- ════════════════════════════════════════════════════════
---  COOLDOWN TICKER
--- ════════════════════════════════════════════════════════
-
-task.spawn(function()
-    while sg and sg.Parent do
-        if farmEnabled then
-            local now = tick()
-            for i, route in ipairs(ROUTES) do
-                local rem = (nextReadyAt[route.id] or 0) - now
-                if routeCards[i] and routeCards[i].cooldown then
-                    routeCards[i].cooldown.Text = rem > 0 and string.format("%.0fs", rem) or "ready"
-                    routeCards[i].cooldown.TextColor3 = rem > 0
-                        and Color3.fromRGB(255, 200, 100) or Color3.fromRGB(100, 255, 100)
-                end
-            end
-            updateUI()
-        end
-        task.wait(0.25)
-    end
-end)
 
 -- ════════════════════════════════════════════════════════
 --  AUTOMATION LOOPS
 -- ════════════════════════════════════════════════════════
 
+-- Bubbles — uses the confirmed direct remote path from spy
+task.spawn(function()
+    local blowCount = 0
+    while sg and sg.Parent do
+        task.wait(0.1)
+        pcall(function()
+            if autoBlowValue then
+                RemoteEvent:FireServer("BlowBubble")
+                blowCount = blowCount + 1
+
+                -- Sell every N blows based on slider (autoSellPer = 1–100 mapped to 10–1000 blows)
+                -- So slider at 50% = sell every ~500 blows, slider at 1% = sell every 10 blows
+                local sellEvery = math.max(5, math.floor((autoSellPer / 100) * 1000))
+                if autoSellValue and blowCount >= sellEvery then
+                    RemoteEvent:FireServer("SellBubble")
+                    blowCount = 0
+                end
+            elseif autoSellValue then
+                -- Sell toggled on without blow — just fire sell on its own interval
+                RemoteEvent:FireServer("SellBubble")
+                task.wait(1)
+            end
+        end)
+    end
+end)
+
+-- Playtime — confirmed path: RemoteFunction:InvokeServer("ClaimPlaytime", N) where N = 1-9
+-- Cycles through all 9 reward tiers automatically every 3 seconds
+local RemoteFunction = ReplicatedStorage:WaitForChild("Shared")
+    :WaitForChild("Framework"):WaitForChild("Network")
+    :WaitForChild("Remote"):WaitForChild("RemoteFunction")
+
+task.spawn(function()
+    local playtimeIndex = 1
+    while sg and sg.Parent do
+        task.wait(3)
+        pcall(function()
+            if autoclaimplaytimeval then
+                RemoteFunction:InvokeServer("ClaimPlaytime", playtimeIndex)
+                playtimeIndex = playtimeIndex + 1
+                if playtimeIndex > 9 then playtimeIndex = 1 end
+            end
+        end)
+    end
+end)
+
+-- Chests
 task.spawn(function()
     while sg and sg.Parent do
         task.wait(0.5)
         pcall(function()
-            if autoBlowValue and EventHandler then
-                EventHandler:FireServer("BlowBubble")
-            end
-            if autoSellValue and StatsUtil and StatsUtil.GetBubbleStorage and Data then
-                local storage = StatsUtil:GetBubbleStorage(Data)
-                if storage and Data.Bubble and Data.Bubble.Amount then
-                    local threshold = (autoSellPer / 100) * storage
-                    if Data.Bubble.Amount >= threshold then
-                        EventHandler:FireServer("SellBubble")
-                    end
-                end
-            end
-        end)
-    end
-end)
-
-task.spawn(function()
-    while sg and sg.Parent do
-        task.wait(0.1)
-        pcall(function()
-            if autoclaimplaytimeval and FunctionHandler and Data and Data.PlaytimeRewards then
-                local count = 1
-                if Data.PlaytimeRewards.Claimed then
-                    for _ in pairs(Data.PlaytimeRewards.Claimed) do
-                        count = count + 1
-                    end
-                end
-                FunctionHandler:InvokeServer("ClaimPlaytime", count)
-            end
             if autoclaimchestsval and SData and SData:FindFirstChild("Chests") then
                 local chests = safeRequire(SData.Chests, {})
                 for i in pairs(chests) do
-                    if EventHandler then
-                        EventHandler:FireServer("ClaimChest", i)
-                    end
+                    RemoteEvent:FireServer("ClaimChest", i)
                 end
             end
         end)
     end
 end)
 
+-- Rift gifts
 if EventHandler then
     EventHandler.OnClientEvent:Connect(function(eventName, gifts)
-        if eventName == "RenderGifts" and autoClaimRiftGiftval then
+        if eventName=="RenderGifts" and autoClaimRiftGiftval then
             for giftId in pairs(gifts or {}) do
                 task.delay(0.1, function()
-                    pcall(function()
-                        EventHandler:FireServer("ClaimRiftGift", giftId)
-                    end)
+                    pcall(function() EventHandler:FireServer("ClaimRiftGift", giftId) end)
                 end)
             end
         end
     end)
 end
 
+-- Generic auto hatch (Pets tab)
 task.spawn(function()
     while sg and sg.Parent do
         task.wait(0.1)
         pcall(function()
-            if autoHatchValue and selectedEgg ~= "" and EventHandler then
+            if autoHatchValue and selectedEgg~="" and EventHandler then
                 EventHandler:FireServer("HatchEgg", selectedEgg, 1)
             end
         end)
     end
 end)
 
+-- Mystery boxes
 task.spawn(function()
     while sg and sg.Parent do
         task.wait(0.1)
@@ -1563,14 +1772,14 @@ task.spawn(function()
             if autoGiftValue then
                 local ItemUtil = Utils and Utils:FindFirstChild("Stats") and Utils.Stats:FindFirstChild("ItemUtil")
                 if ItemUtil then
-                    local itemUtil = safeRequire(ItemUtil, {})
-                    if itemUtil.GetOwnedAmount and Data then
-                        local amt = itemUtil:GetOwnedAmount(Data, {Type = "Powerup", Name = "Mystery Box"})
-                        local open = amt >= 10 and 10 or amt >= 5 and 5 or 1
-                        if amt > 0 and EventHandler then
-                            EventHandler:FireServer("UseGift", "Mystery Box", open)
+                    local iu = safeRequire(ItemUtil, {})
+                    if iu.GetOwnedAmount and Data then
+                        local amt  = iu:GetOwnedAmount(Data, {Type="Powerup", Name="Mystery Box"})
+                        local open = amt>=10 and 10 or amt>=5 and 5 or 1
+                        if amt>0 and EventHandler then
+                            EventHandler:FireServer("UseGift","Mystery Box",open)
                             task.wait(0.5)
-                            for _ = 1, 8 do
+                            for _ = 1,8 do
                                 VirtualUser:ClickButton1(Vector2.new(), workspace.CurrentCamera.CFrame)
                                 task.wait(0.5)
                             end
@@ -1582,18 +1791,17 @@ task.spawn(function()
     end
 end)
 
+-- Coin collect (automation tab toggle)
 if workspace and workspace:FindFirstChild("Rendered") then
-    local rendered = workspace.Rendered
-    rendered.ChildAdded:Connect(function(child)
+    workspace.Rendered.ChildAdded:Connect(function(child)
         if autoCollectCoinsValue and child and Tutorial and Tutorial._activePickups then
             pcall(function()
                 child:Destroy()
                 Tutorial._activePickups[tostring(child.Name)] = nil
-                if ReplicatedStorage and ReplicatedStorage:FindFirstChild("Remotes") then
-                    local remote = ReplicatedStorage.Remotes:FindFirstChild("Pickups") and ReplicatedStorage.Remotes.Pickups:FindFirstChild("CollectPickup")
-                    if remote then
-                        remote:FireServer(child.Name)
-                    end
+                if ReplicatedStorage:FindFirstChild("Remotes") then
+                    local r = ReplicatedStorage.Remotes:FindFirstChild("Pickups")
+                        and ReplicatedStorage.Remotes.Pickups:FindFirstChild("CollectPickup")
+                    if r then r:FireServer(child.Name) end
                 end
             end)
         end
@@ -1601,29 +1809,27 @@ if workspace and workspace:FindFirstChild("Rendered") then
 end
 
 -- ════════════════════════════════════════════════════════
---  PLAYER JOIN/LEAVE HANDLERS
+--  PLAYER EVENTS
 -- ════════════════════════════════════════════════════════
 
 Players.PlayerAdded:Connect(function(plr)
-    if staffWatchEnabled and plr ~= player and isStaffUser(plr.Name) then
+    if staffWatchEnabled and plr~=player and isStaffUser(plr.Name) then
         checkForStaff()
     end
 end)
-
 Players.PlayerRemoving:Connect(function(plr)
-    if staffWatchEnabled then
-        task.wait(0.1)
-        checkForStaff()
-    end
+    if staffWatchEnabled then task.wait(0.1); checkForStaff() end
 end)
 
 -- ════════════════════════════════════════════════════════
 --  INIT
 -- ════════════════════════════════════════════════════════
 
-staffWatchThread = task.spawn(staffWatchLoop)
-staffIndicator.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-updateUI()
-
-
+staffWatchThread = task.spawn(function()
+    while staffWatchEnabled do
+        checkForStaff()
+        task.wait(checkInterval)
+    end
 end)
+
+staffIndicator.BackgroundColor3 = Color3.fromRGB(0,255,0)
