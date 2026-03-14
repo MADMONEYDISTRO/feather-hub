@@ -3,6 +3,7 @@
 -- ║  St. Patrick Event + Coin Farmer + Bubbles + Auto + Pets ║
 -- ║              + Staff Watch + Server Hop                  ║
 -- ╚══════════════════════════════════════════════════════════╝
+-- Updated: Fortune Egg auto hatch now uses exact CFrame and egg name "4X Luck Fortune Egg"
 
 local TweenService      = game:GetService("TweenService")
 local Players           = game:GetService("Players")
@@ -80,7 +81,7 @@ end
 if not EventHandler    then EventHandler    = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:FindFirstChild("RemoteEvent") end
 if not FunctionHandler then FunctionHandler = ReplicatedStorage:FindFirstChild("RemoteFunction") end
 
--- Direct path remote for egg hatching
+-- Direct path remote for egg hatching (used for Fortune Egg)
 local RemoteEvent = ReplicatedStorage:WaitForChild("Shared")
     :WaitForChild("Framework"):WaitForChild("Network")
     :WaitForChild("Remote"):WaitForChild("RemoteEvent")
@@ -113,13 +114,18 @@ local autoHatchValue = false
 local selectedEgg    = eggs[1] or ""
 local autoGiftValue  = false
 
--- St. Patrick — Fortune Egg
+-- St. Patrick — Fortune Egg (updated with exact CFrame and egg name)
 local fortuneEnabled       = false
 local fortuneThread        = nil
 local fortuneTarget        = 0
 local fortuneBatchSize     = 3
 local fortuneOriginCF      = nil
-local FORTUNE_EGG_CF       = CFrame.new(-819.3, -118.97, 2706.94)
+local FORTUNE_EGG_CF       = CFrame.new(
+    -795.336792, -119.186653, 2710.13794,
+    0.749856353, -3.66407619e-07, -0.661600649,
+    2.59595311e-07, 1, -2.59595282e-07,
+    0.661600649, 2.29107346e-08, 0.749856353
+)
 
 -- St. Patrick — Coin Farmer
 local coinFarmEnabled  = false
@@ -781,12 +787,12 @@ end
 local eventPage = tabPages["🍀 Event"]
 local eY = 5
 
--- ── Fortune Egg Hatcher ───────────────────────────────────
+-- ── Fortune Egg Hatcher (updated) ─────────────────────────
 
-local fortuneSec = mkSection(eventPage, eY, 232, "🥚 Fortune Egg Auto Hatcher")
+local fortuneSec = mkSection(eventPage, eY, 232, "🥚 4X Luck Fortune Egg Auto Hatcher")
 eY = eY + 238
 
-mkLabel(fortuneSec, 28, "Egg: Fortune Egg  |  Teleports back on stop ✓", Color3.fromRGB(100,220,100), 10)
+mkLabel(fortuneSec, 28, "Egg: 4X Luck Fortune Egg  |  Teleports back on stop ✓", Color3.fromRGB(100,220,100), 10)
 
 mkLabel(fortuneSec, 50, "Eggs per fire (1–10):", textGrey, 10)
 local batchInput = mkInput(fortuneSec, 68, "e.g. 3")
@@ -912,9 +918,9 @@ local function fortuneLoop()
         end)
         task.wait(0.05)
 
-        -- Fire hatch
+        -- Fire hatch (using correct egg name)
         pcall(function()
-            RemoteEvent:FireServer("HatchEgg", "Fortune Egg", batch)
+            RemoteEvent:FireServer("HatchEgg", "4X Luck Fortune Egg", batch)
         end)
 
         fortuneAttempts = fortuneAttempts + batch
