@@ -1,0 +1,769 @@
+repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+local Player = Players.LocalPlayer
+local character = Player.Character or Player.CharacterAdded:Wait()
+local backpack = Player:WaitForChild("Backpack")
+
+-- ══════════════════════════════════
+-- GAME LOGIC
+-- ══════════════════════════════════
+local remote = nil
+local sharkName = nil
+local hrp = nil
+
+-- Hook weapon remotes to capture remote name
+local remotesFolder = ReplicatedStorage:WaitForChild("Projectiles"):WaitForChild("Events"):WaitForChild("Weapons"):WaitForChild("remotes")
+
+local function hookRemote(remoteObject)
+    pcall(function()
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        local oldNamecall = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if self == remoteObject and (method == "FireServer" or method == "InvokeServer") then
+                remote = self.Name
+            end
+            return oldNamecall(self, ...)
+        end)
+    end)
+end
+
+for _, child in ipairs(remotesFolder:GetChildren()) do
+    if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+        pcall(function() hookRemote(child) end)
+    end
+end
+
+-- Remove AFK kick
+local afk = Player.PlayerScripts:FindFirstChild("AFK")
+if afk then afk:Destroy() end
+
+-- Remove oxygen drain
+local hud = Player.PlayerScripts:FindFirstChild("HUD")
+if hud then
+    local oxygen = hud:FindFirstChild("Oxygen")
+    if oxygen then oxygen:Destroy() end
+end
+
+local function updateHRP()
+    character = Player.Character or Player.CharacterAdded:Wait()
+    backpack = Player:WaitForChild("Backpack")
+    hrp = character:WaitForChild("HumanoidRootPart")
+end
+Player.CharacterAdded:Connect(updateHRP)
+if Player.Character then updateHRP() end
+
+local function getShark()
+    local sharksFolder = workspace:FindFirstChild("Sharks")
+    if sharksFolder then
+        for _, shark in ipairs(sharksFolder:GetChildren()) do
+            if shark:IsA("Model") then sharkName = shark.Name; return end
+        end
+    end
+    sharkName = nil
+end
+
+local function KillShark()
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") then tool.Parent = character end
+    end
+    for j = 1, 20 do
+        if sharkName and remote then
+            local shark = workspace:WaitForChild("Sharks"):FindFirstChild(sharkName)
+            if shark then
+                ReplicatedStorage:WaitForChild("Projectiles"):WaitForChild("Events"):WaitForChild("Weapons"):WaitForChild("remotes"):WaitForChild(remote):FireServer(shark, true)
+            end
+        end
+    end
+end
+
+-- State
+local Enabled = {
+    AutoKillShark = false,
+    AutoWinShark = false,
+    SharkESP = false,
+    AutoVases = false,
+    ServerVaseFarm = false,
+    AntiSit = false,
+}
+
+-- Auto Kill Shark
+local autoKillConn = nil
+local center = Vector3.new(0, -100, 0)
+local radius = 1000
+local speed = math.pi * 2
+local angle = 0
+
+local function startAutoKill()
+    if autoKillConn then return end
+    if not getrawmetatable or not setreadonly or not newcclosure then return end
+    local lastNotify = 0
+    autoKillConn = RunService.Heartbeat:Connect(function(dt)
+        if Player.Team and Player.Team.Name ~= "Shark" and hrp then
+            if not remote then return end
+            KillShark()
+            getShark()
+            if not sharkName then
+                local chinook = workspace:FindFirstChild("Chinook")
+                local interior = chinook and chinook:FindFirstChild("interior")
+                if interior then hrp.CFrame = interior.CFrame end
+            else
+                angle = angle + speed * dt
+                local t = (angle % (math.pi * 2)) / (math.pi * 2)
+                local offset
+                if t < 0.25 then offset = Vector3.new(radius, 0, -radius + 8 * radius * t)
+                elseif t < 0.5 then offset = Vector3.new(radius - 8 * radius * (t - 0.25), 0, radius)
+                elseif t < 0.75 then offset = Vector3.new(-radius, 0, radius - 8 * radius * (t - 0.5))
+                else offset = Vector3.new(-radius + 8 * radius * (t - 0.75), 0, -radius) end
+                hrp.CFrame = CFrame.new(center + offset, center)
+            end
+        end
+    end)
+end
+
+local function stopAutoKill()
+    if autoKillConn then autoKillConn:Disconnect(); autoKillConn = nil end
+end
+
+-- Auto Win Shark
+local autoWinConn = nil
+local sharksDescConn = nil
+local DestructionParts = {}
+
+local function addDestructionPart(part)
+    table.insert(DestructionParts, part)
+    part.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            for i = #DestructionParts, 1, -1 do
+                if DestructionParts[i] == part then table.remove(DestructionParts, i); break end
+            end
+        end
+    end)
+end
+
+local function getNearestSurvivorToPart(part)
+    local nearest, nearestDist = nil, math.huge
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= Player and plr.Team and plr.Team.Name == "Survivor" then
+            local char = plr.Character
+            local h = char and char:FindFirstChild("HumanoidRootPart")
+            if h and not h:FindFirstChild("Attachment") then
+                local dist = (h.Position - part.Position).Magnitude
+                if dist < nearestDist then nearestDist = dist; nearest = plr end
+            end
+        end
+    end
+    return nearest
+end
+
+local function startAutoWin()
+    if autoWinConn then return end
+    local sharksFolder = workspace:FindFirstChild("Sharks")
+    if sharksFolder then
+        for _, d in ipairs(sharksFolder:GetDescendants()) do
+            if d:IsA("BasePart") and d.Name == "DestructionPart" then addDestructionPart(d) end
+        end
+        sharksDescConn = sharksFolder.DescendantAdded:Connect(function(desc)
+            if desc:IsA("BasePart") and desc.Name == "DestructionPart" then addDestructionPart(desc) end
+        end)
+    end
+    autoWinConn = RunService.Heartbeat:Connect(function()
+        if Player.Team and Player.Team.Name == "Shark" and #DestructionParts > 0 then
+            for i = #DestructionParts, 1, -1 do
+                if not DestructionParts[i] or not DestructionParts[i].Parent then table.remove(DestructionParts, i) end
+            end
+            if #DestructionParts > 0 then
+                local randomPart = DestructionParts[math.random(1, #DestructionParts)]
+                local target = getNearestSurvivorToPart(randomPart)
+                if randomPart and target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                    randomPart.CFrame = CFrame.new(target.Character.HumanoidRootPart.Position)
+                end
+            end
+        end
+    end)
+end
+
+local function stopAutoWin()
+    if autoWinConn then autoWinConn:Disconnect(); autoWinConn = nil end
+    if sharksDescConn then sharksDescConn:Disconnect(); sharksDescConn = nil end
+    table.clear(DestructionParts)
+end
+
+-- Shark Nametags
+local sharkTagConns = {}
+local sharkTagEnabled = false
+
+local function createSharkTag(sharkModel)
+    if not sharkModel:IsA("Model") then return end
+    local root = sharkModel:FindFirstChild("HumanoidRootPart") or sharkModel:FindFirstChild("RootPart") or sharkModel.PrimaryPart
+    if not root then
+        for _, p in ipairs(sharkModel:GetDescendants()) do
+            if p:IsA("BasePart") then root = p; break end
+        end
+    end
+    if not root then return end
+
+    -- Remove existing
+    for _, v in ipairs(root:GetChildren()) do
+        if v.Name == "SharkTag" then v:Destroy() end
+    end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "SharkTag"
+    bb.Adornee = root
+    bb.Size = UDim2.new(0, 180, 0, 24)
+    bb.StudsOffset = Vector3.new(0, 6, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = 9999
+    bb.Parent = root
+
+    local pill = Instance.new("Frame")
+    pill.Size = UDim2.new(1, 0, 1, 0)
+    pill.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    pill.BackgroundTransparency = 0.35
+    pill.BorderSizePixel = 0
+    pill.Parent = bb
+    Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 60, 60)
+    stroke.Thickness = 1
+    stroke.Transparency = 0.5
+    stroke.Parent = pill
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -16, 1, 0)
+    label.Position = UDim2.new(0, 8, 0, 0)
+    label.BackgroundTransparency = 1
+    label.RichText = true
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 10
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextXAlignment = Enum.TextXAlignment.Center
+    label.Parent = pill
+
+    -- Update distance in label
+    local distConn
+    distConn = RunService.Heartbeat:Connect(function()
+        if not sharkTagEnabled or not bb or not bb.Parent then
+            if distConn then distConn:Disconnect() end
+            return
+        end
+        if not root or not root.Parent then
+            if distConn then distConn:Disconnect() end
+            if bb and bb.Parent then bb:Destroy() end
+            return
+        end
+        local dist = 0
+        pcall(function()
+            if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+                dist = math.floor((Player.Character.HumanoidRootPart.Position - root.Position).Magnitude)
+            end
+        end)
+        label.Text = '<font color="#ff4444"><b>SHARK</b></font>  <font color="#888899">' .. sharkModel.Name .. '</font>  <font color="#ffaa44">[' .. dist .. 'm]</font>'
+    end)
+    table.insert(sharkTagConns, distConn)
+end
+
+local function removeSharkTags()
+    local sharksFolder = workspace:FindFirstChild("Sharks")
+    if sharksFolder then
+        for _, d in ipairs(sharksFolder:GetDescendants()) do
+            if d.Name == "SharkTag" and d:IsA("BillboardGui") then d:Destroy() end
+        end
+    end
+end
+
+local function enableSharkTags()
+    sharkTagEnabled = true
+    local sharksFolder = workspace:FindFirstChild("Sharks")
+    if not sharksFolder then return end
+    for _, shark in ipairs(sharksFolder:GetChildren()) do
+        if shark:IsA("Model") then createSharkTag(shark) end
+    end
+    -- Watch for new sharks
+    local addConn = sharksFolder.ChildAdded:Connect(function(child)
+        if sharkTagEnabled and child:IsA("Model") then
+            task.wait(0.3)
+            createSharkTag(child)
+        end
+    end)
+    table.insert(sharkTagConns, addConn)
+end
+
+local function disableSharkTags()
+    sharkTagEnabled = false
+    for _, conn in ipairs(sharkTagConns) do pcall(function() conn:Disconnect() end) end
+    sharkTagConns = {}
+    removeSharkTags()
+end
+
+-- Auto Vases (efficient - one at a time, nearest first, with cooldown)
+local vaseLoopRunning = false
+
+local function getAllVaseParts()
+    local parts = {}
+    local folder = workspace:FindFirstChild("Vases")
+    if not folder then return parts end
+    for _, d in ipairs(folder:GetDescendants()) do
+        if d:IsA("TouchTransmitter") and d.Parent and d.Parent:IsA("BasePart") then
+            table.insert(parts, d.Parent)
+        end
+    end
+    return parts
+end
+
+local function getNearestVase(vases)
+    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    local myPos = Player.Character.HumanoidRootPart.Position
+    local nearest, nearestDist = nil, math.huge
+    for _, part in ipairs(vases) do
+        if part and part.Parent then
+            local dist = (part.Position - myPos).Magnitude
+            if dist < nearestDist then nearestDist = dist; nearest = part end
+        end
+    end
+    return nearest
+end
+
+local function startAutoVases()
+    if vaseLoopRunning then return end
+    vaseLoopRunning = true
+    task.spawn(function()
+        while vaseLoopRunning and Enabled.AutoVases do
+            local vases = getAllVaseParts()
+            if #vases == 0 then
+                task.wait(1)
+            else
+                local target = getNearestVase(vases)
+                if target and target.Parent and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+                    Player.Character.HumanoidRootPart.CFrame = target.CFrame
+                    task.wait(0.1)
+                    pcall(function()
+                        firetouchinterest(Player.Character.HumanoidRootPart, target, 0)
+                        firetouchinterest(Player.Character.HumanoidRootPart, target, 1)
+                    end)
+                    task.wait(0.4)
+                else
+                    task.wait(0.5)
+                end
+            end
+        end
+    end)
+end
+
+local function stopAutoVases()
+    vaseLoopRunning = false
+end
+
+-- Server-Side Vase Farm (uses game remotes directly — more reliable)
+local serverVaseRunning = false
+
+local function startServerVaseFarm()
+    if serverVaseRunning then return end
+    serverVaseRunning = true
+    task.spawn(function()
+        while serverVaseRunning and Enabled.ServerVaseFarm do
+            pcall(function()
+                local vasesFolder = workspace:FindFirstChild("Vases")
+                if not vasesFolder then task.wait(1); return end
+
+                local found = false
+                for _, v in ipairs(vasesFolder:GetDescendants()) do
+                    if not serverVaseRunning then break end
+                    -- Match the vase mesh name the game uses
+                    if v.Name == "Meshes/Vase smashed open 2_Cylinder.003" or (v:IsA("BasePart") and v.Parent and v.Parent:FindFirstChild("TouchInterest")) then
+                        if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+                            Player.Character.HumanoidRootPart.CFrame = v.CFrame
+                            task.wait(0.05)
+                            -- Fire the server remotes directly
+                            pcall(function()
+                                ReplicatedStorage:WaitForChild("EventsFolder"):WaitForChild("Vases"):WaitForChild("VaseTouched"):InvokeServer()
+                            end)
+                            pcall(function()
+                                ReplicatedStorage:WaitForChild("EventsFolder"):WaitForChild("Vases"):WaitForChild("VaseBroken"):FireServer()
+                            end)
+                            found = true
+                            task.wait(0.15)
+                        end
+                    end
+                end
+                if not found then task.wait(1) end
+            end)
+            task.wait(0.1)
+        end
+    end)
+end
+
+local function stopServerVaseFarm()
+    serverVaseRunning = false
+end
+
+-- Anti Sit (prevents getting knocked into seats)
+local antiSitConn = nil
+
+local function startAntiSit()
+    if antiSitConn then return end
+    antiSitConn = RunService.Heartbeat:Connect(function()
+        if not Enabled.AntiSit then return end
+        pcall(function()
+            if Player.Character and Player.Character:FindFirstChildOfClass("Humanoid") then
+                local hum = Player.Character:FindFirstChildOfClass("Humanoid")
+                if hum.Sit then hum.Sit = false end
+            end
+        end)
+    end)
+end
+
+local function stopAntiSit()
+    if antiSitConn then antiSitConn:Disconnect(); antiSitConn = nil end
+end
+
+-- ══════════════════════════════════
+-- FEATHER HUB STYLE GUI
+-- ══════════════════════════════════
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local T = {
+    bg = Color3.fromRGB(12, 12, 14),
+    sidebar = Color3.fromRGB(18, 18, 21),
+    card = Color3.fromRGB(24, 24, 28),
+    border = Color3.fromRGB(38, 38, 46),
+    text = Color3.fromRGB(240, 240, 244),
+    muted = Color3.fromRGB(110, 110, 128),
+    dim = Color3.fromRGB(28, 28, 33),
+    sep = Color3.fromRGB(34, 34, 40),
+    header = Color3.fromRGB(15, 15, 18),
+}
+local accent = Color3.fromRGB(88, 101, 242)
+local gold = Color3.fromRGB(234, 179, 8)
+local WIN_W = isMobile and 340 or 420
+local WIN_H = isMobile and 380 or 340
+local SIDE_W = isMobile and 52 or 64
+local HDR_H = 40
+
+local function tw(t, s, d) return TweenInfo.new(t or 0.2, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "SB2_Feather"; sg.ResetOnSpawn = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 999; sg.IgnoreGuiInset = true
+if not pcall(function() sg.Parent = CoreGui end) then sg.Parent = Player:WaitForChild("PlayerGui") end
+
+-- Notification
+local function notify(title, msg)
+    local n = Instance.new("Frame"); n.Size = UDim2.new(0, 0, 0, 48); n.Position = UDim2.new(1, -10, 1, -60)
+    n.AnchorPoint = Vector2.new(1, 1); n.BackgroundColor3 = T.bg; n.BorderSizePixel = 0; n.ZIndex = 50; n.Parent = sg
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 8)
+    local bar = Instance.new("Frame"); bar.Size = UDim2.new(0, 3, 1, 0); bar.BackgroundColor3 = accent; bar.BorderSizePixel = 0; bar.Parent = n
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 8)
+    local t1 = Instance.new("TextLabel"); t1.Size = UDim2.new(1, -14, 0, 14); t1.Position = UDim2.new(0, 10, 0, 5)
+    t1.Text = title; t1.Font = Enum.Font.GothamBold; t1.TextSize = 10; t1.TextColor3 = T.text
+    t1.TextXAlignment = Enum.TextXAlignment.Left; t1.BackgroundTransparency = 1; t1.ZIndex = 51; t1.Parent = n
+    local t2 = Instance.new("TextLabel"); t2.Size = UDim2.new(1, -14, 0, 16); t2.Position = UDim2.new(0, 10, 0, 22)
+    t2.Text = msg; t2.Font = Enum.Font.Gotham; t2.TextSize = 9; t2.TextColor3 = T.muted
+    t2.TextXAlignment = Enum.TextXAlignment.Left; t2.TextWrapped = true; t2.BackgroundTransparency = 1; t2.ZIndex = 51; t2.Parent = n
+    TweenService:Create(n, tw(), {Size = UDim2.new(0, 240, 0, 48)}):Play()
+    task.delay(2.5, function()
+        TweenService:Create(n, tw(), {Size = UDim2.new(0, 0, 0, 48), BackgroundTransparency = 1}):Play()
+        task.wait(0.3); if n and n.Parent then n:Destroy() end
+    end)
+end
+
+-- Window
+local win = Instance.new("Frame")
+win.Name = "Win"; win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -math.floor(WIN_W / 2), 0.5, -math.floor(WIN_H / 2))
+win.BackgroundColor3 = T.bg; win.BorderSizePixel = 0; win.ClipsDescendants = true; win.ZIndex = 1; win.Parent = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 14)
+local winStroke = Instance.new("UIStroke"); winStroke.Color = T.border; winStroke.Thickness = 1; winStroke.Parent = win
+
+-- Glow
+local winGlow = Instance.new("ImageLabel")
+winGlow.Size = UDim2.new(1, 40, 1, 40); winGlow.Position = UDim2.new(0, -20, 0, -20)
+winGlow.BackgroundTransparency = 1; winGlow.Image = "rbxassetid://1316045217"
+winGlow.ImageColor3 = Color3.fromRGB(60, 65, 100); winGlow.ImageTransparency = 0.88
+winGlow.ScaleType = Enum.ScaleType.Slice; winGlow.SliceCenter = Rect.new(10, 10, 118, 118)
+winGlow.ZIndex = -1; winGlow.Parent = win
+
+-- Sidebar
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, SIDE_W, 1, 0); sidebar.BackgroundColor3 = T.sidebar; sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 3; sidebar.Parent = win
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+local sbCover = Instance.new("Frame"); sbCover.Size = UDim2.new(0, 14, 1, 0); sbCover.Position = UDim2.new(1, -14, 0, 0)
+sbCover.BackgroundColor3 = T.sidebar; sbCover.BorderSizePixel = 0; sbCover.ZIndex = 3; sbCover.Parent = sidebar
+
+-- Logo
+local logoPill = Instance.new("Frame")
+logoPill.Size = UDim2.new(0, 30, 0, 30); logoPill.Position = UDim2.new(0.5, -15, 0, 8)
+logoPill.BackgroundColor3 = accent; logoPill.BorderSizePixel = 0; logoPill.ZIndex = 5; logoPill.Parent = sidebar
+Instance.new("UICorner", logoPill).CornerRadius = UDim.new(0, 9)
+local logoTxt = Instance.new("TextLabel"); logoTxt.Size = UDim2.new(1, 0, 1, 0)
+logoTxt.Text = "F"; logoTxt.TextSize = 14; logoTxt.Font = Enum.Font.GothamBlack
+logoTxt.TextColor3 = Color3.new(1, 1, 1); logoTxt.BackgroundTransparency = 1; logoTxt.ZIndex = 6; logoTxt.Parent = logoPill
+
+local sbSep = Instance.new("Frame"); sbSep.Size = UDim2.new(0.7, 0, 0, 1); sbSep.Position = UDim2.new(0.15, 0, 0, 44)
+sbSep.BackgroundColor3 = T.sep; sbSep.BorderSizePixel = 0; sbSep.ZIndex = 4; sbSep.Parent = sidebar
+
+-- Nav
+local navCont = Instance.new("Frame")
+navCont.Size = UDim2.new(1, 0, 1, -80); navCont.Position = UDim2.new(0, 0, 0, 50)
+navCont.BackgroundTransparency = 1; navCont.ZIndex = 4; navCont.Parent = sidebar
+local navList = Instance.new("UIListLayout"); navList.SortOrder = Enum.SortOrder.LayoutOrder
+navList.VerticalAlignment = Enum.VerticalAlignment.Top; navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+navList.Padding = UDim.new(0, 2); navList.Parent = navCont
+
+local wmName = Instance.new("TextLabel"); wmName.Size = UDim2.new(1, 0, 0, 12); wmName.Position = UDim2.new(0, 0, 1, -36)
+wmName.Text = "feather hub"; wmName.Font = Enum.Font.GothamBold; wmName.TextSize = 7
+wmName.TextColor3 = accent; wmName.BackgroundTransparency = 1; wmName.ZIndex = 5; wmName.Parent = sidebar
+
+local wmVer = Instance.new("TextLabel"); wmVer.Size = UDim2.new(1, 0, 0, 10); wmVer.Position = UDim2.new(0, 0, 1, -22)
+wmVer.Text = "v1.0 beta"; wmVer.Font = Enum.Font.Gotham; wmVer.TextSize = 6
+wmVer.TextColor3 = T.muted; wmVer.BackgroundTransparency = 1; wmVer.ZIndex = 5; wmVer.Parent = sidebar
+
+-- Header
+local hdr = Instance.new("Frame")
+hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H); hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
+hdr.BackgroundColor3 = T.header; hdr.BorderSizePixel = 0; hdr.ZIndex = 3; hdr.Parent = win
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 14)
+local hdrLC = Instance.new("Frame"); hdrLC.Size = UDim2.new(0, 14, 1, 0); hdrLC.BackgroundColor3 = T.header; hdrLC.BorderSizePixel = 0; hdrLC.ZIndex = 3; hdrLC.Parent = hdr
+local hdrBC = Instance.new("Frame"); hdrBC.Size = UDim2.new(0, 14, 0, 14); hdrBC.Position = UDim2.new(1, -14, 1, -14); hdrBC.BackgroundColor3 = T.header; hdrBC.BorderSizePixel = 0; hdrBC.ZIndex = 3; hdrBC.Parent = hdr
+local hdrLine = Instance.new("Frame"); hdrLine.Size = UDim2.new(1, -8, 0, 1); hdrLine.Position = UDim2.new(0, 4, 1, -1)
+hdrLine.BackgroundColor3 = T.sep; hdrLine.BorderSizePixel = 0; hdrLine.ZIndex = 4; hdrLine.Parent = hdr
+
+local hdrTitle = Instance.new("TextLabel")
+hdrTitle.Size = UDim2.new(1, -60, 1, 0); hdrTitle.Position = UDim2.new(0, 14, 0, 0)
+hdrTitle.Text = "FARM"; hdrTitle.Font = Enum.Font.GothamBold; hdrTitle.TextSize = 12
+hdrTitle.TextColor3 = T.text; hdrTitle.BackgroundTransparency = 1; hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+hdrTitle.ZIndex = 5; hdrTitle.Parent = hdr
+
+-- Beta tag
+local betaBg = Instance.new("Frame")
+betaBg.Size = UDim2.new(0, 62, 0, 16); betaBg.Position = UDim2.new(1, -100, 0.5, -8)
+betaBg.BackgroundColor3 = Color3.fromRGB(28, 28, 44); betaBg.BorderSizePixel = 0; betaBg.ZIndex = 5; betaBg.Parent = hdr
+Instance.new("UICorner", betaBg).CornerRadius = UDim.new(1, 0)
+local betaStroke = Instance.new("UIStroke"); betaStroke.Color = accent; betaStroke.Thickness = 1; betaStroke.Parent = betaBg
+local betaTxt = Instance.new("TextLabel"); betaTxt.Size = UDim2.new(1, 0, 1, 0)
+betaTxt.Text = "BETA v1.0"; betaTxt.Font = Enum.Font.GothamBold; betaTxt.TextSize = 7
+betaTxt.TextColor3 = accent; betaTxt.BackgroundTransparency = 1; betaTxt.ZIndex = 6; betaTxt.Parent = betaBg
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 24, 0, 24); closeBtn.Position = UDim2.new(1, -30, 0.5, -12)
+closeBtn.Text = "×"; closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16
+closeBtn.TextColor3 = T.muted; closeBtn.BackgroundColor3 = T.dim; closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false; closeBtn.ZIndex = 5; closeBtn.Parent = hdr
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3 = Color3.fromRGB(239, 68, 68), TextColor3 = Color3.new(1, 1, 1)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play() end)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- Drag
+do
+    local dragging, dragInput, dragStart, startPos
+    hdr.InputBegan:Connect(function(i) local t = i.UserInputType; if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then dragging = true; dragStart = i.Position; startPos = win.Position end end)
+    hdr.InputChanged:Connect(function(i) local t = i.UserInputType; if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then dragInput = i end end)
+    UserInputService.InputChanged:Connect(function(i) if i == dragInput and dragging then local d = i.Position - dragStart; local vp = workspace.CurrentCamera.ViewportSize; win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + d.X, 0, vp.X - WIN_W), 0, math.clamp(startPos.Y.Offset + d.Y, 0, vp.Y - WIN_H)) end end)
+    UserInputService.InputEnded:Connect(function(i) local t = i.UserInputType; if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then dragging = false end end)
+end
+
+-- Content
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H); content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+content.BackgroundTransparency = 1; content.BorderSizePixel = 0; content.ZIndex = 2; content.Parent = win
+
+-- Tabs
+local TABS = {{name = "FARM"}, {name = "SHARK"}, {name = "ESP"}}
+local pages, navBtns, activeTab = {}, {}, 1
+
+local function makePage()
+    local pg = Instance.new("ScrollingFrame")
+    pg.Size = UDim2.new(1, 0, 1, 0); pg.BackgroundTransparency = 1; pg.BorderSizePixel = 0
+    pg.ScrollBarThickness = 3; pg.ScrollBarImageColor3 = accent
+    pg.CanvasSize = UDim2.new(0, 0, 0, 0); pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    pg.ScrollingDirection = Enum.ScrollingDirection.Y; pg.ElasticBehavior = Enum.ElasticBehavior.Never
+    pg.Visible = false; pg.ZIndex = 2; pg.Parent = content
+    local l = Instance.new("UIListLayout"); l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Center; l.Padding = UDim.new(0, 4); l.Parent = pg
+    local p = Instance.new("UIPadding"); p.PaddingTop = UDim.new(0, 8); p.PaddingBottom = UDim.new(0, 8)
+    p.PaddingLeft = UDim.new(0, 8); p.PaddingRight = UDim.new(0, 8); p.Parent = pg
+    return pg
+end
+
+for i = 1, #TABS do pages[i] = makePage() end
+
+local function setTab(idx)
+    activeTab = idx; hdrTitle.Text = TABS[idx].name
+    for i, btn in ipairs(navBtns) do
+        local on = (i == idx)
+        TweenService:Create(btn.bg, tw(0.15), {BackgroundColor3 = on and accent or T.dim, BackgroundTransparency = on and 0.15 or 0}):Play()
+        TweenService:Create(btn.lbl, tw(0.15), {TextColor3 = on and accent or T.muted}):Play()
+        btn.bar.BackgroundTransparency = on and 0 or 1
+        pages[i].Visible = on
+    end
+end
+
+for i, def in ipairs(TABS) do
+    local row = Instance.new("Frame"); row.Size = UDim2.new(1, -4, 0, isMobile and 32 or 28)
+    row.BackgroundTransparency = 1; row.LayoutOrder = i; row.ZIndex = 4; row.Parent = navCont
+    local bar = Instance.new("Frame"); bar.Size = UDim2.new(0, 3, 0.5, 0); bar.Position = UDim2.new(0, 0, 0.25, 0)
+    bar.BackgroundColor3 = accent; bar.BackgroundTransparency = 1; bar.BorderSizePixel = 0; bar.ZIndex = 5; bar.Parent = row
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+    local bg = Instance.new("Frame"); bg.Size = UDim2.new(1, -4, 1, -2); bg.Position = UDim2.new(0, 4, 0, 1)
+    bg.BackgroundColor3 = T.dim; bg.BackgroundTransparency = 0; bg.BorderSizePixel = 0; bg.ZIndex = 4; bg.Parent = row
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 7)
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = def.name; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 7
+    lbl.TextColor3 = T.muted; lbl.BackgroundTransparency = 1; lbl.ZIndex = 5; lbl.Parent = row
+    local hit = Instance.new("TextButton"); hit.Size = UDim2.new(1, 0, 1, 0)
+    hit.BackgroundTransparency = 1; hit.Text = ""; hit.ZIndex = 6; hit.Parent = row
+    local ci = i
+    hit.MouseButton1Click:Connect(function() setTab(ci) end)
+    hit.TouchTap:Connect(function() setTab(ci) end)
+    navBtns[i] = {bg = bg, lbl = lbl, bar = bar}
+end
+
+-- Shared builders
+local function makeCard(parent, order)
+    local c = Instance.new("Frame"); c.Size = UDim2.new(1, 0, 0, 0); c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card; c.BorderSizePixel = 0; c.LayoutOrder = order; c.ZIndex = 3; c.Parent = parent
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 10)
+    local s = Instance.new("UIStroke"); s.Color = T.border; s.Thickness = 1; s.Parent = c
+    local l = Instance.new("UIListLayout"); l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Center; l.Padding = UDim.new(0, 0); l.Parent = c
+    return c
+end
+
+local function makeSection(parent, label, order)
+    local f = Instance.new("Frame"); f.Size = UDim2.new(1, 0, 0, 18); f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0; f.LayoutOrder = order; f.ZIndex = 3; f.Parent = parent
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = string.upper(label); lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 8
+    lbl.TextColor3 = accent; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1; lbl.ZIndex = 3; lbl.Parent = f
+    local line = Instance.new("Frame"); line.Size = UDim2.new(0, 22, 0, 2); line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = accent; line.BorderSizePixel = 0; line.ZIndex = 3; line.Parent = f
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+end
+
+local function makeRow(card, order, isLast, h)
+    local row = Instance.new("Frame"); row.Size = UDim2.new(1, 0, 0, h or 38)
+    row.BackgroundTransparency = 1; row.BorderSizePixel = 0; row.LayoutOrder = order; row.ZIndex = 4; row.Parent = card
+    if not isLast then
+        local sep = Instance.new("Frame"); sep.Size = UDim2.new(1, -20, 0, 1); sep.Position = UDim2.new(0, 10, 1, -1)
+        sep.BackgroundColor3 = T.sep; sep.BorderSizePixel = 0; sep.ZIndex = 4; sep.Parent = row
+    end
+    return row
+end
+
+local function makeToggleRow(card, order, labelText, enabledKey, callback, isLast)
+    local row = makeRow(card, order, isLast, 38)
+    local label = Instance.new("TextLabel"); label.Size = UDim2.new(1, -60, 1, 0)
+    label.Position = UDim2.new(0, 12, 0, 0); label.Text = labelText
+    label.Font = Enum.Font.GothamSemibold; label.TextSize = 10; label.TextColor3 = T.text
+    label.TextXAlignment = Enum.TextXAlignment.Left; label.BackgroundTransparency = 1; label.ZIndex = 5; label.Parent = row
+
+    local defaultOn = Enabled[enabledKey]
+    local toggleBg = Instance.new("Frame"); toggleBg.Size = UDim2.new(0, 36, 0, 18)
+    toggleBg.Position = UDim2.new(1, -48, 0.5, -9)
+    toggleBg.BackgroundColor3 = defaultOn and accent or T.dim; toggleBg.ZIndex = 5; toggleBg.Parent = row
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+    local tgS = Instance.new("UIStroke"); tgS.Color = T.border; tgS.Thickness = 1; tgS.Parent = toggleBg
+
+    local toggleCircle = Instance.new("Frame"); toggleCircle.Size = UDim2.new(0, 14, 0, 14)
+    toggleCircle.Position = defaultOn and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+    toggleCircle.BackgroundColor3 = Color3.new(1, 1, 1); toggleCircle.ZIndex = 6; toggleCircle.Parent = toggleBg
+    Instance.new("UICorner", toggleCircle).CornerRadius = UDim.new(1, 0)
+
+    local clickBtn = Instance.new("TextButton"); clickBtn.Size = UDim2.new(0, 50, 1, 0)
+    clickBtn.Position = UDim2.new(1, -56, 0, 0); clickBtn.BackgroundTransparency = 1; clickBtn.Text = ""; clickBtn.ZIndex = 7; clickBtn.Parent = row
+
+    local isOn = defaultOn
+    clickBtn.MouseButton1Click:Connect(function()
+        isOn = not isOn; Enabled[enabledKey] = isOn
+        TweenService:Create(toggleBg, tw(0.25), {BackgroundColor3 = isOn and accent or T.dim}):Play()
+        TweenService:Create(toggleCircle, tw(0.25, Enum.EasingStyle.Back), {Position = isOn and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}):Play()
+        callback(isOn)
+    end)
+end
+
+-- ═══ PAGE 1: FARM ═══
+local pg1 = pages[1]
+makeSection(pg1, "Autofarm", 1)
+local farmCard = makeCard(pg1, 2)
+makeToggleRow(farmCard, 1, "Auto Kill Shark", "AutoKillShark", function(s)
+    if s then startAutoKill() else stopAutoKill() end
+end, false)
+makeToggleRow(farmCard, 2, "Auto Touch Vases", "AutoVases", function(s)
+    if s then startAutoVases() else stopAutoVases() end
+end, true)
+
+-- Info label
+local infoFrame = Instance.new("Frame"); infoFrame.Size = UDim2.new(1, 0, 0, 24); infoFrame.BackgroundTransparency = 1
+infoFrame.LayoutOrder = 3; infoFrame.Parent = pg1
+local infoLbl = Instance.new("TextLabel"); infoLbl.Size = UDim2.new(1, 0, 1, 0); infoLbl.BackgroundTransparency = 1
+infoLbl.Text = "Shoot the shark once to start auto kill"; infoLbl.Font = Enum.Font.Gotham
+infoLbl.TextSize = 8; infoLbl.TextColor3 = T.muted; infoLbl.TextXAlignment = Enum.TextXAlignment.Left; infoLbl.Parent = infoFrame
+
+makeSection(pg1, "Vase Farm V2", 4)
+local serverCard = makeCard(pg1, 5)
+makeToggleRow(serverCard, 1, "Vase Farm V2", "ServerVaseFarm", function(s)
+    if s then startServerVaseFarm() else stopServerVaseFarm() end
+end, false)
+makeToggleRow(serverCard, 2, "Anti Sit", "AntiSit", function(s)
+    if s then startAntiSit() else stopAntiSit() end
+end, true)
+
+-- Server farm info
+local infoFrame2 = Instance.new("Frame"); infoFrame2.Size = UDim2.new(1, 0, 0, 32); infoFrame2.BackgroundTransparency = 1
+infoFrame2.LayoutOrder = 6; infoFrame2.Parent = pg1
+local infoLbl2 = Instance.new("TextLabel"); infoLbl2.Size = UDim2.new(1, 0, 1, 0); infoLbl2.BackgroundTransparency = 1
+infoLbl2.Text = "Vase Farm V2 fires remotes directly (faster)\nAnti Sit prevents chairs from interrupting"; infoLbl2.Font = Enum.Font.Gotham
+infoLbl2.TextSize = 8; infoLbl2.TextColor3 = T.muted; infoLbl2.TextXAlignment = Enum.TextXAlignment.Left
+infoLbl2.TextWrapped = true; infoLbl2.Parent = infoFrame2
+
+-- ═══ PAGE 2: SHARK ═══
+local pg2 = pages[2]
+makeSection(pg2, "Shark Mode", 1)
+local sharkCard = makeCard(pg2, 2)
+makeToggleRow(sharkCard, 1, "Auto Win as Shark", "AutoWinShark", function(s)
+    if s then startAutoWin() else stopAutoWin() end
+end, true)
+
+-- ═══ PAGE 3: ESP ═══
+local pg3 = pages[3]
+makeSection(pg3, "Visuals", 1)
+local espCard = makeCard(pg3, 2)
+makeToggleRow(espCard, 1, "Shark Nametags", "SharkESP", function(s)
+    if s then enableSharkTags() else disableSharkTags() end
+end, true)
+
+-- Open animation
+win.Visible = true; win.Size = UDim2.new(0, 0, 0, 0); win.BackgroundTransparency = 1
+TweenService:Create(win, tw(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, WIN_W, 0, WIN_H), BackgroundTransparency = 0}):Play()
+setTab(1)
+
+-- Glow pulse
+task.spawn(function()
+    while sg and sg.Parent do
+        TweenService:Create(winGlow, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.82}):Play()
+        task.wait(2.4)
+        TweenService:Create(winGlow, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.92}):Play()
+        task.wait(2.4)
+    end
+end)
+
+-- Toggle GUI with K
+local guiVisible = true
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.K then
+        guiVisible = not guiVisible; win.Visible = guiVisible
+    end
+end)
+
+notify("Sharkbite 2", "Loaded — press K to toggle")
