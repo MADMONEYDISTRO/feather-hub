@@ -415,7 +415,11 @@ local isMobile=UserInputService.TouchEnabled and not UserInputService.KeyboardEn
 local T={bg=Color3.fromRGB(12,12,14),sidebar=Color3.fromRGB(18,18,21),card=Color3.fromRGB(24,24,28),border=Color3.fromRGB(38,38,46),text=Color3.fromRGB(240,240,244),muted=Color3.fromRGB(110,110,128),dim=Color3.fromRGB(28,28,33),sep=Color3.fromRGB(34,34,40),header=Color3.fromRGB(15,15,18),inputBg=Color3.fromRGB(8,8,12)}
 local accent=Color3.fromRGB(88,101,242); local blue=Color3.fromRGB(59,130,246); local green=Color3.fromRGB(34,197,94)
 local red=Color3.fromRGB(239,68,68); local gold=Color3.fromRGB(234,179,8); local purple=Color3.fromRGB(139,92,246); local teal=Color3.fromRGB(20,184,166)
-local WIN_W=isMobile and 360 or 480; local WIN_H=isMobile and 460 or 420; local SIDE_W=isMobile and 56 or 72; local HDR_H=44
+local vps = workspace.CurrentCamera.ViewportSize
+local WIN_W = math.clamp(math.floor(vps.X * 0.65), 280, 480)
+local WIN_H = math.clamp(math.floor(vps.Y * 0.55), 300, 420)
+local SIDE_W = WIN_W < 340 and 52 or 72
+local HDR_H = 44
 local function tw(t,s,d) return TweenInfo.new(t or 0.2,s or Enum.EasingStyle.Quart,d or Enum.EasingDirection.Out) end
 local function playSound(id,vol,spd) pcall(function() local s=Instance.new("Sound",SoundService); s.SoundId=id; s.Volume=vol or 0.3; s.PlaybackSpeed=spd or 1; s:Play(); game:GetService("Debris"):AddItem(s,1) end) end
 
@@ -465,11 +469,12 @@ for i=1,#TABS do pages[i]=makePage() end
 local function setTab(idx) activeTab=idx; hdrTitle.Text=TABS[idx].name; for i,btn in ipairs(navBtns) do local on=(i==idx); TweenService:Create(btn.bg,tw(0.15),{BackgroundColor3=on and accent or T.dim,BackgroundTransparency=on and 0.15 or 0}):Play(); TweenService:Create(btn.lbl,tw(0.15),{TextColor3=on and accent or T.muted}):Play(); TweenService:Create(btn.ico,tw(0.15),{TextTransparency=on and 0 or 0.4}):Play(); btn.bar.BackgroundTransparency=on and 0 or 1; pages[i].Visible=on end end
 
 for i,def in ipairs(TABS) do
-    local row=Instance.new("Frame"); row.Size=UDim2.new(1,-4,0,isMobile and 36 or 32); row.BackgroundTransparency=1; row.LayoutOrder=i; row.ZIndex=4; row.Parent=navCont
+    local compact = WIN_W < 340
+    local row=Instance.new("Frame"); row.Size=UDim2.new(1,-4,0,compact and 34 or 32); row.BackgroundTransparency=1; row.LayoutOrder=i; row.ZIndex=4; row.Parent=navCont
     local bar=Instance.new("Frame"); bar.Size=UDim2.new(0,3,0.5,0); bar.Position=UDim2.new(0,0,0.25,0); bar.BackgroundColor3=accent; bar.BackgroundTransparency=1; bar.BorderSizePixel=0; bar.ZIndex=5; bar.Parent=row; Instance.new("UICorner",bar).CornerRadius=UDim.new(1,0)
     local bg=Instance.new("Frame"); bg.Size=UDim2.new(1,-4,1,-2); bg.Position=UDim2.new(0,4,0,1); bg.BackgroundColor3=T.dim; bg.BackgroundTransparency=0; bg.BorderSizePixel=0; bg.ZIndex=4; bg.Parent=row; Instance.new("UICorner",bg).CornerRadius=UDim.new(0,7)
-    local ico=Instance.new("TextLabel"); ico.Size=UDim2.new(1,0,0,16); ico.Position=UDim2.new(0,0,0,isMobile and 4 or 3); ico.Text=def.icon; ico.TextSize=isMobile and 13 or 12; ico.Font=Enum.Font.GothamBold; ico.BackgroundTransparency=1; ico.TextTransparency=0.4; ico.ZIndex=5; ico.Parent=row
-    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,0,0,10); lbl.Position=UDim2.new(0,0,1,isMobile and -14 or -13); lbl.Text=def.name; lbl.Font=Enum.Font.GothamBold; lbl.TextSize=6; lbl.TextColor3=T.muted; lbl.BackgroundTransparency=1; lbl.ZIndex=5; lbl.Parent=row
+    local ico=Instance.new("TextLabel"); ico.Size=UDim2.new(1,0,0,16); ico.Position=UDim2.new(0,0,0,3); ico.Text=def.icon; ico.TextSize=12; ico.Font=Enum.Font.GothamBold; ico.BackgroundTransparency=1; ico.TextTransparency=0.4; ico.ZIndex=5; ico.Parent=row
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,0,0,10); lbl.Position=UDim2.new(0,0,1,-13); lbl.Text=def.name; lbl.Font=Enum.Font.GothamBold; lbl.TextSize=6; lbl.TextColor3=T.muted; lbl.BackgroundTransparency=1; lbl.ZIndex=5; lbl.Parent=row
     local hit=Instance.new("TextButton"); hit.Size=UDim2.new(1,0,1,0); hit.BackgroundTransparency=1; hit.Text=""; hit.ZIndex=6; hit.Parent=row
     local ci=i; hit.MouseButton1Click:Connect(function() setTab(ci) end); hit.TouchTap:Connect(function() setTab(ci) end)
     navBtns[i]={bg=bg,lbl=lbl,ico=ico,bar=bar}
