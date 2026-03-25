@@ -846,7 +846,7 @@ local function fortuneLoop()
             fortuneBtn.Text = "▶  START FORTUNE HATCH"; fortuneBtn.BackgroundColor3 = shamrockGreen
             break
         end
-        task.wait(0.08)
+        task.wait(0.3)
     end
     fortuneLockConn:Disconnect()
     if not fortuneEnabled and fortuneOriginCF then pcall(function() teleportTo(fortuneOriginCF) end); fortuneStatusLbl.Text = "⏸ Stopped — returned to origin"; fortuneStatusLbl.TextColor3 = textGrey end
