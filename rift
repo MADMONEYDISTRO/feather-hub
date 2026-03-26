@@ -464,11 +464,16 @@ local function scanChests()
     pcall(function()
         local rendered = workspace:FindFirstChild("Rendered")
         if not rendered then return end
-        -- Search Generic folder and any other folders for chest models
+        -- Names to look for (case insensitive check)
+        local function isChest(name)
+            local low = name:lower()
+            return low:find("chest") or low:find("pot o gold") or low:find("pot_o_gold")
+        end
+        -- Search all folders under Rendered
         for _, folder in ipairs(rendered:GetChildren()) do
             if folder:IsA("Folder") or folder:IsA("Model") then
                 for _, obj in ipairs(folder:GetChildren()) do
-                    if obj:IsA("Model") and obj.Name:lower():find("chest") then
+                    if obj:IsA("Model") and isChest(obj.Name) then
                         local cf = getCF(obj)
                         if cf then
                             local timer = getChestTimer(obj)
@@ -480,7 +485,7 @@ local function scanChests()
         end
         -- Also check direct children of Rendered
         for _, obj in ipairs(rendered:GetChildren()) do
-            if obj:IsA("Model") and obj.Name:lower():find("chest") then
+            if obj:IsA("Model") and isChest(obj.Name) then
                 local cf = getCF(obj)
                 if cf then
                     local timer = getChestTimer(obj)
