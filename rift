@@ -1,8 +1,47 @@
+-- BGSI Rift Teleporter — loads into existing BGSI GUI
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Find the existing BGSI GUI
+local sg = playerGui:FindFirstChild("BGSIMerged")
+if not sg then return end
+
+-- Find the event tab page
+local main = sg:FindFirstChildOfClass("Frame")
+if not main then return end
+
+local contentArea = nil
+for _, child in ipairs(main:GetChildren()) do
+    if child:IsA("Frame") and child.BackgroundTransparency == 1 then
+        contentArea = child
+        break
+    end
+end
+if not contentArea then return end
+
+local eventPage = nil
+for _, child in ipairs(contentArea:GetChildren()) do
+    if child:IsA("ScrollingFrame") then
+        eventPage = child
+        break
+    end
+end
+if not eventPage then return end
+
+-- Find current eY by checking existing children
+local maxY = 0
+for _, child in ipairs(eventPage:GetChildren()) do
+    if child:IsA("Frame") and child.Position then
+        local bottomY = child.Position.Y.Offset + child.Size.Y.Offset
+        if bottomY > maxY then
+            maxY = bottomY
+        end
+    end
+end
+local eY = maxY + 6
+
+-- Rift data
 local names = {"Brainrot","Bubble","Dev","Dice","Festival 1","Festival 2","Festival 3","Fortune 1","Fortune 2","Fortune 3","Gift","Lunar 1","Lunar 2","Lunar 3","Moon","OG","Vendor","StPat 1","StPat 2","StPat 3"}
 local rx = {-274.222,-324.381,77.815,-431.046,-411.546,-411.546,-411.546,-744.610,-744.610,-744.610,-430.946,-948.773,-948.773,-948.773,-879.766,-164.504,-506.323,-744.610,-744.610,-744.610}
 local ry = {12.088,25.185,60.860,25.185,25.185,25.185,25.185,299.908,299.908,299.908,25.185,25.185,25.185,25.185,38.835,27.780,25.185,299.908,299.908,299.908}
@@ -10,74 +49,108 @@ local rz = {473.413,183.947,1096.785,194.877,299.921,344.863,392.282,1890.754,19
 
 local idx = 1
 
-local sg = Instance.new("ScreenGui")
-sg.Name = "RiftTP"
-sg.ResetOnSpawn = false
-sg.Parent = playerGui
+-- Build section
+local sec = Instance.new("Frame")
+sec.Size = UDim2.new(1, -10, 0, 110)
+sec.Position = UDim2.new(0, 5, 0, eY)
+sec.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+sec.BorderSizePixel = 0
+sec.Parent = eventPage
+Instance.new("UICorner", sec).CornerRadius = UDim.new(0, 6)
 
-local bg = Instance.new("Frame")
-bg.Size = UDim2.new(0, 170, 0, 34)
-bg.Position = UDim2.new(0, 5, 0.5, -17)
-bg.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
-bg.BorderSizePixel = 0
-bg.Parent = sg
-Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 6)
+-- Title
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -12, 0, 20)
+title.Position = UDim2.new(0, 8, 0, 4)
+title.Text = "Rift Teleporter (20 rifts)"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 11
+title.TextColor3 = Color3.fromRGB(180, 180, 190)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.BackgroundTransparency = 1
+title.Parent = sec
 
-local lbl = Instance.new("TextLabel")
-lbl.Size = UDim2.new(1, 0, 0, 14)
-lbl.Position = UDim2.new(0, 0, 0, 2)
-lbl.Text = names[1] .. " (1/" .. #names .. ")"
-lbl.Font = Enum.Font.GothamBold
-lbl.TextSize = 8
-lbl.TextColor3 = Color3.fromRGB(50, 220, 90)
-lbl.BackgroundTransparency = 1
-lbl.Parent = bg
+-- Current rift label
+local infoLbl = Instance.new("TextLabel")
+infoLbl.Size = UDim2.new(1, -16, 0, 16)
+infoLbl.Position = UDim2.new(0, 8, 0, 28)
+infoLbl.Text = "Next: " .. names[1] .. " (1/20)"
+infoLbl.Font = Enum.Font.Gotham
+infoLbl.TextSize = 10
+infoLbl.TextColor3 = Color3.fromRGB(50, 220, 90)
+infoLbl.TextXAlignment = Enum.TextXAlignment.Left
+infoLbl.BackgroundTransparency = 1
+infoLbl.Parent = sec
 
-local btn = Instance.new("TextButton")
-btn.Size = UDim2.new(1, -8, 0, 16)
-btn.Position = UDim2.new(0, 4, 0, 16)
-btn.Text = "TELEPORT"
-btn.Font = Enum.Font.GothamBold
-btn.TextSize = 9
-btn.TextColor3 = Color3.new(1, 1, 1)
-btn.BackgroundColor3 = Color3.fromRGB(100, 60, 200)
-btn.BorderSizePixel = 0
-btn.Parent = bg
-Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+-- Teleport button
+local tpBtn = Instance.new("TextButton")
+tpBtn.Size = UDim2.new(1, -16, 0, 24)
+tpBtn.Position = UDim2.new(0, 8, 0, 48)
+tpBtn.Text = "TELEPORT TO RIFT"
+tpBtn.Font = Enum.Font.GothamBold
+tpBtn.TextSize = 11
+tpBtn.TextColor3 = Color3.new(1, 1, 1)
+tpBtn.BackgroundColor3 = Color3.fromRGB(100, 60, 200)
+tpBtn.BorderSizePixel = 0
+tpBtn.Parent = sec
+Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 5)
 
-btn.MouseButton1Click:Connect(function()
+tpBtn.MouseButton1Click:Connect(function()
     pcall(function()
         local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         if root then
             root.CFrame = CFrame.new(rx[idx], ry[idx], rz[idx])
         end
     end)
+    tpBtn.Text = "Went to " .. names[idx]
+    tpBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 100)
     idx = idx + 1
     if idx > #names then idx = 1 end
-    lbl.Text = names[idx] .. " (" .. idx .. "/" .. #names .. ")"
+    infoLbl.Text = "Next: " .. names[idx] .. " (" .. idx .. "/20)"
+    task.delay(1, function()
+        if tpBtn.Parent then
+            tpBtn.Text = "TELEPORT TO RIFT"
+            tpBtn.BackgroundColor3 = Color3.fromRGB(100, 60, 200)
+        end
+    end)
 end)
 
-local dragging, dragStart, startPos
-bg.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = i.Position
-        startPos = bg.Position
-    end
+-- Prev / Next buttons to pick rift without teleporting
+local prevBtn = Instance.new("TextButton")
+prevBtn.Size = UDim2.new(0.5, -10, 0, 22)
+prevBtn.Position = UDim2.new(0, 8, 0, 78)
+prevBtn.Text = "< Prev Rift"
+prevBtn.Font = Enum.Font.GothamBold
+prevBtn.TextSize = 9
+prevBtn.TextColor3 = Color3.fromRGB(180, 180, 190)
+prevBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+prevBtn.BorderSizePixel = 0
+prevBtn.Parent = sec
+Instance.new("UICorner", prevBtn).CornerRadius = UDim.new(0, 4)
+
+local nextBtn = Instance.new("TextButton")
+nextBtn.Size = UDim2.new(0.5, -10, 0, 22)
+nextBtn.Position = UDim2.new(0.5, 2, 0, 78)
+nextBtn.Text = "Next Rift >"
+nextBtn.Font = Enum.Font.GothamBold
+nextBtn.TextSize = 9
+nextBtn.TextColor3 = Color3.fromRGB(180, 180, 190)
+nextBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+nextBtn.BorderSizePixel = 0
+nextBtn.Parent = sec
+Instance.new("UICorner", nextBtn).CornerRadius = UDim.new(0, 4)
+
+prevBtn.MouseButton1Click:Connect(function()
+    idx = idx - 1
+    if idx < 1 then idx = #names end
+    infoLbl.Text = "Next: " .. names[idx] .. " (" .. idx .. "/20)"
 end)
-bg.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
+
+nextBtn.MouseButton1Click:Connect(function()
+    idx = idx + 1
+    if idx > #names then idx = 1 end
+    infoLbl.Text = "Next: " .. names[idx] .. " (" .. idx .. "/20)"
 end)
-UserInputService.InputChanged:Connect(function(i)
-    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        local d = i.Position - dragStart
-        bg.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
+
+-- Update canvas size
+eventPage.CanvasSize = UDim2.new(0, 0, 0, eY + 120)
