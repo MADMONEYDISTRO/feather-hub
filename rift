@@ -1,6 +1,5 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -8,31 +7,6 @@ if playerGui:FindFirstChild("RiftTP") then
     playerGui.RiftTP.Enabled = true
     return
 end
-
--- Rift data with actual world pivot CFrames
--- game name = display name, x/y/z = position, rx/ry/rz etc for rotation where needed
-local rifts = {
-    {n="Brainrot Rift",     gn="brainrot-rift",     x=-274.222, y=12.088,    z=473.413},
-    {n="Bubble Rift",       gn="bubble-rift",        x=-324.381, y=25.185,    z=183.947},
-    {n="Dev Rift",          gn="dev-rift",            x=77.815,   y=60.860,    z=1096.785},
-    {n="Dice Rift",         gn="dice-rift",           x=-431.046, y=25.185,    z=194.877},
-    {n="Festival Rift 1",   gn="festival-rift-1",     x=-411.546, y=25.185,    z=299.921},
-    {n="Festival Rift 2",   gn="festival-rift-2",     x=-411.546, y=25.185,    z=344.863},
-    {n="Festival Rift 3",   gn="festival-rift-3",     x=-411.546, y=25.185,    z=392.282},
-    {n="Fortune Rift 1",    gn="fortune-rift-1",      x=-744.610, y=299.908,   z=1890.754},
-    {n="Fortune Rift 2",    gn="fortune-rift-2",      x=-118.434, y=11671.057, z=176.600},
-    {n="Fortune Rift 3",    gn="fortune-rift-3",      x=-744.610, y=299.908,   z=2024.797},
-    {n="Gift Rift",         gn="gift-rift",           x=117.059,  y=373.689,   z=74.473},
-    {n="Lunar Rift 1",      gn="lunar-rift-1",        x=-948.773, y=25.185,    z=402.039},
-    {n="Lunar Rift 2",      gn="lunar-rift-2",        x=-948.773, y=25.185,    z=448.589},
-    {n="Lunar Rift 3",      gn="lunar-rift-3",        x=-948.773, y=25.185,    z=494.172},
-    {n="Moon Rift",         gn="moon-rift",           x=-879.766, y=38.835,    z=291.932},
-    {n="OG Rift",           gn="og-rift",             x=-164.504, y=27.780,    z=-919.841},
-    {n="Rift Vendor",       gn="rift-vendor",         x=-506.323, y=25.185,    z=558.076},
-    {n="StPat Rift 1",      gn="stpat-rift-1",        x=-744.610, y=299.908,   z=1890.754},
-    {n="StPat Rift 2",      gn="stpat-rift-2",        x=-744.610, y=299.908,   z=1955.708},
-    {n="StPat Rift 3",      gn="stpat-rift-3",        x=91.040,   y=9127.876,  z=26.050},
-}
 
 local bgCol = Color3.fromRGB(25, 25, 30)
 local hdrCol = Color3.fromRGB(35, 35, 42)
@@ -45,12 +19,36 @@ local offCol = Color3.fromRGB(80, 80, 90)
 local tpCol = Color3.fromRGB(100, 60, 200)
 
 local function mkC(p, r)
-    local c = Instance.new("UICorner", p)
-    c.CornerRadius = UDim.new(0, r or 6)
+    Instance.new("UICorner", p).CornerRadius = UDim.new(0, r or 6)
 end
 
+local RIFT_NAMES = {
+    "brainrot-rift",
+    "bubble-rift",
+    "dev-rift",
+    "dice-rift",
+    "festival-rift-1",
+    "festival-rift-2",
+    "festival-rift-3",
+    "fortune-rift-1",
+    "fortune-rift-2",
+    "fortune-rift-3",
+    "gift-rift",
+    "lunar-rift-1",
+    "lunar-rift-2",
+    "lunar-rift-3",
+    "moon-rift",
+    "og-rift",
+    "rift-vendor",
+    "stpat-rift-1",
+    "stpat-rift-2",
+    "stpat-rift-3",
+}
+
+local liveCFs = {}
+
 local ROW_H = 24
-local BODY_H = #rifts * (ROW_H + 2) + 4
+local BODY_H = #RIFT_NAMES * (ROW_H + 2) + 4
 local WIN_H = 32 + math.min(BODY_H, 300)
 
 local sg = Instance.new("ScreenGui")
@@ -162,13 +160,13 @@ scroll.ScrollBarImageColor3 = accCol
 scroll.CanvasSize = UDim2.new(0, 0, 0, BODY_H)
 scroll.Parent = win
 
-local layout = Instance.new("UIListLayout")
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0, 2)
-layout.Parent = scroll
+local lay = Instance.new("UIListLayout")
+lay.SortOrder = Enum.SortOrder.LayoutOrder
+lay.Padding = UDim.new(0, 2)
+lay.Parent = scroll
 
 local rows = {}
-for i, r in ipairs(rifts) do
+for i, rn in ipairs(RIFT_NAMES) do
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -4, 0, ROW_H)
     row.BackgroundColor3 = secCol
@@ -188,7 +186,7 @@ for i, r in ipairs(rifts) do
     local nm = Instance.new("TextLabel")
     nm.Size = UDim2.new(1, -75, 1, 0)
     nm.Position = UDim2.new(0, 20, 0, 0)
-    nm.Text = r.n
+    nm.Text = rn
     nm.Font = Enum.Font.Gotham
     nm.TextSize = 9
     nm.TextColor3 = offCol
@@ -199,62 +197,104 @@ for i, r in ipairs(rifts) do
     local tp = Instance.new("TextButton")
     tp.Size = UDim2.new(0, 50, 0, 16)
     tp.Position = UDim2.new(1, -56, 0.5, -8)
-    tp.Text = "TP"
+    tp.Text = "---"
     tp.Font = Enum.Font.GothamBold
     tp.TextSize = 8
-    tp.TextColor3 = Color3.new(1, 1, 1)
-    tp.BackgroundColor3 = tpCol
+    tp.TextColor3 = Color3.fromRGB(120, 120, 130)
+    tp.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
     tp.BorderSizePixel = 0
     tp.Parent = row
     mkC(tp, 4)
 
-    local ci = i
+    local capName = rn
     tp.MouseButton1Click:Connect(function()
+        local cf = liveCFs[capName]
+        if not cf then return end
         pcall(function()
             local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-            if root then
-                root.CFrame = CFrame.new(rifts[ci].x, rifts[ci].y, rifts[ci].z)
-            end
+            if root then root.CFrame = cf end
         end)
         tp.Text = "OK"
         tp.BackgroundColor3 = Color3.fromRGB(50, 180, 100)
         task.delay(1, function()
             if tp.Parent then
-                tp.Text = "TP"
-                tp.BackgroundColor3 = tpCol
+                if liveCFs[capName] then
+                    tp.Text = "TP"
+                    tp.BackgroundColor3 = tpCol
+                    tp.TextColor3 = Color3.new(1, 1, 1)
+                else
+                    tp.Text = "---"
+                    tp.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+                    tp.TextColor3 = Color3.fromRGB(120, 120, 130)
+                end
             end
         end)
     end)
 
-    rows[i] = {dot = dot, nm = nm, row = row}
+    rows[rn] = {dot = dot, nm = nm, tp = tp}
 end
 
--- Scan for active rifts every 3 seconds using exact game names
+local function getCF(obj)
+    if obj:IsA("BasePart") then
+        return obj.CFrame
+    end
+    if obj:IsA("Model") then
+        if obj.PrimaryPart then
+            return obj.PrimaryPart.CFrame
+        end
+        local ok, piv = pcall(function() return obj:GetPivot() end)
+        if ok and piv then return piv end
+        for _, ch in ipairs(obj:GetDescendants()) do
+            if ch:IsA("BasePart") then return ch.CFrame end
+        end
+    end
+    return nil
+end
+
+local function scanRifts()
+    liveCFs = {}
+    local found = {}
+
+    pcall(function()
+        local rendered = workspace:FindFirstChild("Rendered")
+        if not rendered then return end
+        local riftsFolder = rendered:FindFirstChild("Rifts")
+        if not riftsFolder then return end
+        for _, obj in ipairs(riftsFolder:GetChildren()) do
+            local cf = getCF(obj)
+            if cf then
+                found[obj.Name] = cf
+            end
+        end
+    end)
+
+    local count = 0
+    for _, rn in ipairs(RIFT_NAMES) do
+        local cf = found[rn]
+        local r = rows[rn]
+        if cf then
+            count = count + 1
+            liveCFs[rn] = cf
+            r.dot.BackgroundColor3 = onCol
+            r.nm.TextColor3 = onCol
+            r.tp.Text = "TP"
+            r.tp.TextColor3 = Color3.new(1, 1, 1)
+            r.tp.BackgroundColor3 = tpCol
+        else
+            r.dot.BackgroundColor3 = offCol
+            r.nm.TextColor3 = offCol
+            r.tp.Text = "---"
+            r.tp.TextColor3 = Color3.fromRGB(120, 120, 130)
+            r.tp.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+        end
+    end
+
+    tLbl.Text = "Rifts (" .. count .. "/" .. #RIFT_NAMES .. " active)"
+end
+
 task.spawn(function()
     while sg and sg.Parent do
-        pcall(function()
-            local active = {}
-            pcall(function()
-                local rf = workspace.Rendered.Rifts
-                for _, obj in ipairs(rf:GetChildren()) do
-                    active[obj.Name:lower()] = true
-                end
-            end)
-
-            local count = 0
-            for i, r in ipairs(rifts) do
-                if active[r.gn:lower()] then
-                    count = count + 1
-                    rows[i].dot.BackgroundColor3 = onCol
-                    rows[i].nm.TextColor3 = onCol
-                else
-                    rows[i].dot.BackgroundColor3 = offCol
-                    rows[i].nm.TextColor3 = offCol
-                end
-            end
-
-            tLbl.Text = "Rift Teleporter (" .. count .. "/" .. #rifts .. " active)"
-        end)
-        task.wait(3)
+        pcall(scanRifts)
+        task.wait(2)
     end
 end)
