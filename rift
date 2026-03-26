@@ -419,7 +419,13 @@ local function makeChestRow(name)
             local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             if root then
                 local pos = d.cf.Position
-                root.CFrame = CFrame.new(pos.X, pos.Y + 100, pos.Z)
+                local above = CFrame.new(pos.X, pos.Y + 100, pos.Z)
+                print("Chest TP to:", pos.X, pos.Y + 100, pos.Z, "from cf Y:", pos.Y)
+                root.CFrame = above
+                task.wait(0.1)
+                root.CFrame = above
+                task.wait(0.1)
+                root.CFrame = above
             end
         end)
         tp.Text = "OK"
