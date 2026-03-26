@@ -9,27 +9,29 @@ if playerGui:FindFirstChild("RiftTP") then
     return
 end
 
+-- Rift data with actual world pivot CFrames
+-- game name = display name, x/y/z = position, rx/ry/rz etc for rotation where needed
 local rifts = {
-    {n="Brainrot Rift",     x=-274.222, y=12.088,  z=473.413},
-    {n="Bubble Rift",       x=-324.381, y=25.185,  z=183.947},
-    {n="Dev Rift",          x=77.815,   y=60.860,  z=1096.785},
-    {n="Dice Rift",         x=-431.046, y=25.185,  z=194.877},
-    {n="Festival Rift 1",   x=-411.546, y=25.185,  z=299.921},
-    {n="Festival Rift 2",   x=-411.546, y=25.185,  z=344.863},
-    {n="Festival Rift 3",   x=-411.546, y=25.185,  z=392.282},
-    {n="Fortune Rift 1",    x=-744.610, y=299.908, z=1890.754},
-    {n="Fortune Rift 2",    x=-744.610, y=299.908, z=1955.708},
-    {n="Fortune Rift 3",    x=-744.610, y=299.908, z=2024.797},
-    {n="Gift Rift",         x=-430.946, y=25.185,  z=138.077},
-    {n="Lunar Rift 1",      x=-948.773, y=25.185,  z=402.039},
-    {n="Lunar Rift 2",      x=-948.773, y=25.185,  z=448.589},
-    {n="Lunar Rift 3",      x=-948.773, y=25.185,  z=494.172},
-    {n="Moon Rift",         x=-879.766, y=38.835,  z=291.932},
-    {n="OG Rift",           x=-164.504, y=27.780,  z=-919.841},
-    {n="Rift Vendor",       x=-506.323, y=25.185,  z=558.076},
-    {n="StPat Rift 1",      x=-744.610, y=299.908, z=1890.754},
-    {n="StPat Rift 2",      x=-744.610, y=299.908, z=1955.708},
-    {n="StPat Rift 3",      x=-744.610, y=299.908, z=2024.797},
+    {n="Brainrot Rift",     gn="brainrot-rift",     x=-274.222, y=12.088,    z=473.413},
+    {n="Bubble Rift",       gn="bubble-rift",        x=-324.381, y=25.185,    z=183.947},
+    {n="Dev Rift",          gn="dev-rift",            x=77.815,   y=60.860,    z=1096.785},
+    {n="Dice Rift",         gn="dice-rift",           x=-431.046, y=25.185,    z=194.877},
+    {n="Festival Rift 1",   gn="festival-rift-1",     x=-411.546, y=25.185,    z=299.921},
+    {n="Festival Rift 2",   gn="festival-rift-2",     x=-411.546, y=25.185,    z=344.863},
+    {n="Festival Rift 3",   gn="festival-rift-3",     x=-411.546, y=25.185,    z=392.282},
+    {n="Fortune Rift 1",    gn="fortune-rift-1",      x=-744.610, y=299.908,   z=1890.754},
+    {n="Fortune Rift 2",    gn="fortune-rift-2",      x=-118.434, y=11671.057, z=176.600},
+    {n="Fortune Rift 3",    gn="fortune-rift-3",      x=-744.610, y=299.908,   z=2024.797},
+    {n="Gift Rift",         gn="gift-rift",           x=117.059,  y=373.689,   z=74.473},
+    {n="Lunar Rift 1",      gn="lunar-rift-1",        x=-948.773, y=25.185,    z=402.039},
+    {n="Lunar Rift 2",      gn="lunar-rift-2",        x=-948.773, y=25.185,    z=448.589},
+    {n="Lunar Rift 3",      gn="lunar-rift-3",        x=-948.773, y=25.185,    z=494.172},
+    {n="Moon Rift",         gn="moon-rift",           x=-879.766, y=38.835,    z=291.932},
+    {n="OG Rift",           gn="og-rift",             x=-164.504, y=27.780,    z=-919.841},
+    {n="Rift Vendor",       gn="rift-vendor",         x=-506.323, y=25.185,    z=558.076},
+    {n="StPat Rift 1",      gn="stpat-rift-1",        x=-744.610, y=299.908,   z=1890.754},
+    {n="StPat Rift 2",      gn="stpat-rift-2",        x=-744.610, y=299.908,   z=1955.708},
+    {n="StPat Rift 3",      gn="stpat-rift-3",        x=91.040,   y=9127.876,  z=26.050},
 }
 
 local bgCol = Color3.fromRGB(25, 25, 30)
@@ -67,7 +69,6 @@ win.ClipsDescendants = true
 win.Parent = sg
 mkC(win, 8)
 
--- Header
 local hdr = Instance.new("Frame")
 hdr.Size = UDim2.new(1, 0, 0, 30)
 hdr.BackgroundColor3 = hdrCol
@@ -86,7 +87,6 @@ tLbl.TextXAlignment = Enum.TextXAlignment.Left
 tLbl.BackgroundTransparency = 1
 tLbl.Parent = hdr
 
--- Minimize
 local isMin = false
 local minB = Instance.new("TextButton")
 minB.Size = UDim2.new(0, 20, 0, 20)
@@ -111,7 +111,6 @@ minB.MouseButton1Click:Connect(function()
     end
 end)
 
--- Close
 local clsB = Instance.new("TextButton")
 clsB.Size = UDim2.new(0, 20, 0, 20)
 clsB.Position = UDim2.new(1, -24, 0.5, -10)
@@ -128,7 +127,6 @@ clsB.MouseButton1Click:Connect(function()
     sg.Enabled = false
 end)
 
--- Drag
 local dragging, dragStart, startPos
 hdr.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -154,7 +152,6 @@ UserInputService.InputEnded:Connect(function(i)
     end
 end)
 
--- Scrollable body
 local scroll = Instance.new("ScrollingFrame")
 scroll.Size = UDim2.new(1, -8, 1, -34)
 scroll.Position = UDim2.new(0, 4, 0, 32)
@@ -170,7 +167,6 @@ layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 2)
 layout.Parent = scroll
 
--- Build rows
 local rows = {}
 for i, r in ipairs(rifts) do
     local row = Instance.new("Frame")
@@ -233,7 +229,7 @@ for i, r in ipairs(rifts) do
     rows[i] = {dot = dot, nm = nm, row = row}
 end
 
--- Check which rifts are active every 5s
+-- Scan for active rifts every 3 seconds using exact game names
 task.spawn(function()
     while sg and sg.Parent do
         pcall(function()
@@ -241,20 +237,13 @@ task.spawn(function()
             pcall(function()
                 local rf = workspace.Rendered.Rifts
                 for _, obj in ipairs(rf:GetChildren()) do
-                    active[obj.Name] = true
+                    active[obj.Name:lower()] = true
                 end
             end)
 
             local count = 0
             for i, r in ipairs(rifts) do
-                local isActive = false
-                for name in pairs(active) do
-                    if name:lower():find(r.n:lower():sub(1,8), 1, true) then
-                        isActive = true
-                        break
-                    end
-                end
-                if isActive then
+                if active[r.gn:lower()] then
                     count = count + 1
                     rows[i].dot.BackgroundColor3 = onCol
                     rows[i].nm.TextColor3 = onCol
@@ -264,8 +253,8 @@ task.spawn(function()
                 end
             end
 
-            tLbl.Text = "Rift Teleporter (" .. count .. " active)"
+            tLbl.Text = "Rift Teleporter (" .. count .. "/" .. #rifts .. " active)"
         end)
-        task.wait(5)
+        task.wait(3)
     end
 end)
