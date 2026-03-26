@@ -1,0 +1,83 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local names = {"Brainrot","Bubble","Dev","Dice","Festival 1","Festival 2","Festival 3","Fortune 1","Fortune 2","Fortune 3","Gift","Lunar 1","Lunar 2","Lunar 3","Moon","OG","Vendor","StPat 1","StPat 2","StPat 3"}
+local rx = {-274.222,-324.381,77.815,-431.046,-411.546,-411.546,-411.546,-744.610,-744.610,-744.610,-430.946,-948.773,-948.773,-948.773,-879.766,-164.504,-506.323,-744.610,-744.610,-744.610}
+local ry = {12.088,25.185,60.860,25.185,25.185,25.185,25.185,299.908,299.908,299.908,25.185,25.185,25.185,25.185,38.835,27.780,25.185,299.908,299.908,299.908}
+local rz = {473.413,183.947,1096.785,194.877,299.921,344.863,392.282,1890.754,1955.708,2024.797,138.077,402.039,448.589,494.172,291.932,-919.841,558.076,1890.754,1955.708,2024.797}
+
+local idx = 1
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "RiftTP"
+sg.ResetOnSpawn = false
+sg.Parent = playerGui
+
+local bg = Instance.new("Frame")
+bg.Size = UDim2.new(0, 170, 0, 34)
+bg.Position = UDim2.new(0, 5, 0.5, -17)
+bg.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
+bg.BorderSizePixel = 0
+bg.Parent = sg
+Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 6)
+
+local lbl = Instance.new("TextLabel")
+lbl.Size = UDim2.new(1, 0, 0, 14)
+lbl.Position = UDim2.new(0, 0, 0, 2)
+lbl.Text = names[1] .. " (1/" .. #names .. ")"
+lbl.Font = Enum.Font.GothamBold
+lbl.TextSize = 8
+lbl.TextColor3 = Color3.fromRGB(50, 220, 90)
+lbl.BackgroundTransparency = 1
+lbl.Parent = bg
+
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(1, -8, 0, 16)
+btn.Position = UDim2.new(0, 4, 0, 16)
+btn.Text = "TELEPORT"
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 9
+btn.TextColor3 = Color3.new(1, 1, 1)
+btn.BackgroundColor3 = Color3.fromRGB(100, 60, 200)
+btn.BorderSizePixel = 0
+btn.Parent = bg
+Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+btn.MouseButton1Click:Connect(function()
+    pcall(function()
+        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.CFrame = CFrame.new(rx[idx], ry[idx], rz[idx])
+        end
+    end)
+    idx = idx + 1
+    if idx > #names then idx = 1 end
+    lbl.Text = names[idx] .. " (" .. idx .. "/" .. #names .. ")"
+end)
+
+local dragging, dragStart, startPos
+bg.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = i.Position
+        startPos = bg.Position
+    end
+end)
+bg.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local d = i.Position - dragStart
+        bg.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
