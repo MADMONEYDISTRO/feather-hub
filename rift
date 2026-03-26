@@ -213,8 +213,27 @@ local function makeRow(name)
     return d
 end
 
--- Get CFrame from any rift object
+-- Get CFrame from any rift object — prefer Sign child for accuracy
 local function getCF(obj)
+    -- First check for a Sign child (most accurate rift position)
+    if obj:IsA("Model") then
+        local sign = obj:FindFirstChild("Sign")
+        if sign then
+            if sign:IsA("BasePart") then
+                return sign.CFrame
+            elseif sign:IsA("Model") then
+                if sign.PrimaryPart then
+                    return sign.PrimaryPart.CFrame
+                end
+                local ok2, piv2 = pcall(function() return sign:GetPivot() end)
+                if ok2 and piv2 then return piv2 end
+                for _, ch in ipairs(sign:GetDescendants()) do
+                    if ch:IsA("BasePart") then return ch.CFrame end
+                end
+            end
+        end
+    end
+    -- Fallback to the rift object itself
     if obj:IsA("BasePart") then
         return obj.CFrame
     elseif obj:IsA("Model") then
@@ -225,7 +244,6 @@ local function getCF(obj)
         if ok and piv then
             return piv
         end
-        -- Fallback: find any BasePart inside
         for _, child in ipairs(obj:GetDescendants()) do
             if child:IsA("BasePart") then
                 return child.CFrame
