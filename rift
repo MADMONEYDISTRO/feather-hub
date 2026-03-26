@@ -253,9 +253,33 @@ local function getCF(obj)
     return nil
 end
 
+local function getTimer(obj)
+    if not obj:IsA("Model") then return nil end
+    for _, child in ipairs(obj:GetChildren()) do
+        local display = child:FindFirstChild("Display")
+        if not display then display = child end
+        local surfGui = display:FindFirstChildOfClass("SurfaceGui")
+        if not surfGui then surfGui = child:FindFirstChildOfClass("SurfaceGui") end
+        if surfGui then
+            local timer = surfGui:FindFirstChild("Timer")
+            if timer and timer:IsA("TextLabel") then
+                return timer.Text
+            end
+        end
+    end
+    -- Also check direct children
+    for _, desc in ipairs(obj:GetDescendants()) do
+        if desc.Name == "Timer" and desc:IsA("TextLabel") then
+            return desc.Text
+        end
+    end
+    return nil
+end
+
 local function scan()
     -- Find all current rifts
     local found = {}
+    local timers = {}
     pcall(function()
         local rendered = workspace:FindFirstChild("Rendered")
         if not rendered then return end
@@ -265,6 +289,10 @@ local function scan()
             local cf = getCF(obj)
             if cf then
                 found[obj.Name] = cf
+                local t = getTimer(obj)
+                if t and t ~= "" then
+                    timers[obj.Name] = t
+                end
             end
         end
     end)
@@ -276,9 +304,16 @@ local function scan()
         d.alive = true
         d.dot.BackgroundColor3 = onCol
         d.nm.TextColor3 = onCol
+        if timers[name] then
+            d.nm.Text = name .. "  " .. timers[name]
+        else
+            d.nm.Text = name
+        end
         d.tp.Text = "TP"
         d.tp.TextColor3 = Color3.new(1, 1, 1)
         d.tp.BackgroundColor3 = tpCol
+        d.row.BackgroundColor3 = secCol
+        d.row.BackgroundTransparency = 0
     end
 
     -- Mark gone rifts as offline
@@ -288,9 +323,12 @@ local function scan()
             d.cf = nil
             d.dot.BackgroundColor3 = offCol
             d.nm.TextColor3 = offCol
+            d.nm.Text = name
             d.tp.Text = "---"
-            d.tp.TextColor3 = Color3.fromRGB(120, 120, 130)
+            d.tp.TextColor3 = offCol
             d.tp.BackgroundColor3 = drkCol
+            d.row.BackgroundColor3 = drkCol
+            d.row.BackgroundTransparency = 0.3
         end
     end
 
