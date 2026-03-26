@@ -418,7 +418,7 @@ local function makeChestRow(name)
         pcall(function()
             local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
             if root then
-                root.CFrame = d.cf
+                root.CFrame = d.cf + Vector3.new(0, 10, 0)
             end
         end)
         tp.Text = "OK"
