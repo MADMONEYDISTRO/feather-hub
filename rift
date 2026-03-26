@@ -340,13 +340,218 @@ local function scan()
         if d.alive then count = count + 1 end
     end
     tLbl.Text = "Rifts (" .. count .. "/" .. total .. " active)"
-    scroll.CanvasSize = UDim2.new(0, 0, 0, total * (ROW_H + 2) + 4)
+end
+
+-- ═══════════════════════════════════════════
+-- CHESTS SECTION
+-- ═══════════════════════════════════════════
+
+-- Section divider
+local chestDivider = Instance.new("Frame")
+chestDivider.Size = UDim2.new(1, -4, 0, 20)
+chestDivider.BackgroundColor3 = hdrCol
+chestDivider.BorderSizePixel = 0
+chestDivider.LayoutOrder = 9000
+chestDivider.Parent = scroll
+mkC(chestDivider, 4)
+
+local chestTitle = Instance.new("TextLabel")
+chestTitle.Size = UDim2.new(1, 0, 1, 0)
+chestTitle.Text = "Chests"
+chestTitle.Font = Enum.Font.GothamBold
+chestTitle.TextSize = 10
+chestTitle.TextColor3 = txtCol
+chestTitle.BackgroundTransparency = 1
+chestTitle.Parent = chestDivider
+
+local chestData = {}
+local chestOrder = 9001
+
+local function makeChestRow(name)
+    if chestData[name] then return chestData[name] end
+
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -4, 0, ROW_H)
+    row.BackgroundColor3 = secCol
+    row.BorderSizePixel = 0
+    row.LayoutOrder = chestOrder
+    row.Parent = scroll
+    mkC(row, 4)
+    chestOrder = chestOrder + 1
+
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 8, 0, 8)
+    dot.Position = UDim2.new(0, 6, 0.5, -4)
+    dot.BackgroundColor3 = Color3.fromRGB(220, 170, 40)
+    dot.BorderSizePixel = 0
+    dot.Parent = row
+    mkC(dot, 4)
+
+    local nm = Instance.new("TextLabel")
+    nm.Size = UDim2.new(1, -75, 1, 0)
+    nm.Position = UDim2.new(0, 20, 0, 0)
+    nm.Text = name
+    nm.Font = Enum.Font.Gotham
+    nm.TextSize = 9
+    nm.TextColor3 = Color3.fromRGB(220, 170, 40)
+    nm.TextXAlignment = Enum.TextXAlignment.Left
+    nm.BackgroundTransparency = 1
+    nm.Parent = row
+
+    local tp = Instance.new("TextButton")
+    tp.Size = UDim2.new(0, 50, 0, 16)
+    tp.Position = UDim2.new(1, -56, 0.5, -8)
+    tp.Text = "TP"
+    tp.Font = Enum.Font.GothamBold
+    tp.TextSize = 8
+    tp.TextColor3 = Color3.new(1, 1, 1)
+    tp.BackgroundColor3 = Color3.fromRGB(200, 150, 30)
+    tp.BorderSizePixel = 0
+    tp.Parent = row
+    mkC(tp, 4)
+
+    local d = {row = row, dot = dot, nm = nm, tp = tp, cf = nil, alive = true}
+    chestData[name] = d
+
+    tp.MouseButton1Click:Connect(function()
+        if not d.cf then return end
+        pcall(function()
+            local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                root.CFrame = d.cf
+            end
+        end)
+        tp.Text = "OK"
+        tp.BackgroundColor3 = Color3.fromRGB(50, 180, 100)
+        task.delay(1, function()
+            if tp.Parent then
+                tp.Text = "TP"
+                tp.BackgroundColor3 = Color3.fromRGB(200, 150, 30)
+            end
+        end)
+    end)
+
+    return d
+end
+
+-- Get chest timer: chest > Countdown > BillboardGui > Label
+local function getChestTimer(obj)
+    if not obj:IsA("Model") then return nil end
+    local countdown = obj:FindFirstChild("Countdown")
+    if countdown then
+        local bbg = countdown:FindFirstChildOfClass("BillboardGui")
+        if bbg then
+            local label = bbg:FindFirstChild("Label")
+            if label and label:IsA("TextLabel") then
+                return label.Text
+            end
+        end
+    end
+    -- Fallback: search all descendants for a Label inside BillboardGui
+    for _, desc in ipairs(obj:GetDescendants()) do
+        if desc.Name == "Label" and desc:IsA("TextLabel") then
+            local parent = desc.Parent
+            if parent and parent:IsA("BillboardGui") then
+                return desc.Text
+            end
+        end
+    end
+    return nil
+end
+
+local function scanChests()
+    local found = {}
+    pcall(function()
+        local rendered = workspace:FindFirstChild("Rendered")
+        if not rendered then return end
+        -- Search Generic folder and any other folders for chest models
+        for _, folder in ipairs(rendered:GetChildren()) do
+            if folder:IsA("Folder") or folder:IsA("Model") then
+                for _, obj in ipairs(folder:GetChildren()) do
+                    if obj:IsA("Model") and obj.Name:lower():find("chest") then
+                        local cf = getCF(obj)
+                        if cf then
+                            local timer = getChestTimer(obj)
+                            found[obj.Name] = {cf = cf, timer = timer}
+                        end
+                    end
+                end
+            end
+        end
+        -- Also check direct children of Rendered
+        for _, obj in ipairs(rendered:GetChildren()) do
+            if obj:IsA("Model") and obj.Name:lower():find("chest") then
+                local cf = getCF(obj)
+                if cf then
+                    local timer = getChestTimer(obj)
+                    found[obj.Name] = {cf = cf, timer = timer}
+                end
+            end
+        end
+    end)
+
+    -- Update or create chest rows
+    local goldCol = Color3.fromRGB(220, 170, 40)
+    for name, info in pairs(found) do
+        local d = makeChestRow(name)
+        d.cf = info.cf
+        d.alive = true
+        d.dot.BackgroundColor3 = goldCol
+        d.nm.TextColor3 = goldCol
+        if info.timer and info.timer ~= "" then
+            d.nm.Text = name .. "  " .. info.timer
+        else
+            d.nm.Text = name
+        end
+        d.tp.Text = "TP"
+        d.tp.TextColor3 = Color3.new(1, 1, 1)
+        d.tp.BackgroundColor3 = Color3.fromRGB(200, 150, 30)
+        d.row.BackgroundColor3 = secCol
+        d.row.BackgroundTransparency = 0
+    end
+
+    -- Mark gone chests as offline
+    for name, d in pairs(chestData) do
+        if not found[name] then
+            d.alive = false
+            d.cf = nil
+            d.dot.BackgroundColor3 = offCol
+            d.nm.TextColor3 = offCol
+            d.nm.Text = name
+            d.tp.Text = "---"
+            d.tp.TextColor3 = offCol
+            d.tp.BackgroundColor3 = drkCol
+            d.row.BackgroundColor3 = drkCol
+            d.row.BackgroundTransparency = 0.3
+        end
+    end
+
+    -- Update chest count in divider
+    local cCount = 0
+    local cTotal = 0
+    for _, d in pairs(chestData) do
+        cTotal = cTotal + 1
+        if d.alive then cCount = cCount + 1 end
+    end
+    chestTitle.Text = "Chests (" .. cCount .. "/" .. cTotal .. " found)"
+end
+
+-- Combined scan
+local function scanAll()
+    scan()
+    scanChests()
+    -- Update total canvas
+    local totalRows = 0
+    for _ in pairs(rowData) do totalRows = totalRows + 1 end
+    for _ in pairs(chestData) do totalRows = totalRows + 1 end
+    totalRows = totalRows + 1 -- divider
+    scroll.CanvasSize = UDim2.new(0, 0, 0, totalRows * (ROW_H + 2) + 10)
 end
 
 -- Scan every 2 seconds
 task.spawn(function()
     while sg and sg.Parent do
-        pcall(scan)
+        pcall(scanAll)
         task.wait(2)
     end
 end)
