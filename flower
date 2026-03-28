@@ -1,9 +1,9 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║         BGSI ALL-IN-ONE  —  COMPLETE v2.3               ║
--- ║  St. Patrick Event + Coin Farmer + Bubbles + Auto + Pets ║
--- ║              + Staff Watch + Server Hop                  ║
+-- ║         BGSI ALL-IN-ONE  —  COMPLETE v2.7.0             ║
+-- ║  Easter Event Farmer + Coin Farmer + Bubbles + Auto     ║
+-- ║      Island Farmer: smooth tween (anti‑teleport fixed)  ║
+-- ║      Playtime claim: ClaimAllPlaytime                   ║
 -- ╚══════════════════════════════════════════════════════════╝
--- Updated: Fortune Egg auto hatch now uses exact CFrame and egg name "4X Luck Fortune Egg"
 
 local TweenService      = game:GetService("TweenService")
 local Players           = game:GetService("Players")
@@ -81,7 +81,7 @@ end
 if not EventHandler    then EventHandler    = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:FindFirstChild("RemoteEvent") end
 if not FunctionHandler then FunctionHandler = ReplicatedStorage:FindFirstChild("RemoteFunction") end
 
--- Direct path remote for egg hatching (used for Fortune Egg)
+-- Direct path remote for egg hatching (not used in Easter, kept for Pets tab)
 local RemoteEvent = ReplicatedStorage:WaitForChild("Shared")
     :WaitForChild("Framework"):WaitForChild("Network")
     :WaitForChild("Remote"):WaitForChild("RemoteEvent")
@@ -114,46 +114,74 @@ local autoHatchValue = false
 local selectedEgg    = eggs[1] or ""
 local autoGiftValue  = false
 
--- St. Patrick — Fortune Egg (updated with exact CFrame and egg name)
-local fortuneEnabled       = false
-local fortuneThread        = nil
-local fortuneTarget        = 0
-local fortuneBatchSize     = 3
-local fortuneOriginCF      = nil
-local FORTUNE_EGG_CF       = CFrame.new(
-    -795.336792, -119.186653, 2710.13794,
-    0.749856353, -3.66407619e-07, -0.661600649,
-    2.59595311e-07, 1, -2.59595282e-07,
-    0.661600649, 2.29107346e-08, 0.749856353
-)
+-- Easter Main Farmer
+local easterMainEnabled  = false
+local easterMainThread   = nil
+local easterMainOriginCF = nil
+local easterMainLockCF   = nil
+local easterMainLockConn = nil
+local easterCollected    = 0
 
--- St. Patrick — Coin Farmer
-local coinFarmEnabled  = false
-local coinFarmThread   = nil
-local coinsFarmed      = 0
-local coinFarmOriginCF = nil
-local coinLockCF       = nil   -- current snap target for coin farmer heartbeat
-local coinLockConn     = nil
+-- Easter Island Farmer (custom waypoint path, smooth tween)
+local easterIslandEnabled  = false
+local easterIslandThread   = nil
+local easterIslandOriginCF = nil
+local easterIslandPathCF   = nil
+local islandCollected      = 0
 
--- Genie Island — Gem/Coin Farmer
-local genieFarmEnabled  = false
-local genieFarmThread   = nil
-local genieCollected    = 0
-local genieFarmOriginCF = nil
-local GENIE_START_CF    = CFrame.new(
-    59.5629196, 15969.8564, 11.4287491,
-    -0.794635117, 0, -0.607087851,
-     0,           1,  0,
-     0.607087851, 0, -0.794635117
-)
-local genieLockCF       = nil   -- current snap target for genie farmer heartbeat
-local genieLockConn     = nil
+-- Easter Island collectible GUIDs (as part/model names)
+local EASTER_ISLAND_GUIDS = {
+    "6220fc3e-78d8-4e68-963d-91f6850145f1",
+    "7a140ef0-64fb-40e4-8a11-8dce1f1ec0b7",
+    "80b2af09-ae86-4a50-86e5-f585ca615caa",
+    "81fdb7c9-d7c6-4b7d-bff9-04c3c72be417",
+    "875380e9-f7ae-4c5d-b12f-8bcee517f01e",
+    "993c8c50-f53b-4959-844b-b65e8d9029b6",
+    "ba1404fe-8e43-409f-9dc3-e4d954318134",
+    "43130d1e-223d-4737-af2f-0f3429d43fe4",
+    "d71f3611-055a-4305-8e9c-c5af04529353",
+    "f4aed985-e77d-4321-aef0-d97e6783f052",
+    "eadaf4f5-8c0a-4696-9864-87c45b8d3b4d",
+    "f1b56c37-e39c-4d8c-bfc9-16315882c7f8",
+    "16baa292-0134-4ea9-a1c6-88a21719c152",
+    "4a1a7619-8d7a-460a-bf9c-df5c9563f982",
+}
 
--- Coin target meshname and parent folder info
-local COIN_MESH_NAME   = "Meshes/bgscoin16_Cylinder.006"
-local COIN_PARENT_ID   = "eebf2b5a-517c-4a9c-a70b-bfd12e4a3a89"  -- for reference
-local COIN_FOLDER_NAME = "Chunker"   -- folder inside Rendered
-local TWEEN_SPEED      = 0.15        -- seconds to tween to each coin
+-- Convert to a set for fast lookup
+local ISLAND_GUID_SET = {}
+for _, guid in ipairs(EASTER_ISLAND_GUIDS) do
+    ISLAND_GUID_SET[guid] = true
+end
+
+-- Easter Main collectible part names
+local EASTER_MAIN_NAMES = {
+    ["Meshes/bunny doggy egg"] = true,
+    ["Meshes/Crate4_Cube.005"] = true,
+    ["Meshes/bgscoin15_Cube.002"] = true,
+    ["Meshes/bgscoin16_Cylinder.006"] = true,
+    ["Meshes/Basket_Torus.027 (1)"] = true,
+    ["Meshes/Basket_Torus.028 (1)"] = true,
+    ["Egg Stack"] = true,
+}
+
+-- Custom waypoints for island farmer (exact order provided)
+local WAYPOINTS = {
+    CFrame.new(37.85, 13337.43, 3020.68),
+    CFrame.new(72.41, 13337.43, 3037.18),
+    CFrame.new(10.35, 13337.33, 3016.36),
+    CFrame.new(8.04, 13337.43, 3023.65),
+    CFrame.new(84.36, 13338.03, 3061.74),
+    CFrame.new(3.55, 13337.43, 3026.50),
+    CFrame.new(83.24, 13337.43, 3069.63),
+    CFrame.new(69.24, 13337.43, 3080.07),
+    CFrame.new(-11.34, 13337.43, 3038.74),
+    CFrame.new(-15.40, 13337.43, 3050.41),
+    CFrame.new(75.49, 13337.43, 3089.66),
+    CFrame.new(-19.63, 13337.43, 3057.03),
+    CFrame.new(67.72, 13337.43, 3103.04),
+    CFrame.new(-11.10, 13337.43, 3084.29),
+    CFrame.new(50.69, 13337.43, 3116.74),
+}
 
 -- ════════════════════════════════════════════════════════
 --  SERVER HOP
@@ -195,6 +223,11 @@ local function getRoot()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+local function getHumanoid()
+    local char = player.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
 local function saveOrigin()
     local root = getRoot()
     return root and root.CFrame or nil
@@ -205,25 +238,51 @@ local function teleportTo(cf)
     if root then root.CFrame = cf end
 end
 
-local function tweenTo(cf, t)
+-- Smooth tween with humanoid control and distance‑based duration
+local function tweenTo(targetCF, duration)
     local root = getRoot()
-    if not root then return end
-    local tw = TweenService:Create(root, TweenInfo.new(t or TWEEN_SPEED, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = cf})
-    tw:Play()
-    tw.Completed:Wait()
+    local hum = getHumanoid()
+    if not root or not hum then return false end
+
+    -- Store original settings
+    local originalWalkSpeed = hum.WalkSpeed
+    local originalAutoRotate = hum.AutoRotate
+    local originalPlatform = hum.PlatformStand
+
+    -- Disable humanoid movement
+    hum.WalkSpeed = 0
+    hum.AutoRotate = false
+    hum.PlatformStand = true
+    root.Anchored = false
+
+    -- If no duration given, compute based on distance (0.3s per 100 studs, min 0.2s)
+    if not duration then
+        local dist = (root.Position - targetCF.Position).Magnitude
+        duration = math.max(0.2, dist / 100 * 0.3)
+    end
+
+    local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCF})
+    tween:Play()
+    tween.Completed:Wait()
+
+    -- Restore settings
+    hum.WalkSpeed = originalWalkSpeed
+    hum.AutoRotate = originalAutoRotate
+    hum.PlatformStand = originalPlatform
+
+    return true
 end
 
 -- ════════════════════════════════════════════════════════
---  GLOBAL ANTI-TELEPORT SYSTEM
+--  GLOBAL ANTI-TELEPORT SYSTEM (with tolerance)
 -- ════════════════════════════════════════════════════════
 
 local FORBIDDEN_ZONE   = Vector3.new(-40.88, 2902.75, 0.68)
 local FORBIDDEN_RADIUS = 200
 
 local function getSnapTarget()
-    if coinFarmEnabled  and coinLockCF   then return coinLockCF   end
-    if genieFarmEnabled and genieLockCF  then return genieLockCF  end
-    if fortuneEnabled                    then return FORTUNE_EGG_CF end
+    if easterMainEnabled  and easterMainLockCF   then return easterMainLockCF   end
+    if easterIslandEnabled and easterIslandPathCF then return easterIslandPathCF end
     return nil
 end
 
@@ -235,13 +294,17 @@ local function snapBackIfForbidden()
     local root   = getRoot()
     local target = getSnapTarget()
     if not root or not target then return end
-    if isInForbiddenZone(root.Position) then
+
+    local dist = (root.Position - target.Position).Magnitude
+    -- Only snap if we're far away (>15 studs) AND in forbidden zone
+    -- This allows tweens to run without interruption
+    if isInForbiddenZone(root.Position) and dist > 15 then
         root.CFrame = target
     end
 end
 
 RunService.Heartbeat:Connect(function()
-    if not (coinFarmEnabled or genieFarmEnabled or fortuneEnabled) then return end
+    if not (easterMainEnabled or easterIslandEnabled) then return end
     snapBackIfForbidden()
 end)
 
@@ -252,7 +315,7 @@ local function hookRootChanged(char)
     local root = char and char:WaitForChild("HumanoidRootPart", 5)
     if not root then return end
     rootChangedConn = root:GetPropertyChangedSignal("CFrame"):Connect(function()
-        if not (coinFarmEnabled or genieFarmEnabled or fortuneEnabled) then return end
+        if not (easterMainEnabled or easterIslandEnabled) then return end
         task.defer(snapBackIfForbidden)
     end)
 end
@@ -277,63 +340,18 @@ end)
 task.spawn(function()
     while true do
         task.wait(0.1)
-        if coinFarmEnabled or genieFarmEnabled or fortuneEnabled then
+        if easterMainEnabled or easterIslandEnabled then
             snapBackIfForbidden()
         end
     end
 end)
 
 -- ════════════════════════════════════════════════════════
---  COIN / CLOVER FARMING — find collectibles anywhere under Rendered
+--  COLLECTIBLE SCANNERS
 -- ════════════════════════════════════════════════════════
 
--- St. Patrick collectibles — no elevation filter needed (ground level)
-local STPATRICK_NAMES = {
-    ["Meshes/bgscoin16_Cylinder.006"] = true,
-    ["Meshes/bgscoin16_Cylinder.008"] = true,
-    ["Meshes/Clovers_Cube.122"]       = true,
-    ["Meshes/Clovers_Cube.126"]       = true,
-    ["Clover"]                        = true,
-    ["Meshes/Clovers_Cube.158"]       = true,
-    ["Meshes/Pot_Icosphere.005"]      = true,
-    ["Meshes/Pot_Plane.149"]          = true,
-    ["Meshes/Pot_Plane.150"]          = true,
-    ["Meshes/Pot_Plane.151"]          = true,
-    ["Meshes/Pot_Plane.152"]          = true,
-    ["Meshes/Pot_Plane.153"]          = true,
-    ["Meshes/Pot_Plane.154"]          = true,
-    ["Meshes/Crate4_Cube.005"]        = true,
-    ["default"]                        = true,
-}
-
--- Names to SKIP when part is named "default" (decorative, not collectibles)
-local DEFAULT_SKIP_ANCESTORS = {
-    ["Lucky Trophy"] = true,
-    ["Lucky Token"]  = true,
-}
-
--- Genie Island collectibles — ONLY collected when Y > 10000
-local GENIE_NAMES = {
-    ["Meshes/Gem Chest2_Cube.001"]              = true,
-    ["Meshes/Gem Chest2_Circle.003"]            = true,
-    ["Meshes/Gem Box1_Circle.005"]              = true,
-    ["Meshes/Gem Box1_Cube.002"]                = true,
-    ["Meshes/bgscoin17_Cube.001"]               = true,
-    ["Meshes/bgscoin17_Cylinder.009"]           = true,
-    ["Meshes/Gem Safe2_Cylinder.006 (1)"]       = true,
-    ["Meshes/Gem Safe2_Circle.001"]             = true,
-    ["Meshes/no way this gem will look normal4"]= true,
-}
-
-local GENIE_MIN_Y = 10000  -- Genie Island is at ~Y 15969
-
--- Model GUIDs to target (teleport to their pivot) — always Genie Island level
-local COLLECTIBLE_MODELS = {
-    ["a5c2b32c-8ae7-440f-b616-ba52a191a536"] = true,
-}
-
--- Returns a list of CFrames to visit
-local function getCoins()
+-- Main Easter collectibles (anywhere, no Y filter)
+local function getEasterMainItems()
     local found = {}
     local seen  = {}
     local searchRoot = workspace:FindFirstChild("Rendered") or workspace
@@ -342,31 +360,11 @@ local function getCoins()
         local cf = nil
 
         if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and not seen[obj] then
-            if STPATRICK_NAMES[obj.Name] then
-                -- Skip "default" parts under Lucky Trophy or Lucky Token
-                local skipDefault = false
-                if obj.Name == "default" then
-                    local anc = obj.Parent
-                    while anc and anc ~= workspace do
-                        if DEFAULT_SKIP_ANCESTORS[anc.Name] then
-                            skipDefault = true
-                            break
-                        end
-                        anc = anc.Parent
-                    end
-                end
-                if not skipDefault then
-                    -- St. Patrick — collect at any elevation
-                    seen[obj] = true
-                    cf = obj.CFrame
-                end
-            elseif GENIE_NAMES[obj.Name] and obj.Position.Y > GENIE_MIN_Y then
-                -- Genie Island — only collect at island elevation
+            if EASTER_MAIN_NAMES[obj.Name] then
                 seen[obj] = true
                 cf = obj.CFrame
             end
-
-        elseif obj:IsA("Model") and COLLECTIBLE_MODELS[obj.Name] and not seen[obj] then
+        elseif obj:IsA("Model") and EASTER_MAIN_NAMES[obj.Name] and not seen[obj] then
             seen[obj] = true
             if obj.PrimaryPart then
                 cf = obj.PrimaryPart.CFrame
@@ -388,7 +386,45 @@ local function getCoins()
     return found
 end
 
--- Debug: prints every unique BasePart/MeshPart and Model name under Rendered to console (F9)
+-- Easter Island collectibles: ANY object (Part/Model) with name matching any GUID, and Y > 10000
+local function getEasterIslandItems()
+    local found = {}
+    local seen  = {}
+    local searchRoot = workspace
+
+    for _, obj in ipairs(searchRoot:GetDescendants()) do
+        if not seen[obj] and (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("Model")) then
+            if ISLAND_GUID_SET[obj.Name] then
+                seen[obj] = true
+                local cf = nil
+                if obj:IsA("BasePart") then
+                    cf = obj.CFrame
+                elseif obj:IsA("Model") then
+                    if obj.PrimaryPart then
+                        cf = obj.PrimaryPart.CFrame
+                    else
+                        local ok, pivot = pcall(function() return obj:GetPivot() end)
+                        if ok and pivot then
+                            cf = pivot
+                        else
+                            for _, child in ipairs(obj:GetDescendants()) do
+                                if child:IsA("BasePart") then cf = child.CFrame; break end
+                            end
+                        end
+                    end
+                end
+
+                if cf and cf.Y > 10000 then
+                    table.insert(found, cf)
+                end
+            end
+        end
+    end
+
+    return found
+end
+
+-- Debug function – prints all part/model names under Rendered (for Main farmer)
 local function debugDumpNames()
     local searchRoot = workspace:FindFirstChild("Rendered") or workspace
     local partCounts  = {}
@@ -400,11 +436,11 @@ local function debugDumpNames()
             modelCounts[obj.Name] = (modelCounts[obj.Name] or 0) + 1
         end
     end
-    print("=== BGSI Parts ===")
+    print("=== BGSI Easter Parts ===")
     for name, count in pairs(partCounts) do
         print(string.format("  [%dx]  %q", count, name))
     end
-    print("=== BGSI Models ===")
+    print("=== BGSI Easter Models ===")
     for name, count in pairs(modelCounts) do
         print(string.format("  [%dx]  %q", count, name))
     end
@@ -423,7 +459,8 @@ local textGrey     = Color3.fromRGB(180, 180, 190)
 local darkGrey     = Color3.fromRGB(30, 30, 35)
 local greenAccent  = Color3.fromRGB(34, 180, 80)
 local goldAccent   = Color3.fromRGB(220, 170, 40)
-local shamrockGreen= Color3.fromRGB(22, 160, 60)
+local easterPink   = Color3.fromRGB(255, 140, 180)
+local islandPurple = Color3.fromRGB(160, 120, 255)
 
 -- ════════════════════════════════════════════════════════
 --  SCREEN GUI + MAIN FRAME
@@ -457,8 +494,7 @@ main.Active           = true
 main.Parent           = sg
 mkCorner(main, 10)
 
--- ── Header ───────────────────────────────────────────────
-
+-- Header
 local header = Instance.new("Frame")
 header.Size             = UDim2.new(1, 0, 0, 40)
 header.BackgroundColor3 = headerColor
@@ -480,7 +516,7 @@ titleLbl.Parent             = header
 local versionTag = Instance.new("TextLabel")
 versionTag.Size             = UDim2.new(0, 35, 0, 14)
 versionTag.Position         = UDim2.new(0, 10, 0, 24)
-versionTag.Text             = "v2.3"
+versionTag.Text             = "v2.7.0"
 versionTag.Font             = Enum.Font.GothamBold
 versionTag.TextSize         = 9
 versionTag.TextColor3       = Color3.fromRGB(140,140,150)
@@ -571,7 +607,7 @@ closeBtn.BorderSizePixel  = 0
 closeBtn.Parent           = header
 mkCorner(closeBtn, 4)
 
--- Drag — supports both mouse and touch
+-- Drag
 local dragging, dragStart, startPos
 
 local function onDragBegan(i)
@@ -612,7 +648,7 @@ UserInputService.InputEnded:Connect(onDragEnded)
 --  TAB BAR
 -- ════════════════════════════════════════════════════════
 
-local TAB_NAMES = {"🍀 Event","Bubbles","Automation","Pets"}
+local TAB_NAMES = {"🐣 Easter Event","Bubbles","Automation","Pets"}
 local tabBtns   = {}
 local tabPages  = {}
 
@@ -825,248 +861,67 @@ local function mkDivider(parent, yOff)
 end
 
 -- ════════════════════════════════════════════════════════
---  🍀 ST. PATRICK EVENT TAB
+--  🐣 EASTER EVENT TAB
 -- ════════════════════════════════════════════════════════
 
-local eventPage = tabPages["🍀 Event"]
+local eventPage = tabPages["🐣 Easter Event"]
 local eY = 5
 
--- ── Fortune Egg Hatcher ─────────────────────────
+-- ── Easter Main Farmer (Eggs & Coins) ────────────────────
 
-local fortuneSec = mkSection(eventPage, eY, 232, "🥚 4X Luck Fortune Egg Auto Hatcher")
-eY = eY + 238
+local easterMainSec = mkSection(eventPage, eY, 208, "🥚 Easter Egg & Coin Farmer")
+eY = eY + 214
 
-mkLabel(fortuneSec, 28, "Egg: 4X Luck Fortune Egg  |  Teleports back on stop ✓", Color3.fromRGB(100,220,100), 10)
+mkLabel(easterMainSec, 28, "Collects Easter eggs, baskets, and coins.\nTeleports directly to each item.", easterPink, 10)
+mkLabel(easterMainSec, 68, "Snaps to each collectible — resistant to\nteleportation away ✓", Color3.fromRGB(100,220,100), 10)
 
-mkLabel(fortuneSec, 50, "Eggs per fire (1–10):", textGrey, 10)
-local batchInput = mkInput(fortuneSec, 68, "e.g. 3")
-batchInput.Text = "3"
+local easterMainStatusLbl = mkLabel(easterMainSec, 110, "⏸ Idle", textGrey, 10)
+local easterMainCountLbl  = mkLabel(easterMainSec, 128, "Collected: 0", textGrey, 10)
 
-mkLabel(fortuneSec, 100, "Total to hatch (0 = unlimited):", textGrey, 10)
-local targetInput = mkInput(fortuneSec, 118, "e.g. 100  |  0 = ∞")
-targetInput.Text = "0"
+local easterMainBtn = mkButton(easterMainSec, 140, 28, "▶  START EASTER FARM", easterPink)
+easterMainBtn.TextColor3 = Color3.fromRGB(30,20,0)
 
-local fortuneStatusLbl = mkLabel(fortuneSec, 152, "⏸ Idle", Color3.fromRGB(150,150,160), 10)
-local fortuneCountLbl  = mkLabel(fortuneSec, 170, "Session hatches: 0  |  Attempts: 0", Color3.fromRGB(150,150,160), 10)
-
-local fortuneBtn = mkButton(fortuneSec, 192, 28, "▶  START FORTUNE HATCH", shamrockGreen)
-
-local function getRealHatchCount()
-    local leaderstats = player:FindFirstChild("leaderstats")
-    if leaderstats then
-        local hatches = leaderstats:FindFirstChild("Hatches")
-            or leaderstats:FindFirstChild("Eggs Hatched")
-            or leaderstats:FindFirstChild("EggsHatched")
-            or leaderstats:FindFirstChild("Total Hatches")
-        if hatches and hatches.Value then
-            return hatches.Value
-        end
-    end
-    pcall(function()
-        if localData and localData.Get then
-            local d = localData:Get()
-            if d then
-                if d.Stats and d.Stats.EggsHatched then return d.Stats.EggsHatched end
-                if d.EggsHatched                   then return d.EggsHatched end
-                if d.Hatches                       then return d.Hatches end
-                if d.Stats and d.Stats.Hatches     then return d.Stats.Hatches end
-            end
-        end
-    end)
-    for _, v in ipairs(player:GetDescendants()) do
-        local n = v.Name:lower()
-        if (v:IsA("IntValue") or v:IsA("NumberValue")) and
-           (n:find("hatch") or n:find("egg")) then
-            return v.Value
-        end
-    end
-    return nil
-end
-
-local fortuneHatchSnapshot = 0
-local fortuneAttempts      = 0
-local fortuneLockConn      = nil
-
-local function stopFortuneLock()
-    fortuneEnabled = false
-    if fortuneLockConn then
-        fortuneLockConn:Disconnect()
-        fortuneLockConn = nil
-    end
-    pcall(function()
-        local char = player.Character
-        if char then
-            local hum  = char:FindFirstChildOfClass("Humanoid")
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if hum  then hum.WalkSpeed = 16; hum.JumpPower = 50; hum.AutoRotate = true end
-            if root then root.Anchored = false end
-        end
-    end)
-end
-
-local function fortuneLoop()
-    fortuneAttempts = 0
-    fortuneHatchSnapshot = getRealHatchCount() or 0
-
-    local function getSessionHatches()
-        local cur = getRealHatchCount()
-        if cur then
-            return math.max(0, cur - fortuneHatchSnapshot)
-        end
-        return nil
-    end
-
-    local function updateCounter()
-        local real = getSessionHatches()
-        if real then
-            fortuneCountLbl.Text      = ("Session hatches: %d  |  Attempts: %d"):format(real, fortuneAttempts)
-            fortuneCountLbl.TextColor3 = greenAccent
-        else
-            fortuneCountLbl.Text      = ("Attempts: %d  (leaderboard unreadable)"):format(fortuneAttempts)
-            fortuneCountLbl.TextColor3 = Color3.fromRGB(200,200,100)
-        end
-    end
-
-    fortuneLockConn = RunService.Heartbeat:Connect(function()
-        if not fortuneEnabled then return end
-        local root = getRoot()
-        if root and (root.Position - FORTUNE_EGG_CF.Position).Magnitude > 10 then
-            root.CFrame = FORTUNE_EGG_CF
-            fortuneStatusLbl.Text       = "⚠️ Out of range — snapping back..."
-            fortuneStatusLbl.TextColor3 = Color3.fromRGB(255,200,50)
-        end
-    end)
-
-    while fortuneEnabled and sg.Parent do
-        local batch = math.clamp(math.floor(tonumber(batchInput.Text) or 3), 1, 10)
-
-        pcall(function()
-            local root = getRoot()
-            if root then root.CFrame = FORTUNE_EGG_CF end
-        end)
-        task.wait(0.05)
-
-        pcall(function()
-            RemoteEvent:FireServer("HatchEgg", "4X Luck Fortune Egg", batch)
-        end)
-
-        fortuneAttempts = fortuneAttempts + batch
-        updateCounter()
-        fortuneStatusLbl.Text       = "🔄 Hatching..."
-        fortuneStatusLbl.TextColor3 = greenAccent
-
-        local sessionReal = getSessionHatches()
-        local checkVal    = sessionReal or fortuneAttempts
-        if fortuneTarget > 0 and checkVal >= fortuneTarget then
-            fortuneEnabled = false
-            fortuneLockConn:Disconnect()
-            if fortuneOriginCF then
-                pcall(function() teleportTo(fortuneOriginCF) end)
-            end
-            local finalReal = getSessionHatches()
-            fortuneStatusLbl.Text       = ("✅ Done! %d hatched — returned"):format(finalReal or fortuneAttempts)
-            fortuneStatusLbl.TextColor3 = goldAccent
-            fortuneBtn.Text             = "▶  START FORTUNE HATCH"
-            fortuneBtn.BackgroundColor3 = shamrockGreen
-            break
-        end
-
-        task.wait(0.08)
-    end
-
-    fortuneLockConn:Disconnect()
-    if not fortuneEnabled and fortuneOriginCF then
-        pcall(function() teleportTo(fortuneOriginCF) end)
-        fortuneStatusLbl.Text       = "⏸ Stopped — returned to origin"
-        fortuneStatusLbl.TextColor3 = textGrey
-    end
-end
-
-fortuneBtn.MouseButton1Click:Connect(function()
-    fortuneEnabled = not fortuneEnabled
-    if fortuneEnabled then
-        fortuneOriginCF  = saveOrigin()
-        fortuneTarget    = math.max(0, math.floor(tonumber(targetInput.Text) or 0))
-        fortuneBatchSize = math.clamp(math.floor(tonumber(batchInput.Text) or 3), 1, 10)
-        fortuneBtn.Text             = "⏹  STOP"
-        fortuneBtn.BackgroundColor3 = Color3.fromRGB(200,80,80)
-        fortuneStatusLbl.Text      = "▶ Starting..."
-        fortuneStatusLbl.TextColor3 = greenAccent
-        if fortuneThread then task.cancel(fortuneThread) end
-        fortuneThread = task.spawn(fortuneLoop)
-    else
-        fortuneBtn.Text             = "▶  START FORTUNE HATCH"
-        fortuneBtn.BackgroundColor3 = shamrockGreen
-        stopFortuneLock()
-        if fortuneThread then task.cancel(fortuneThread); fortuneThread = nil end
-        if fortuneOriginCF then
-            pcall(function() teleportTo(fortuneOriginCF) end)
-        end
-        fortuneStatusLbl.Text      = "⏸ Stopped — returned to origin"
-        fortuneStatusLbl.TextColor3 = textGrey
-    end
-end)
-
--- ── Coin Farmer ───────────────────────────────────────────
-
-local coinSec = mkSection(eventPage, eY, 210, "🪙 St. Patrick Coin Farmer")
-eY = eY + 216
-
-mkLabel(coinSec, 28,
-    "Tweens to coins + clovers inside\nChunker > Rendered. Returns on stop.",
-    Color3.fromRGB(220,170,40), 10)
-
-mkLabel(coinSec, 66,
-    "Snaps directly to each coin — resistant\nto accidental teleports away ✓",
-    Color3.fromRGB(100,220,100), 10)
-
-local coinStatusLbl = mkLabel(coinSec, 118, "⏸ Idle", Color3.fromRGB(150,150,160), 10)
-local coinCountLbl  = mkLabel(coinSec, 136, "Collected: 0", Color3.fromRGB(150,150,160), 10)
-
-local coinFarmBtn = mkButton(coinSec, 140, 28, "▶  START COIN FARM", goldAccent)
-coinFarmBtn.TextColor3 = Color3.fromRGB(30,20,0)
-
-local debugBtn = mkButton(coinSec, 174, 22, "🔍 Debug: Print Part Names to Console", accentGrey)
+local debugBtn = mkButton(easterMainSec, 174, 22, "🔍 Debug: Print Part Names to Console", accentGrey)
 debugBtn.TextSize = 9
 debugBtn.MouseButton1Click:Connect(function()
     debugBtn.Text = "⏳ Scanning..."
     task.spawn(function()
         debugDumpNames()
-        local n = #getCoins()
+        local n = #getEasterMainItems()
         debugBtn.Text = ("✅ Done — found %d matching parts (check F9)"):format(n)
         task.wait(4)
         debugBtn.Text = "🔍 Debug: Print Part Names to Console"
     end)
 end)
 
-local function startCoinLock()
-    if coinLockConn then coinLockConn:Disconnect() end
-    coinLockConn = RunService.Heartbeat:Connect(function()
-        if not coinFarmEnabled then
-            coinLockConn:Disconnect()
-            coinLockConn = nil
-            coinLockCF   = nil
+local function startEasterMainLock()
+    if easterMainLockConn then easterMainLockConn:Disconnect() end
+    easterMainLockConn = RunService.Heartbeat:Connect(function()
+        if not easterMainEnabled then
+            easterMainLockConn:Disconnect()
+            easterMainLockConn = nil
+            easterMainLockCF   = nil
             return
         end
-        if coinLockCF then
+        if easterMainLockCF then
             local root = getRoot()
             if root then
-                local dist = (root.Position - coinLockCF.Position).Magnitude
+                local dist = (root.Position - easterMainLockCF.Position).Magnitude
                 if dist > 5 then
-                    root.CFrame = coinLockCF
-                    coinStatusLbl.Text       = "⚠️ Out of range — snapping back..."
-                    coinStatusLbl.TextColor3 = Color3.fromRGB(255,200,50)
+                    root.CFrame = easterMainLockCF
+                    easterMainStatusLbl.Text       = "⚠️ Out of range — snapping back..."
+                    easterMainStatusLbl.TextColor3 = Color3.fromRGB(255,200,50)
                 end
             end
         end
     end)
 end
 
-local function stopCoinLock()
-    coinLockCF = nil
-    if coinLockConn then
-        coinLockConn:Disconnect()
-        coinLockConn = nil
+local function stopEasterMainLock()
+    easterMainLockCF = nil
+    if easterMainLockConn then
+        easterMainLockConn:Disconnect()
+        easterMainLockConn = nil
     end
     pcall(function()
         local char = player.Character
@@ -1085,32 +940,32 @@ local function stopCoinLock()
     end)
 end
 
-local function coinFarmLoop()
-    coinsFarmed = 0
-    startCoinLock()
+local function easterMainLoop()
+    easterCollected = 0
+    startEasterMainLock()
 
-    while coinFarmEnabled and sg.Parent do
-        local coins = getCoins()
+    while easterMainEnabled and sg.Parent do
+        local items = getEasterMainItems()
 
-        if #coins == 0 then
-            coinStatusLbl.Text       = "🔍 Scanning for collectibles..."
-            coinStatusLbl.TextColor3 = Color3.fromRGB(200,200,100)
+        if #items == 0 then
+            easterMainStatusLbl.Text       = "🔍 Scanning for Easter items..."
+            easterMainStatusLbl.TextColor3 = Color3.fromRGB(200,200,100)
             task.wait(0.8)
         else
-            coinStatusLbl.Text       = ("🍀 Farming %d collectibles..."):format(#coins)
-            coinStatusLbl.TextColor3 = goldAccent
+            easterMainStatusLbl.Text       = ("🐣 Farming %d items..."):format(#items)
+            easterMainStatusLbl.TextColor3 = easterPink
 
-            for _, cf in ipairs(coins) do
-                if not coinFarmEnabled then break end
-                coinLockCF = cf
+            for _, cf in ipairs(items) do
+                if not easterMainEnabled then break end
+                easterMainLockCF = cf
 
                 pcall(function()
                     local root = getRoot()
                     if root then root.CFrame = cf end
                 end)
 
-                coinsFarmed = coinsFarmed + 1
-                coinCountLbl.Text = ("Collected: %d"):format(coinsFarmed)
+                easterCollected = easterCollected + 1
+                easterMainCountLbl.Text = ("Collected: %d"):format(easterCollected)
 
                 task.wait(0.07)
             end
@@ -1119,157 +974,138 @@ local function coinFarmLoop()
         end
     end
 
-    stopCoinLock()
+    stopEasterMainLock()
 end
 
-coinFarmBtn.MouseButton1Click:Connect(function()
-    coinFarmEnabled = not coinFarmEnabled
-    if coinFarmEnabled then
-        coinFarmOriginCF = saveOrigin()
-        coinFarmBtn.Text             = "⏹  STOP COIN FARM"
-        coinFarmBtn.BackgroundColor3 = Color3.fromRGB(180,80,40)
-        coinFarmBtn.TextColor3       = Color3.new(1,1,1)
-        coinStatusLbl.Text           = "▶ Starting..."
-        coinStatusLbl.TextColor3     = goldAccent
-        if coinFarmThread then task.cancel(coinFarmThread) end
-        coinFarmThread = task.spawn(coinFarmLoop)
+easterMainBtn.MouseButton1Click:Connect(function()
+    easterMainEnabled = not easterMainEnabled
+    if easterMainEnabled then
+        easterMainOriginCF = saveOrigin()
+        easterMainBtn.Text             = "⏹  STOP EASTER FARM"
+        easterMainBtn.BackgroundColor3 = Color3.fromRGB(180,80,80)
+        easterMainBtn.TextColor3       = Color3.new(1,1,1)
+        easterMainStatusLbl.Text           = "▶ Starting..."
+        easterMainStatusLbl.TextColor3     = easterPink
+        if easterMainThread then task.cancel(easterMainThread) end
+        easterMainThread = task.spawn(easterMainLoop)
     else
-        coinFarmEnabled               = false
-        coinFarmBtn.Text             = "▶  START COIN FARM"
-        coinFarmBtn.BackgroundColor3 = goldAccent
-        coinFarmBtn.TextColor3       = Color3.fromRGB(30,20,0)
-        stopCoinLock()
-        if coinFarmThread then task.cancel(coinFarmThread); coinFarmThread = nil end
-        if coinFarmOriginCF then
-            pcall(function() teleportTo(coinFarmOriginCF) end)
+        easterMainEnabled               = false
+        easterMainBtn.Text             = "▶  START EASTER FARM"
+        easterMainBtn.BackgroundColor3 = easterPink
+        easterMainBtn.TextColor3       = Color3.fromRGB(30,20,0)
+        stopEasterMainLock()
+        if easterMainThread then task.cancel(easterMainThread); easterMainThread = nil end
+        if easterMainOriginCF then
+            pcall(function() teleportTo(easterMainOriginCF) end)
         end
-        coinStatusLbl.Text      = "⏸ Stopped — returned to origin"
-        coinStatusLbl.TextColor3 = textGrey
+        easterMainStatusLbl.Text      = "⏸ Stopped — returned to origin"
+        easterMainStatusLbl.TextColor3 = textGrey
     end
 end)
 
--- ── Genie Island Gem / Coin Farmer ───────────────────────
+-- ── Easter Island Farmer (custom waypoint path, smooth tween) ─────────
 
-local genieSec = mkSection(eventPage, eY, 148, "💎 Genie Island Gem & Coin Farmer")
-eY = eY + 154
+local islandSec = mkSection(eventPage, eY, 190, "🏝️ Easter Island Roamer")
+eY = eY + 196
 
-mkLabel(genieSec, 28,
-    "Teleports to Genie Island & farms\ngems + coins. Returns on stop ✓",
-    Color3.fromRGB(160, 120, 255), 10)
+local guidCount = #EASTER_ISLAND_GUIDS
+mkLabel(islandSec, 28, string.format("Follows custom path covering central island.\n%d waypoints, %d GUID types (tween to collect).", #WAYPOINTS, guidCount), islandPurple, 10)
+mkLabel(islandSec, 68, "Smooth movement along the route, loops back to start.\nAuto-returns to path if knocked away.", Color3.fromRGB(100,220,100), 10)
 
-local genieStatusLbl = mkLabel(genieSec, 64, "⏸ Idle", Color3.fromRGB(150,150,160), 10)
-local genieCountLbl  = mkLabel(genieSec, 82, "Collected: 0", Color3.fromRGB(150,150,160), 10)
+local islandStatusLbl = mkLabel(islandSec, 106, "⏸ Idle", textGrey, 10)
+local islandCountLbl  = mkLabel(islandSec, 124, "Collected: 0", textGrey, 10)
 
-local genieFarmBtn = mkButton(genieSec, 100, 28, "▶  START GENIE FARM", Color3.fromRGB(130, 80, 220))
+local islandFarmBtn = mkButton(islandSec, 140, 28, "▶  START ISLAND ROAM", islandPurple)
 
-local function startGenieLock()
-    if genieLockConn then genieLockConn:Disconnect() end
-    genieLockConn = RunService.Heartbeat:Connect(function()
-        if not genieFarmEnabled then
-            genieLockConn:Disconnect(); genieLockConn = nil; genieLockCF = nil; return
-        end
-        if genieLockCF then
-            local root = getRoot()
-            if root and (root.Position - genieLockCF.Position).Magnitude > 5 then
-                root.CFrame = genieLockCF
-                genieStatusLbl.Text       = "⚠️ Out of range — snapping back..."
-                genieStatusLbl.TextColor3 = Color3.fromRGB(255,200,50)
+local currentWaypointIndex = 1
+
+-- Main roaming loop (tween between waypoints, and also tween to GUID items)
+local function startRoaming()
+    while easterIslandEnabled and sg.Parent do
+        -- Check for GUID collectibles and tween to them
+        local guidItems = getEasterIslandItems()
+        if #guidItems > 0 then
+            islandStatusLbl.Text = "✨ Collecting GUID items..."
+            for _, cf in ipairs(guidItems) do
+                if not easterIslandEnabled then break end
+                easterIslandPathCF = cf
+                tweenTo(cf, 0.15)  -- tween fast to the item
+                islandCollected = islandCollected + 1
+                islandCountLbl.Text = ("Collected: %d"):format(islandCollected)
+                task.wait(0.1)
             end
+            task.wait(0.2)
+            -- After collecting, resume waypoint path from current index
+            easterIslandPathCF = WAYPOINTS[currentWaypointIndex]
+            continue
         end
-    end)
-end
 
-local function stopGenieLock()
-    genieLockCF = nil
-    if genieLockConn then genieLockConn:Disconnect(); genieLockConn = nil end
-    pcall(function()
-        local char = player.Character
-        if char then
-            local hum  = char:FindFirstChildOfClass("Humanoid")
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if hum  then hum.WalkSpeed=16; hum.JumpPower=50; hum.AutoRotate=true end
-            if root then root.Anchored=false end
+        -- Follow the waypoint path
+        if not easterIslandEnabled then break end
+
+        local targetCF = WAYPOINTS[currentWaypointIndex]
+        easterIslandPathCF = targetCF
+
+        islandStatusLbl.Text = string.format("🏝️ Waypoint %d/%d", currentWaypointIndex, #WAYPOINTS)
+        tweenTo(targetCF)  -- distance‑based duration
+
+        -- Move to next waypoint, loop back to start at the end
+        currentWaypointIndex = currentWaypointIndex + 1
+        if currentWaypointIndex > #WAYPOINTS then
+            currentWaypointIndex = 1
         end
-    end)
-end
 
-local function genieFarmLoop()
-    genieCollected = 0
-    pcall(function()
-        local root = getRoot()
-        if root then root.CFrame = GENIE_START_CF end
-    end)
-    task.wait(0.3)
-    startGenieLock()
-
-    while genieFarmEnabled and sg.Parent do
-        local gems = getCoins()
-
-        if #gems == 0 then
-            genieStatusLbl.Text       = "🔍 Scanning for gems/coins..."
-            genieStatusLbl.TextColor3 = Color3.fromRGB(200,200,100)
-            task.wait(0.8)
-        else
-            genieStatusLbl.Text       = ("💎 Farming %d collectibles..."):format(#gems)
-            genieStatusLbl.TextColor3 = Color3.fromRGB(160,120,255)
-
-            for _, cf in ipairs(gems) do
-                if not genieFarmEnabled then break end
-                genieLockCF = cf
-                pcall(function()
-                    local root = getRoot()
-                    if root then root.CFrame = cf end
-                end)
-                genieCollected = genieCollected + 1
-                genieCountLbl.Text = ("Collected: %d"):format(genieCollected)
-                task.wait(0.07)
-            end
-
-            task.wait(0.4)
-        end
+        task.wait(0.05)  -- small pause between moves
     end
-
-    stopGenieLock()
 end
 
-genieFarmBtn.MouseButton1Click:Connect(function()
-    genieFarmEnabled = not genieFarmEnabled
-    if genieFarmEnabled then
-        genieFarmOriginCF            = saveOrigin()
-        genieFarmBtn.Text            = "⏹  STOP GENIE FARM"
-        genieFarmBtn.BackgroundColor3 = Color3.fromRGB(180,50,180)
-        genieStatusLbl.Text          = "▶ Teleporting to Genie Island..."
-        genieStatusLbl.TextColor3    = Color3.fromRGB(160,120,255)
-        if genieFarmThread then task.cancel(genieFarmThread) end
-        genieFarmThread = task.spawn(genieFarmLoop)
+local function startIslandRoam()
+    currentWaypointIndex = 1
+    islandCollected = 0
+    islandCountLbl.Text = "Collected: 0"
+    islandStatusLbl.Text = "🏝️ Starting waypoint path..."
+
+    -- Tween to first waypoint
+    local firstCF = WAYPOINTS[1]
+    easterIslandPathCF = firstCF
+    tweenTo(firstCF)
+
+    -- Start the roaming loop
+    startRoaming()
+end
+
+islandFarmBtn.MouseButton1Click:Connect(function()
+    easterIslandEnabled = not easterIslandEnabled
+    if easterIslandEnabled then
+        easterIslandOriginCF = saveOrigin()
+        islandFarmBtn.Text            = "⏹  STOP ISLAND ROAM"
+        islandFarmBtn.BackgroundColor3 = Color3.fromRGB(180,50,180)
+        islandStatusLbl.Text          = "▶ Moving to Easter Island..."
+        islandStatusLbl.TextColor3    = islandPurple
+        if easterIslandThread then task.cancel(easterIslandThread) end
+        easterIslandThread = task.spawn(startIslandRoam)
     else
-        genieFarmEnabled              = false
-        genieFarmBtn.Text             = "▶  START GENIE FARM"
-        genieFarmBtn.BackgroundColor3 = Color3.fromRGB(130,80,220)
-        stopGenieLock()
-        if genieFarmThread then task.cancel(genieFarmThread); genieFarmThread = nil end
-        if genieFarmOriginCF then
-            pcall(function() teleportTo(genieFarmOriginCF) end)
+        easterIslandEnabled              = false
+        islandFarmBtn.Text             = "▶  START ISLAND ROAM"
+        islandFarmBtn.BackgroundColor3 = islandPurple
+        if easterIslandThread then task.cancel(easterIslandThread); easterIslandThread = nil end
+        if easterIslandOriginCF then
+            pcall(function() teleportTo(easterIslandOriginCF) end)
         end
-        genieStatusLbl.Text      = "⏸ Stopped — returned to origin"
-        genieStatusLbl.TextColor3 = textGrey
+        islandStatusLbl.Text      = "⏸ Stopped — returned to origin"
+        islandStatusLbl.TextColor3 = textGrey
     end
 end)
 
 eventPage.CanvasSize = UDim2.new(0,0,0,eY+10)
 
--- ── Wire close button now that all stop functions exist ──
+-- ── Close button now stops all Easter farmers ───────────
 closeBtn.MouseButton1Click:Connect(function()
-    coinFarmEnabled  = false
-    genieFarmEnabled = false
-    fortuneEnabled   = false
-    staffWatchEnabled = false
-    pcall(stopCoinLock)
-    pcall(stopGenieLock)
-    pcall(stopFortuneLock)
-    if coinFarmThread   then task.cancel(coinFarmThread);   coinFarmThread   = nil end
-    if genieFarmThread  then task.cancel(genieFarmThread);  genieFarmThread  = nil end
-    if fortuneThread    then task.cancel(fortuneThread);    fortuneThread    = nil end
+    easterMainEnabled   = false
+    easterIslandEnabled = false
+    pcall(stopEasterMainLock)
+    if easterMainThread   then task.cancel(easterMainThread);   easterMainThread   = nil end
+    if easterIslandThread then task.cancel(easterIslandThread); easterIslandThread = nil end
     if staffWatchThread then task.cancel(staffWatchThread); staffWatchThread = nil end
     if rootChangedConn  then rootChangedConn:Disconnect();  rootChangedConn  = nil end
     sg:Destroy()
@@ -1719,20 +1555,14 @@ task.spawn(function()
     end
 end)
 
--- Playtime
-local RemoteFunction = ReplicatedStorage:WaitForChild("Shared")
-    :WaitForChild("Framework"):WaitForChild("Network")
-    :WaitForChild("Remote"):WaitForChild("RemoteFunction")
-
+-- Playtime – using ClaimAllPlaytime
 task.spawn(function()
-    local playtimeIndex = 1
     while sg and sg.Parent do
         task.wait(3)
         pcall(function()
             if autoclaimplaytimeval then
-                RemoteFunction:InvokeServer("ClaimPlaytime", playtimeIndex)
-                playtimeIndex = playtimeIndex + 1
-                if playtimeIndex > 9 then playtimeIndex = 1 end
+                local args = { "ClaimAllPlaytime" }
+                RemoteEvent:FireServer(unpack(args))
             end
         end)
     end
