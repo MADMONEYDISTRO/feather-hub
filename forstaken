@@ -1,0 +1,178 @@
+--[[
+    FEATHER HUB | Forsaken
+    Full ESP, smooth drag, all Forsaken logic: player/killer/item/generator ESP,
+    infinite stamina, sprint speed, generator puzzle solver
+]]
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local TS = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+
+local isMobile = false
+pcall(function() isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled end)
+
+-- ═══ EMBEDDED ESP MODULE ═══
+local ESPIndicator = {}
+ESPIndicator.__index = ESPIndicator; ESPIndicator.Groups = {}; ESPIndicator.TargetIndex = {}
+ESPIndicator.Defaults = {AccentColor=Color3.new(1,1,0),HighlightFillTransparency=0.7,HighlightOutlineTransparency=0,HighlightDepthMode=Enum.HighlightDepthMode.AlwaysOnTop,ArrowShow=false,ArrowEdgePadding=50,ArrowMinDistance=0,ArrowSize=UDim2.new(0,30,0,30),ArrowImage="rbxassetid://97136202386756",ArrowShowDistanceText=true,ArrowDistanceFont=Enum.Font.Montserrat,ArrowDistanceTextSize=18,ShowLabel=false,LabelText="Target",LabelMaxDistance=99999,LabelOffset=Vector3.new(0,2,0),Parent=game:GetService("CoreGui")}
+function ESPIndicator.new(o) local s=setmetatable({},ESPIndicator); s.Settings={}; for k,v in pairs(ESPIndicator.Defaults) do s.Settings[k]=(o and o[k]~=nil) and o[k] or v end; local p=s.Settings.Parent or Player:WaitForChild("PlayerGui"); s.ScreenGui=Instance.new("ScreenGui"); s.ScreenGui.Name="ESPIndicators"; s.ScreenGui.IgnoreGuiInset=true; s.ScreenGui.ResetOnSpawn=false; s.ScreenGui.Parent=p; s.ArrowTemplate=Instance.new("ImageLabel"); s.ArrowTemplate.Name="ArrowTemplate"; s.ArrowTemplate.Size=s.Settings.ArrowSize; s.ArrowTemplate.AnchorPoint=Vector2.new(0.5,0.5); s.ArrowTemplate.BackgroundTransparency=1; s.ArrowTemplate.Image=s.Settings.ArrowImage; s.ArrowTemplate.ImageColor3=s.Settings.AccentColor; s.ArrowTemplate.Visible=false; s.ArrowTemplate.Parent=s.ScreenGui; s.Scaler=Instance.new("UIScale"); s.Scaler.Scale=0; s.Scaler.Parent=s.ArrowTemplate; s.Indicators={}; s._updateConn=RS.RenderStepped:Connect(function() s:_update() end); s._cleanupConn=RS.Heartbeat:Connect(function() s:_cleanupOrphanedArrows(); s:_cleanupOrphanedHighlights(); s:_cleanupOrphanedLabels() end); return s end
+function ESPIndicator:AddGroup(n) local g=ESPIndicator.Groups[n]; if not g then g={enabled=true,properties={},targets={}}; ESPIndicator.Groups[n]=g end; return g end
+function ESPIndicator:RemoveGroup(n) local g=ESPIndicator.Groups[n]; if not g then return false end; for _,t in ipairs(g.targets) do local idx=ESPIndicator.TargetIndex[t]; if idx then for i,nm in ipairs(idx) do if nm==n then table.remove(idx,i); break end end; if #idx==0 then ESPIndicator.TargetIndex[t]=nil end end; if not ESPIndicator.TargetIndex[t] then self:Remove(t) end end; ESPIndicator.Groups[n]=nil; return true end
+function ESPIndicator:ClearAllGroups() for n in pairs(ESPIndicator.Groups) do self:RemoveGroup(n) end end
+function ESPIndicator:Add(target,opts) assert(target); opts=opts or{}; local hl=Instance.new("Highlight"); hl.Name="HL_"..HttpService:GenerateGUID(false); hl.Adornee=target; hl.FillTransparency=opts.HighlightFillTransparency or self.Settings.HighlightFillTransparency; hl.FillColor=opts.AccentColor or self.Settings.AccentColor; hl.OutlineColor=opts.AccentColor or self.Settings.AccentColor; hl.OutlineTransparency=opts.HighlightOutlineTransparency or self.Settings.HighlightOutlineTransparency; hl.DepthMode=opts.HighlightDepthMode or self.Settings.HighlightDepthMode; hl.Parent=self.ScreenGui; local arrow,scaler,distLabel; if opts.ArrowShow or self.Settings.ArrowShow then arrow=self.ArrowTemplate:Clone(); arrow.Name="Arrow_"..HttpService:GenerateGUID(false); arrow.ImageColor3=opts.AccentColor or self.Settings.AccentColor; arrow.Visible=true; arrow.Parent=self.ScreenGui; scaler=arrow:FindFirstChild("Scaler"); if opts.ArrowShowDistanceText or self.Settings.ArrowShowDistanceText then distLabel=Instance.new("TextLabel"); distLabel.Name="DistanceLabel"; distLabel.AnchorPoint=Vector2.new(0.5,0); distLabel.BackgroundTransparency=1; distLabel.Font=opts.ArrowDistanceFont or self.Settings.ArrowDistanceFont; distLabel.TextSize=opts.ArrowDistanceTextSize or self.Settings.ArrowDistanceTextSize; distLabel.TextColor3=opts.AccentColor or self.Settings.AccentColor; distLabel.Parent=arrow end end; local label; if opts.ShowLabel or self.Settings.ShowLabel then label=Instance.new("BillboardGui"); label.Name="Label_"..HttpService:GenerateGUID(false); label.AlwaysOnTop=true; label.MaxDistance=self.Settings.LabelMaxDistance; label.Size=UDim2.new(0,70,0,70); label.StudsOffset=self.Settings.LabelOffset; label.Adornee=target; label.Parent=self.ScreenGui; local tl=Instance.new("TextLabel"); tl.Size=UDim2.new(1,0,1,0); tl.AnchorPoint=Vector2.new(0.5,0.5); tl.Position=UDim2.new(0.5,0,0.5,0); tl.BackgroundTransparency=1; tl.Font=Enum.Font.SourceSansBold; tl.TextScaled=true; tl.TextColor3=opts.AccentColor or self.Settings.AccentColor; tl.Text=opts.LabelText or self.Settings.LabelText; tl.Parent=label; Instance.new("UIStroke",tl) end; self.Indicators[target]={Highlight=hl,Arrow=arrow,Scaler=scaler,DistanceLabel=distLabel,Label=label,Options=opts}; local gn=opts.GroupName; if gn then self:AddToGroup(target,gn) end end
+function ESPIndicator:Remove(t) local ind=self.Indicators[t]; if not ind then return end; if ind.Highlight then ind.Highlight.Adornee=nil; ind.Highlight:Destroy() end; if ind.Arrow then ind.Arrow:Destroy() end; if ind.Label then ind.Label:Destroy() end; local idx=ESPIndicator.TargetIndex[t]; if idx then for _,gn in ipairs(idx) do local g=ESPIndicator.Groups[gn]; if g then for i,tt in ipairs(g.targets) do if tt==t then table.remove(g.targets,i); break end end end end; ESPIndicator.TargetIndex[t]=nil end; self.Indicators[t]=nil end
+function ESPIndicator:AddToGroup(t,gn) local g=self:AddGroup(gn); if not table.find(g.targets,t) then table.insert(g.targets,t) end; local idx=ESPIndicator.TargetIndex[t]; if not idx then idx={}; ESPIndicator.TargetIndex[t]=idx end; if not table.find(idx,gn) then table.insert(idx,gn) end; if not g.enabled then local ind=self.Indicators[t]; if ind and ind.Highlight then ind.Highlight.Enabled=false end end; return true end
+function ESPIndicator:_cleanupOrphanedHighlights() local all={}; for _,ind in pairs(self.Indicators) do if ind.Highlight then table.insert(all,ind.Highlight) end end; for _,c in ipairs(self.ScreenGui:GetChildren()) do if c:IsA("Highlight") and not table.find(all,c) then c.Adornee=nil; c:Destroy() end end end
+function ESPIndicator:_cleanupOrphanedArrows() local all={}; for _,ind in pairs(self.Indicators) do if ind.Arrow then table.insert(all,ind.Arrow) end end; for _,c in ipairs(self.ScreenGui:GetChildren()) do if c:IsA("ImageLabel") and c.Name:match("^Arrow_") and not table.find(all,c) then c:Destroy() end end end
+function ESPIndicator:_cleanupOrphanedLabels() local all={}; for _,ind in pairs(self.Indicators) do if ind.Label then table.insert(all,ind.Label) end end; for _,c in ipairs(self.ScreenGui:GetChildren()) do if c:IsA("BillboardGui") and c.Name:match("^Label_") and not table.find(all,c) then c:Destroy() end end end
+function ESPIndicator:_update() local cam=workspace.CurrentCamera; local vp=cam.ViewportSize; local vpX,vpY=vp.X,vp.Y; for target,ind in pairs(self.Indicators) do local opts=ind.Options; local arrow=ind.Arrow; local scaler=ind.Scaler; if (not arrow or not scaler) and self.Settings.ArrowShow then self:Remove(target); continue end; if not arrow then continue end; local pos3; if target:IsA("Model") then pos3=(target.PrimaryPart and target.PrimaryPart.Position) or target:GetModelCFrame().p elseif target:IsA("BasePart") then pos3=target.Position else continue end; local sp,onS=cam:WorldToViewportPoint(pos3); local dist=(cam.CFrame.Position-pos3).Magnitude; local minD=opts.ArrowMinDistance or self.Settings.ArrowMinDistance; local pad=opts.ArrowEdgePadding or self.Settings.ArrowEdgePadding; if onS and dist>minD then TS:Create(scaler,TweenInfo.new(0.1),{Scale=0}):Play() else TS:Create(scaler,TweenInfo.new(0.1),{Scale=1}):Play(); local hW,hH=(vpX-pad*2)/2,(vpY-pad*2)/2; local oDir=pos3-cam.CFrame.Position; local oLoc=cam.CFrame:VectorToObjectSpace(oDir); local d2=Vector2.new(oLoc.X,oLoc.Y).Unit; local cX=math.clamp(sp.X,pad,vpX-pad); local cY=math.clamp(sp.Y,pad,vpY-pad); if cX==sp.X and cY==sp.Y and onS then TS:Create(scaler,TweenInfo.new(0.1),{Scale=0}):Play() else local ev; if math.abs(d2.Y)>hH/math.sqrt(hW^2+hH^2) then ev=d2*math.abs(hH/d2.Y) else ev=d2*math.abs(hW/d2.X) end; local ax=vpX/2+ev.X; local ay=vpY/2-ev.Y; local rot=math.atan2(d2.X,d2.Y); TS:Create(arrow,TweenInfo.new(0.1),{Position=UDim2.fromOffset(ax,ay),Rotation=math.deg(rot)}):Play() end; if ind.DistanceLabel then ind.DistanceLabel.Text=string.format("%dm",math.round(dist)); local off=(opts.ArrowSize and opts.ArrowSize.Y.Offset or self.Settings.ArrowSize.Y.Offset)+16; ind.DistanceLabel.Position=UDim2.new(0.5,0,0,off) end end end end
+function ESPIndicator:Destroy() if self._updateConn then self._updateConn:Disconnect() end; if self._cleanupConn then self._cleanupConn:Disconnect() end; self:ClearAllGroups(); for _,ind in pairs(self.Indicators) do if ind.Highlight then ind.Highlight:Destroy() end; if ind.Arrow then ind.Arrow:Destroy() end; if ind.Label then ind.Label:Destroy() end end; self.ScreenGui:Destroy(); self.Indicators={} end
+
+-- ═══ FEATHER HUB UI ═══
+local bgCol=Color3.fromRGB(14,14,16); local hdrCol=Color3.fromRGB(18,18,22); local cardCol=Color3.fromRGB(26,26,30); local borderCol=Color3.fromRGB(44,44,52); local txtCol=Color3.fromRGB(240,240,244); local mutedCol=Color3.fromRGB(100,100,115); local dimCol=Color3.fromRGB(32,32,38); local sepCol=Color3.fromRGB(36,36,44); local accent=Color3.fromRGB(200,170,40)
+local function tw(t,s,d) return TweenInfo.new(t or 0.2,s or Enum.EasingStyle.Quart,d or Enum.EasingDirection.Out) end
+local function mkC(p,r) Instance.new("UICorner",p).CornerRadius=UDim.new(0,r or 6) end
+
+local sg=Instance.new("ScreenGui"); sg.Name="FeatherForsaken"; sg.ResetOnSpawn=false; sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; sg.IgnoreGuiInset=true; sg.DisplayOrder=999; sg.Parent=Player:WaitForChild("PlayerGui")
+local WIN_W=isMobile and 340 or 380; local WIN_H=isMobile and 460 or 420; local HDR_H=44
+local win=Instance.new("Frame"); win.Size=UDim2.new(0,WIN_W,0,WIN_H); win.Position=UDim2.new(0.5,-math.floor(WIN_W/2),0.5,-math.floor(WIN_H/2)); win.BackgroundColor3=bgCol; win.BorderSizePixel=0; win.ClipsDescendants=true; win.Parent=sg; mkC(win,14); Instance.new("UIStroke",win).Color=borderCol
+local glow=Instance.new("ImageLabel"); glow.Size=UDim2.new(1,40,1,40); glow.Position=UDim2.new(0,-20,0,-20); glow.BackgroundTransparency=1; glow.Image="rbxassetid://1316045217"; glow.ImageColor3=Color3.fromRGB(160,140,40); glow.ImageTransparency=0.88; glow.ScaleType=Enum.ScaleType.Slice; glow.SliceCenter=Rect.new(10,10,118,118); glow.ZIndex=-1; glow.Parent=win
+
+-- Header
+local hdr=Instance.new("Frame"); hdr.Size=UDim2.new(1,0,0,HDR_H); hdr.BackgroundColor3=hdrCol; hdr.BorderSizePixel=0; hdr.ZIndex=3; hdr.Parent=win; mkC(hdr,14)
+Instance.new("Frame",hdr).Size=UDim2.new(1,0,0,14); hdr:GetChildren()[#hdr:GetChildren()].Position=UDim2.new(0,0,1,-14); hdr:GetChildren()[#hdr:GetChildren()].BackgroundColor3=hdrCol; hdr:GetChildren()[#hdr:GetChildren()].BorderSizePixel=0; hdr:GetChildren()[#hdr:GetChildren()].ZIndex=3
+Instance.new("Frame",hdr).Size=UDim2.new(1,-8,0,1); hdr:GetChildren()[#hdr:GetChildren()].Position=UDim2.new(0,4,1,-1); hdr:GetChildren()[#hdr:GetChildren()].BackgroundColor3=sepCol; hdr:GetChildren()[#hdr:GetChildren()].BorderSizePixel=0; hdr:GetChildren()[#hdr:GetChildren()].ZIndex=4
+local logoPill=Instance.new("Frame"); logoPill.Size=UDim2.new(0,28,0,28); logoPill.Position=UDim2.new(0,10,0.5,-14); logoPill.BackgroundColor3=accent; logoPill.BorderSizePixel=0; logoPill.ZIndex=5; logoPill.Parent=hdr; mkC(logoPill,7)
+Instance.new("TextLabel",logoPill).Size=UDim2.new(1,0,1,0); logoPill:GetChildren()[#logoPill:GetChildren()].Text="F"; logoPill:GetChildren()[#logoPill:GetChildren()].TextSize=14; logoPill:GetChildren()[#logoPill:GetChildren()].Font=Enum.Font.GothamBold; logoPill:GetChildren()[#logoPill:GetChildren()].TextColor3=Color3.new(1,1,1); logoPill:GetChildren()[#logoPill:GetChildren()].BackgroundTransparency=1; logoPill:GetChildren()[#logoPill:GetChildren()].ZIndex=6
+local hdrTitle=Instance.new("TextLabel"); hdrTitle.Size=UDim2.new(0,0,1,0); hdrTitle.AutomaticSize=Enum.AutomaticSize.X; hdrTitle.Position=UDim2.new(0,46,0,0); hdrTitle.Text="Feather Hub | Forsaken"; hdrTitle.Font=Enum.Font.GothamBold; hdrTitle.TextSize=isMobile and 12 or 11; hdrTitle.TextColor3=txtCol; hdrTitle.TextXAlignment=Enum.TextXAlignment.Left; hdrTitle.BackgroundTransparency=1; hdrTitle.ZIndex=5; hdrTitle.Parent=hdr
+
+local btnSize=isMobile and 32 or 26
+local minBtn=Instance.new("TextButton"); minBtn.Size=UDim2.new(0,btnSize,0,btnSize); minBtn.Position=UDim2.new(1,-(btnSize*2+14),0.5,-math.floor(btnSize/2)); minBtn.Text="-"; minBtn.Font=Enum.Font.GothamBold; minBtn.TextSize=isMobile and 20 or 16; minBtn.TextColor3=mutedCol; minBtn.BackgroundColor3=dimCol; minBtn.BorderSizePixel=0; minBtn.ZIndex=5; minBtn.Parent=hdr; mkC(minBtn,6)
+local isMin=false; minBtn.MouseButton1Click:Connect(function() isMin=not isMin; if isMin then TS:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,HDR_H)}):Play();minBtn.Text="+" else TS:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,WIN_H)}):Play();minBtn.Text="-" end end)
+local closeBtn=Instance.new("TextButton"); closeBtn.Size=UDim2.new(0,btnSize,0,btnSize); closeBtn.Position=UDim2.new(1,-(btnSize+6),0.5,-math.floor(btnSize/2)); closeBtn.Text="x"; closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=isMobile and 18 or 14; closeBtn.TextColor3=mutedCol; closeBtn.BackgroundColor3=dimCol; closeBtn.BorderSizePixel=0; closeBtn.ZIndex=5; closeBtn.Parent=hdr; mkC(closeBtn,6)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- Smooth drag
+local dragging,dragStart,startPos
+hdr.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true;dragStart=i.Position;startPos=win.Position end end)
+hdr.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
+UIS.InputChanged:Connect(function(i) if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then local d=i.Position-dragStart; TS:Create(win,TweenInfo.new(0.5,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)}):Play() end end)
+UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
+
+-- Content
+local content=Instance.new("ScrollingFrame"); content.Size=UDim2.new(1,-16,1,-(HDR_H+8)); content.Position=UDim2.new(0,8,0,HDR_H+4); content.BackgroundTransparency=1; content.ScrollBarThickness=3; content.ScrollBarImageColor3=accent; content.CanvasSize=UDim2.new(0,0,0,0); content.AutomaticCanvasSize=Enum.AutomaticSize.Y; content.BorderSizePixel=0; content.ZIndex=2; content.Parent=win
+Instance.new("UIListLayout",content).SortOrder=Enum.SortOrder.LayoutOrder; content:FindFirstChildOfClass("UIListLayout").Padding=UDim.new(0,6)
+Instance.new("UIPadding",content).PaddingTop=UDim.new(0,4); content:FindFirstChildOfClass("UIPadding").PaddingBottom=UDim.new(0,8)
+
+local orderCounter=0; local function nextOrder() orderCounter=orderCounter+1; return orderCounter end
+local function makeSection(p,l) local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,18); f.BackgroundTransparency=1; f.LayoutOrder=nextOrder(); f.Parent=p; local lb=Instance.new("TextLabel"); lb.Size=UDim2.new(1,0,1,0); lb.Text=string.upper(l); lb.Font=Enum.Font.GothamBold; lb.TextSize=8; lb.TextColor3=accent; lb.TextXAlignment=Enum.TextXAlignment.Left; lb.BackgroundTransparency=1; lb.Parent=f; local ln=Instance.new("Frame"); ln.Size=UDim2.new(0,26,0,2); ln.Position=UDim2.new(0,0,1,-2); ln.BackgroundColor3=accent; ln.BorderSizePixel=0; ln.Parent=f; mkC(ln,4) end
+local function makeToggle(p,label,default,cb) local rowH=isMobile and 46 or 38; local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,rowH); row.BackgroundColor3=cardCol; row.BorderSizePixel=0; row.LayoutOrder=nextOrder(); row.Parent=p; mkC(row,8); local state=default or false; Instance.new("TextLabel",row).Size=UDim2.new(1,-70,1,0); row:GetChildren()[#row:GetChildren()].Position=UDim2.new(0,12,0,0); row:GetChildren()[#row:GetChildren()].Text=label; row:GetChildren()[#row:GetChildren()].Font=Enum.Font.GothamSemibold; row:GetChildren()[#row:GetChildren()].TextSize=isMobile and 11 or 10; row:GetChildren()[#row:GetChildren()].TextColor3=txtCol; row:GetChildren()[#row:GetChildren()].TextXAlignment=Enum.TextXAlignment.Left; row:GetChildren()[#row:GetChildren()].BackgroundTransparency=1; local pill=Instance.new("Frame"); pill.Size=UDim2.new(0,40,0,20); pill.Position=UDim2.new(1,-50,0.5,-10); pill.BackgroundColor3=state and accent or dimCol; pill.BorderSizePixel=0; pill.Parent=row; mkC(pill,10); local knob=Instance.new("Frame"); knob.Size=UDim2.new(0,14,0,14); knob.Position=state and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7); knob.BackgroundColor3=state and Color3.new(1,1,1) or mutedCol; knob.BorderSizePixel=0; knob.Parent=pill; mkC(knob,7); local hit=Instance.new("TextButton"); hit.Size=UDim2.new(1,0,1,0); hit.BackgroundTransparency=1; hit.Text=""; hit.Parent=row; hit.MouseButton1Click:Connect(function() state=not state; TS:Create(pill,tw(0.15),{BackgroundColor3=state and accent or dimCol}):Play(); TS:Create(knob,tw(0.15),{Position=state and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7),BackgroundColor3=state and Color3.new(1,1,1) or mutedCol}):Play(); pcall(cb,state) end) end
+local function makeButton(p,label,cb) local rowH=isMobile and 40 or 34; local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1,0,0,rowH); btn.BackgroundColor3=accent; btn.Text=label; btn.Font=Enum.Font.GothamBold; btn.TextSize=isMobile and 12 or 10; btn.TextColor3=Color3.new(1,1,1); btn.BorderSizePixel=0; btn.LayoutOrder=nextOrder(); btn.Parent=p; mkC(btn,8); btn.MouseButton1Click:Connect(cb) end
+local function makeTextbox(p,label,placeholder,cb) local rowH=isMobile and 42 or 36; local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,rowH); row.BackgroundColor3=cardCol; row.BorderSizePixel=0; row.LayoutOrder=nextOrder(); row.Parent=p; mkC(row,8); Instance.new("TextLabel",row).Size=UDim2.new(0.45,0,1,0); row:GetChildren()[#row:GetChildren()].Position=UDim2.new(0,12,0,0); row:GetChildren()[#row:GetChildren()].Text=label; row:GetChildren()[#row:GetChildren()].Font=Enum.Font.GothamSemibold; row:GetChildren()[#row:GetChildren()].TextSize=isMobile and 10 or 9; row:GetChildren()[#row:GetChildren()].TextColor3=txtCol; row:GetChildren()[#row:GetChildren()].TextXAlignment=Enum.TextXAlignment.Left; row:GetChildren()[#row:GetChildren()].BackgroundTransparency=1; local box=Instance.new("TextBox"); box.Size=UDim2.new(0.5,-10,0,rowH-10); box.Position=UDim2.new(0.48,5,0.5,-(rowH-10)/2); box.BackgroundColor3=dimCol; box.Text=""; box.PlaceholderText=placeholder; box.Font=Enum.Font.GothamBold; box.TextSize=isMobile and 11 or 9; box.TextColor3=txtCol; box.PlaceholderColor3=mutedCol; box.ClearTextOnFocus=false; box.BorderSizePixel=0; box.Parent=row; mkC(box,5); box.FocusLost:Connect(function() pcall(cb,box.Text) end) end
+
+-- ═══ FORSAKEN GAME LOGIC ═══
+local espContainer = ESPIndicator.new({ArrowEdgePadding=50, ArrowShowDistanceText=true, Parent=Player:WaitForChild("PlayerGui")})
+local fsk = {players=false, items=false, generators=false, prioritizeMedkit=false, infiniteStamina=false, noCooldownSolve=false}
+local solveCD = false
+local conns = {}
+
+local function listen(parent, signal, callback) local c = signal:Connect(callback); table.insert(conns, c); return c end
+
+local function addPlayer(ch) espContainer:Add(ch, {AccentColor=Color3.new(0.149,1,0), ArrowShow=false, ShowLabel=false, GroupName="players"}) end
+local function addKiller(ch) espContainer:Add(ch, {AccentColor=Color3.new(1,0,0), ArrowShow=true, ArrowMinDistance=999999, ArrowSize=UDim2.new(0,40,0,40), LabelText="Killer", ShowLabel=true, GroupName="players"}) end
+local function addItem(i)
+    local cfg = {AccentColor=Color3.new(0.03,0.92,1), ArrowShow=false, ShowLabel=false, GroupName="items"}
+    if fsk.prioritizeMedkit and i.Name == "Medkit" then
+        cfg = {AccentColor=Color3.new(1,1,1), ArrowShow=true, ArrowMinDistance=999999, ArrowSize=UDim2.new(0,40,0,40), LabelText="Medkit", ShowLabel=true, GroupName="items"}
+    end
+    espContainer:Add(i, cfg)
+end
+local function addGenerator(g)
+    local progVal = g:FindFirstChild("Progress"); local progress = (progVal and progVal.Value) or 0
+    local done = progress >= 100
+    espContainer:Add(g, {AccentColor=done and Color3.new(0,0.5,0) or Color3.new(0.98,1,0), ArrowShow=not done, ArrowMinDistance=999999, ArrowSize=UDim2.new(0,20,0,20), ShowLabel=not done, LabelText=tostring(math.floor(progress)).."%", GroupName="generators"})
+    if progVal then progVal.Changed:Connect(function() espContainer:Remove(g); addGenerator(g) end) end
+end
+
+local function getClosestGenerator()
+    local ch = Player.Character; if not ch or not ch.PrimaryPart then return nil end
+    local root = ch.PrimaryPart; local closest, shortest = nil, math.huge
+    local map = workspace.Map:FindFirstChild("Ingame"); if not map then return nil end; map = map:FindFirstChild("Map"); if not map then return nil end
+    for _,obj in ipairs(map:GetChildren()) do if obj.Name=="Generator" and obj:IsA("Model") and obj.PrimaryPart then local d=(root.Position-obj.PrimaryPart.Position).Magnitude; if d<shortest then closest=obj; shortest=d end end end
+    return closest
+end
+
+local function setupAutoUpdate()
+    local s,k = workspace.Players:FindFirstChild("Survivors"), workspace.Players:FindFirstChild("Killers")
+    if s then listen(s,s.ChildAdded,function(c) if fsk.players then addPlayer(c) end end); listen(s,s.ChildRemoved,function(c) if fsk.players then espContainer:Remove(c) end end) end
+    if k then listen(k,k.ChildAdded,function(c) if fsk.players then addKiller(c) end end); listen(k,k.ChildRemoved,function(c) if fsk.players then espContainer:Remove(c) end end) end
+    local ingame = workspace.Map:FindFirstChild("Ingame")
+    if ingame then
+        listen(ingame,ingame.ChildAdded,function(c) if fsk.items and c.Name~="Map" then addItem(c) end end)
+        listen(ingame,ingame.ChildRemoved,function(c) if fsk.items and c.Name~="Map" then espContainer:Remove(c) end end)
+        local map = ingame:FindFirstChild("Map")
+        if map then listen(map,map.ChildAdded,function(c) if fsk.generators and c.Name=="Generator" then addGenerator(c) end end); listen(map,map.ChildRemoved,function(c) if fsk.generators and c.Name=="Generator" then espContainer:Remove(c) end end) end
+    end
+end
+
+-- Infinite stamina
+task.spawn(function()
+    pcall(function()
+        local sprintMod = require(game:GetService("ReplicatedStorage").Systems.Character.Game.Sprinting)
+        while task.wait(1) do if fsk.infiniteStamina then sprintMod.StaminaLossDisabled = true end end
+    end)
+end)
+
+-- ═══ BUILD UI ═══
+makeSection(content, "ESP Toggles")
+makeToggle(content, "Player / Killer ESP", false, function(v)
+    fsk.players = v
+    if v then
+        local surv = workspace.Players:FindFirstChild("Survivors"); if surv then for _,p in ipairs(surv:GetChildren()) do addPlayer(p) end end
+        local kill = workspace.Players:FindFirstChild("Killers"); if kill then local k = kill:GetChildren()[1]; if k then addKiller(k) end end
+    else espContainer:RemoveGroup("players") end
+end)
+makeToggle(content, "Item ESP", false, function(v)
+    fsk.items = v
+    if v then local ig = workspace.Map:FindFirstChild("Ingame"); if ig then for _,i in ipairs(ig:GetChildren()) do if i.Name~="Map" then addItem(i) end end end
+    else espContainer:RemoveGroup("items") end
+end)
+makeToggle(content, "Generator ESP", false, function(v)
+    fsk.generators = v
+    if v then local ig = workspace.Map:FindFirstChild("Ingame"); if ig then local m = ig:FindFirstChild("Map"); if m then for _,g in ipairs(m:GetChildren()) do if g.Name=="Generator" then addGenerator(g) end end end end
+    else espContainer:RemoveGroup("generators") end
+end)
+makeToggle(content, "Prioritize Medkit", false, function(v) fsk.prioritizeMedkit = v; espContainer:RemoveGroup("items"); if fsk.items then local ig=workspace.Map:FindFirstChild("Ingame"); if ig then for _,i in ipairs(ig:GetChildren()) do if i.Name~="Map" then addItem(i) end end end end end)
+
+makeSection(content, "Tools")
+makeButton(content, "Solve Closest Generator", function()
+    if solveCD then return end
+    solveCD = not fsk.noCooldownSolve
+    local g = getClosestGenerator()
+    if g then pcall(function() g.Remotes.RE:FireServer() end) end
+    task.spawn(function() task.wait(4); solveCD = false end)
+end)
+makeToggle(content, "No Solve Cooldown", false, function(v) fsk.noCooldownSolve = v end)
+
+makeSection(content, "Detectables")
+makeToggle(content, "Infinite Stamina", false, function(v)
+    fsk.infiniteStamina = v
+    if not v then pcall(function() require(game:GetService("ReplicatedStorage").Systems.Character.Game.Sprinting).StaminaLossDisabled = false end) end
+end)
+makeTextbox(content, "Sprint Speed", "26", function(text)
+    pcall(function() require(game:GetService("ReplicatedStorage").Systems.Character.Game.Sprinting).SprintSpeed = tonumber(text) or 26 end)
+end)
+makeTextbox(content, "Stamina Gain", "20", function(text)
+    pcall(function() require(game:GetService("ReplicatedStorage").Systems.Character.Game.Sprinting).StaminaGain = tonumber(text) or 20 end)
+end)
+
+setupAutoUpdate()
+
+-- Open animation
+win.Size=UDim2.new(0,0,0,0); win.BackgroundTransparency=1; TS:Create(win,tw(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,WIN_W,0,WIN_H),BackgroundTransparency=0}):Play()
+task.spawn(function() while sg and sg.Parent do TS:Create(glow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.82}):Play(); task.wait(2.4); TS:Create(glow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.92}):Play(); task.wait(2.4) end end)
+print("Feather Hub | Forsaken v1.0 loaded")
