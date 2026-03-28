@@ -1,562 +1,363 @@
---loadstring(game:HttpGet("https://pastebin.com/raw/ZBj9wEyy"))()
 --[[
-    Feather Hub  —  Item Duper
-    Mobile-Friendly + Touch Drag  v0.2
---]]
-
--- ══════════════════════════════════════════════════════════════
---  SERVICES
--- ══════════════════════════════════════════════════════════════
+    FEATHER HUB | Item Duper + Job Farm v1.0
+    Dupe equipped tools via market exploit
+    Auto construction job farm (wood placement loop)
+    Feather Hub dark theme, smooth tween drag, minimize, mobile-friendly
+]]
+if not game:IsLoaded() then game.Loaded:Wait() end
 
 local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
-local Players           = cloneref(game:GetService("Players"))
-local TweenService      = game:GetService("TweenService")
-local UserInputService  = game:GetService("UserInputService")
-local CoreGui           = game:GetService("CoreGui")
+local Players = cloneref(game:GetService("Players"))
+local TS = game:GetService("TweenService")
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
 
--- ══════════════════════════════════════════════════════════════
---  PLAYER REFS
--- ══════════════════════════════════════════════════════════════
-
-local Player    = Players.LocalPlayer
+local Player = Players.LocalPlayer
 local Character = Player.Character or Player.CharacterAdded:Wait()
-local Backpack  = Player:WaitForChild("Backpack")
-
--- ══════════════════════════════════════════════════════════════
---  DEVICE DETECTION
--- ══════════════════════════════════════════════════════════════
+local Backpack = Player:WaitForChild("Backpack")
 
 local isMobile = false
-pcall(function()
-    isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-end)
+pcall(function() isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled end)
 
--- ══════════════════════════════════════════════════════════════
---  RESPONSIVE SIZING
---  Mobile: wider window, bigger buttons, bigger text
--- ══════════════════════════════════════════════════════════════
+-- ═══ THEME ═══
+local bgCol = Color3.fromRGB(14,14,16)
+local hdrCol = Color3.fromRGB(18,18,22)
+local cardCol = Color3.fromRGB(26,26,30)
+local borderCol = Color3.fromRGB(44,44,52)
+local txtCol = Color3.fromRGB(240,240,244)
+local mutedCol = Color3.fromRGB(100,100,115)
+local dimCol = Color3.fromRGB(32,32,38)
+local sepCol = Color3.fromRGB(36,36,44)
+local accent = Color3.fromRGB(220,220,230)
+local green = Color3.fromRGB(52,211,153)
+local red = Color3.fromRGB(248,113,113)
+local yellow = Color3.fromRGB(251,191,36)
 
-local W         = isMobile and 360 or 320
-local H         = isMobile and 310 or 260
-local FONT_SM   = isMobile and 11  or 9
-local FONT_MD   = isMobile and 14  or 12
-local FONT_LG   = isMobile and 16  or 13
-local FONT_TAG  = isMobile and 10  or 8
-local BTN_H     = isMobile and 54  or 40   -- dupe button height
-local BAR_H     = isMobile and 50  or 38   -- top bar height
-local PAD       = isMobile and 14  or 12   -- body side padding
-local ROW_H_ST  = isMobile and 62  or 52   -- status card height
-local ROW_H_TL  = isMobile and 48  or 40   -- tool card height
-local ROW_H_PG  = isMobile and 40  or 32   -- ping card height
-local DUPE_Y    = isMobile and 166 or 150  -- dupe button Y in body
+local function tw(t,s,d) return TweenInfo.new(t or 0.2, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
+local function mkC(p,r) Instance.new("UICorner",p).CornerRadius=UDim.new(0,r or 6) end
 
--- ══════════════════════════════════════════════════════════════
---  THEME
--- ══════════════════════════════════════════════════════════════
-
-local C = {
-    bg      = Color3.fromRGB(10,  10,  13),
-    panel   = Color3.fromRGB(17,  17,  22),
-    bar     = Color3.fromRGB(22,  22,  28),
-    darker  = Color3.fromRGB(14,  14,  18),
-    accent  = Color3.fromRGB(220, 220, 230),
-    accentD = Color3.fromRGB(160, 160, 175),
-    accentG = Color3.fromRGB(100, 100, 115),
-    text    = Color3.fromRGB(225, 225, 235),
-    muted   = Color3.fromRGB(100, 100, 115),
-    dim     = Color3.fromRGB(28,  28,  35),
-    green   = Color3.fromRGB(52,  211, 153),
-    red     = Color3.fromRGB(248, 113, 113),
-    yellow  = Color3.fromRGB(251, 191,  36),
-    sep     = Color3.fromRGB(35,  35,  44),
-}
-
-local function ti(t, style, dir)
-    return TweenInfo.new(t or 0.2, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
-end
-
--- ══════════════════════════════════════════════════════════════
---  SCREEN GUI
--- ══════════════════════════════════════════════════════════════
-
+-- ═══ SCREEN GUI ═══
 local sg = Instance.new("ScreenGui")
-sg.Name           = "FeatherDuper"
-sg.ResetOnSpawn   = false
+sg.Name = "FeatherDuper"
+sg.ResetOnSpawn = false
 sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-sg.DisplayOrder   = 1001
-sg.IgnoreGuiInset = true   -- important on mobile — avoids top-bar offset
-
-local guiOk = pcall(function() sg.Parent = CoreGui end)
+sg.DisplayOrder = 1001
+sg.IgnoreGuiInset = true
+local guiOk = pcall(function() sg.Parent = game:GetService("CoreGui") end)
 if not guiOk then sg.Parent = Player:WaitForChild("PlayerGui") end
 
--- ══════════════════════════════════════════════════════════════
---  WINDOW
--- ══════════════════════════════════════════════════════════════
+local WIN_W = isMobile and 370 or 400
+local WIN_H = isMobile and 460 or 400
+local HDR_H = 44
+local TAB_H = 32
 
 local win = Instance.new("Frame")
-win.Name             = "DuperWin"
-win.Size             = UDim2.new(0, W, 0, H)
-win.Position         = UDim2.new(0.5, -W/2, 0.5, -H/2)
-win.BackgroundColor3 = C.bg
-win.BorderSizePixel  = 0
-win.Parent           = sg
-Instance.new("UICorner", win).CornerRadius = UDim.new(0, 10)
+win.Size = UDim2.new(0,WIN_W,0,WIN_H)
+win.Position = UDim2.new(0.5,-math.floor(WIN_W/2),0.5,-math.floor(WIN_H/2))
+win.BackgroundColor3 = bgCol
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.Parent = sg
+mkC(win,14)
+Instance.new("UIStroke",win).Color = borderCol
 
--- ── Top bar ────────────────────────────────────────────────
+local glow = Instance.new("ImageLabel")
+glow.Size=UDim2.new(1,40,1,40); glow.Position=UDim2.new(0,-20,0,-20); glow.BackgroundTransparency=1; glow.Image="rbxassetid://1316045217"; glow.ImageColor3=Color3.fromRGB(180,180,200); glow.ImageTransparency=0.90; glow.ScaleType=Enum.ScaleType.Slice; glow.SliceCenter=Rect.new(10,10,118,118); glow.ZIndex=-1; glow.Parent=win
 
-local topBar = Instance.new("Frame")
-topBar.Size             = UDim2.new(1, 0, 0, BAR_H)
-topBar.BackgroundColor3 = C.bar
-topBar.BorderSizePixel  = 0
-topBar.ZIndex           = 5
-topBar.Parent           = win
-Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 10)
+-- ═══ HEADER ═══
+local hdr = Instance.new("Frame"); hdr.Size=UDim2.new(1,0,0,HDR_H); hdr.BackgroundColor3=hdrCol; hdr.BorderSizePixel=0; hdr.ZIndex=3; hdr.Parent=win; mkC(hdr,14)
+local hdrBot=Instance.new("Frame"); hdrBot.Size=UDim2.new(1,0,0,14); hdrBot.Position=UDim2.new(0,0,1,-14); hdrBot.BackgroundColor3=hdrCol; hdrBot.BorderSizePixel=0; hdrBot.ZIndex=3; hdrBot.Parent=hdr
+local hdrLine=Instance.new("Frame"); hdrLine.Size=UDim2.new(1,-8,0,1); hdrLine.Position=UDim2.new(0,4,1,-1); hdrLine.BackgroundColor3=sepCol; hdrLine.BorderSizePixel=0; hdrLine.ZIndex=4; hdrLine.Parent=hdr
 
-local topCover = Instance.new("Frame")
-topCover.Size             = UDim2.new(1, 0, 0, 10)
-topCover.Position         = UDim2.new(0, 0, 1, -10)
-topCover.BackgroundColor3 = C.bar
-topCover.BorderSizePixel  = 0
-topCover.ZIndex           = 5
-topCover.Parent           = topBar
+-- Logo pill
+local logoPill=Instance.new("Frame"); logoPill.Size=UDim2.new(0,28,0,28); logoPill.Position=UDim2.new(0,10,0.5,-14); logoPill.BackgroundColor3=accent; logoPill.BorderSizePixel=0; logoPill.ZIndex=5; logoPill.Parent=hdr; mkC(logoPill,7)
+local logoF=Instance.new("TextLabel"); logoF.Size=UDim2.new(1,0,1,0); logoF.Text="F"; logoF.TextSize=14; logoF.Font=Enum.Font.GothamBold; logoF.TextColor3=bgCol; logoF.BackgroundTransparency=1; logoF.ZIndex=6; logoF.Parent=logoPill
 
--- drag handle hint (mobile: show three dots)
-if isMobile then
-    local grip = Instance.new("TextLabel")
-    grip.Size               = UDim2.new(0, 40, 1, 0)
-    grip.Position           = UDim2.new(0.5, -20, 0, 0)
-    grip.Text               = "· · ·"
-    grip.Font               = Enum.Font.GothamBold
-    grip.TextSize           = 14
-    grip.TextColor3         = C.accentG
-    grip.BackgroundTransparency = 1
-    grip.ZIndex             = 6
-    grip.Parent             = topBar
-end
+local hdrTitle=Instance.new("TextLabel"); hdrTitle.Size=UDim2.new(0,0,1,0); hdrTitle.AutomaticSize=Enum.AutomaticSize.X; hdrTitle.Position=UDim2.new(0,46,0,0); hdrTitle.Text="Feather Hub | Duper"; hdrTitle.Font=Enum.Font.GothamBold; hdrTitle.TextSize=isMobile and 12 or 11; hdrTitle.TextColor3=txtCol; hdrTitle.TextXAlignment=Enum.TextXAlignment.Left; hdrTitle.BackgroundTransparency=1; hdrTitle.ZIndex=5; hdrTitle.Parent=hdr
 
-local dot = Instance.new("Frame")
-dot.Size             = UDim2.new(0, isMobile and 10 or 8, 0, isMobile and 10 or 8)
-dot.Position         = UDim2.new(0, 14, 0.5, isMobile and -5 or -4)
-dot.BackgroundColor3 = C.accent
-dot.BorderSizePixel  = 0
-dot.ZIndex           = 6
-dot.Parent           = topBar
-Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+local verBg=Instance.new("Frame"); verBg.Size=UDim2.new(0,36,0,16); verBg.Position=UDim2.new(0,isMobile and 196 or 196,0.5,-8); verBg.BackgroundColor3=dimCol; verBg.BorderSizePixel=0; verBg.ZIndex=5; verBg.Parent=hdr; mkC(verBg,8)
+local verTxt=Instance.new("TextLabel"); verTxt.Size=UDim2.new(1,0,1,0); verTxt.Text="v1.0"; verTxt.Font=Enum.Font.GothamBold; verTxt.TextSize=7; verTxt.TextColor3=mutedCol; verTxt.BackgroundTransparency=1; verTxt.ZIndex=6; verTxt.Parent=verBg
 
-local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(1, -90, 1, 0)
-titleLbl.Position           = UDim2.new(0, 32, 0, 0)
-titleLbl.Text               = "Item Duper"
-titleLbl.Font               = Enum.Font.GothamBold
-titleLbl.TextSize           = FONT_MD + 1
-titleLbl.TextColor3         = C.text
-titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-titleLbl.BackgroundTransparency = 1
-titleLbl.ZIndex             = 6
-titleLbl.Parent             = topBar
+-- Min / Close
+local btnSize = isMobile and 32 or 26
+local minBtn=Instance.new("TextButton"); minBtn.Size=UDim2.new(0,btnSize,0,btnSize); minBtn.Position=UDim2.new(1,-(btnSize*2+14),0.5,-math.floor(btnSize/2)); minBtn.Text="-"; minBtn.Font=Enum.Font.GothamBold; minBtn.TextSize=isMobile and 20 or 16; minBtn.TextColor3=mutedCol; minBtn.BackgroundColor3=dimCol; minBtn.BorderSizePixel=0; minBtn.ZIndex=5; minBtn.Parent=hdr; mkC(minBtn,6)
+minBtn.MouseEnter:Connect(function() TS:Create(minBtn,tw(),{BackgroundColor3=accent,TextColor3=bgCol}):Play() end)
+minBtn.MouseLeave:Connect(function() TS:Create(minBtn,tw(),{BackgroundColor3=dimCol,TextColor3=mutedCol}):Play() end)
+local isMin=false
+minBtn.MouseButton1Click:Connect(function() isMin=not isMin; if isMin then TS:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,HDR_H)}):Play();minBtn.Text="+" else TS:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,WIN_H)}):Play();minBtn.Text="-" end end)
 
-local verLbl = Instance.new("TextLabel")
-verLbl.Size             = UDim2.new(0, 36, 0, 18)
-verLbl.Position         = UDim2.new(1, -76, 0.5, -9)
-verLbl.Text             = "v0.2"
-verLbl.Font             = Enum.Font.GothamBold
-verLbl.TextSize         = FONT_SM
-verLbl.TextColor3       = C.muted
-verLbl.BackgroundColor3 = C.dim
-verLbl.BorderSizePixel  = 0
-verLbl.ZIndex           = 6
-verLbl.Parent           = topBar
-Instance.new("UICorner", verLbl).CornerRadius = UDim.new(0, 4)
-
--- Close button — bigger on mobile for easier tapping
-local CLOSE_SZ = isMobile and 36 or 26
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0, CLOSE_SZ, 0, CLOSE_SZ)
-closeBtn.Position         = UDim2.new(1, -(CLOSE_SZ + 8), 0.5, -CLOSE_SZ/2)
-closeBtn.Text             = "✕"
-closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.TextSize         = isMobile and 18 or 14
-closeBtn.TextColor3       = C.muted
-closeBtn.BackgroundColor3 = C.dim
-closeBtn.BorderSizePixel  = 0
-closeBtn.AutoButtonColor  = false
-closeBtn.ZIndex           = 6
-closeBtn.Parent           = topBar
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-
-closeBtn.MouseEnter:Connect(function()
-    TweenService:Create(closeBtn, ti(), {BackgroundColor3 = Color3.fromRGB(80,20,20), TextColor3 = C.red}):Play()
-end)
-closeBtn.MouseLeave:Connect(function()
-    TweenService:Create(closeBtn, ti(), {BackgroundColor3 = C.dim, TextColor3 = C.muted}):Play()
-end)
+local closeBtn=Instance.new("TextButton"); closeBtn.Size=UDim2.new(0,btnSize,0,btnSize); closeBtn.Position=UDim2.new(1,-(btnSize+6),0.5,-math.floor(btnSize/2)); closeBtn.Text="x"; closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=isMobile and 18 or 14; closeBtn.TextColor3=mutedCol; closeBtn.BackgroundColor3=dimCol; closeBtn.BorderSizePixel=0; closeBtn.ZIndex=5; closeBtn.Parent=hdr; mkC(closeBtn,6)
+closeBtn.MouseEnter:Connect(function() TS:Create(closeBtn,tw(),{BackgroundColor3=Color3.fromRGB(240,80,100),TextColor3=Color3.new(1,1,1)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TS:Create(closeBtn,tw(),{BackgroundColor3=dimCol,TextColor3=mutedCol}):Play() end)
 closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
-closeBtn.TouchTap:Connect(function() sg:Destroy() end)
 
--- ══════════════════════════════════════════════════════════════
---  DRAG  (Mouse + Touch unified)
--- ══════════════════════════════════════════════════════════════
+-- ═══ SMOOTH TWEEN DRAG ═══
+local dragging, dragStart, startPos
+hdr.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true; dragStart=i.Position; startPos=win.Position end end)
+hdr.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
+UIS.InputChanged:Connect(function(i) if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then local d=i.Position-dragStart; TS:Create(win,TweenInfo.new(0.5,Enum.EasingStyle.Cubic,Enum.EasingDirection.Out),{Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)}):Play() end end)
+UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
 
-local dragging      = false
-local dragInput     = nil
-local dragStart     = nil
-local dragStartPos  = nil
-
-local function onDragBegan(input)
-    local t = input.UserInputType
-    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-        dragging     = true
-        dragStart    = input.Position
-        dragStartPos = win.Position
-    end
+-- ═══ TABS ═══
+local TABS = {"DUPER","JOB FARM"}
+local tabBtns, tabPages = {}, {}
+local tabBar=Instance.new("Frame"); tabBar.Size=UDim2.new(1,-16,0,TAB_H); tabBar.Position=UDim2.new(0,8,0,HDR_H+4); tabBar.BackgroundTransparency=1; tabBar.ZIndex=3; tabBar.Parent=win
+local tl=Instance.new("UIListLayout"); tl.FillDirection=Enum.FillDirection.Horizontal; tl.SortOrder=Enum.SortOrder.LayoutOrder; tl.Padding=UDim.new(0,4); tl.Parent=tabBar
+local contentFrame=Instance.new("Frame"); contentFrame.Size=UDim2.new(1,-16,1,-(HDR_H+TAB_H+12)); contentFrame.Position=UDim2.new(0,8,0,HDR_H+TAB_H+8); contentFrame.BackgroundTransparency=1; contentFrame.ZIndex=2; contentFrame.Parent=win
+local function switchTab(idx) for i,btn in ipairs(tabBtns) do local on=(i==idx); TS:Create(btn,tw(0.15),{BackgroundColor3=on and accent or dimCol,TextColor3=on and bgCol or mutedCol}):Play(); tabPages[i].Visible=on end end
+for i,name in ipairs(TABS) do
+    local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1/#TABS,-4,1,0); btn.BackgroundColor3=i==1 and accent or dimCol; btn.TextColor3=i==1 and bgCol or mutedCol; btn.Text=name; btn.Font=Enum.Font.GothamBold; btn.TextSize=isMobile and 10 or 9; btn.BorderSizePixel=0; btn.LayoutOrder=i; btn.ZIndex=4; btn.Parent=tabBar; mkC(btn,6); tabBtns[i]=btn
+    local page=Instance.new("ScrollingFrame"); page.Size=UDim2.new(1,0,1,0); page.BackgroundTransparency=1; page.Visible=i==1; page.ScrollBarThickness=3; page.ScrollBarImageColor3=accent; page.CanvasSize=UDim2.new(0,0,0,0); page.AutomaticCanvasSize=Enum.AutomaticSize.Y; page.BorderSizePixel=0; page.ZIndex=2; page.Parent=contentFrame; tabPages[i]=page
+    Instance.new("UIListLayout",page).SortOrder=Enum.SortOrder.LayoutOrder; page:FindFirstChildOfClass("UIListLayout").Padding=UDim.new(0,6)
+    local pp=Instance.new("UIPadding"); pp.PaddingTop=UDim.new(0,4); pp.PaddingBottom=UDim.new(0,8); pp.Parent=page
+    local ci=i; btn.MouseButton1Click:Connect(function() switchTab(ci) end); btn.TouchTap:Connect(function() switchTab(ci) end)
 end
 
-local function onDragChanged(input)
-    local t = input.UserInputType
-    if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
-        dragInput = input
-    end
+-- ═══ UI BUILDERS ═══
+local orderCounter=0; local function nextOrder() orderCounter=orderCounter+1; return orderCounter end
+
+local function makeSection(p,l)
+    local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,18); f.BackgroundTransparency=1; f.LayoutOrder=nextOrder(); f.Parent=p
+    local lb=Instance.new("TextLabel"); lb.Size=UDim2.new(1,0,1,0); lb.Text=string.upper(l); lb.Font=Enum.Font.GothamBold; lb.TextSize=8; lb.TextColor3=accent; lb.TextXAlignment=Enum.TextXAlignment.Left; lb.BackgroundTransparency=1; lb.Parent=f
+    local ln=Instance.new("Frame"); ln.Size=UDim2.new(0,26,0,2); ln.Position=UDim2.new(0,0,1,-2); ln.BackgroundColor3=accent; ln.BorderSizePixel=0; ln.Parent=f; mkC(ln,4)
 end
 
-topBar.InputBegan:Connect(onDragBegan)
-topBar.InputChanged:Connect(onDragChanged)
-
-UserInputService.InputChanged:Connect(function(input)
-    if not dragging or input ~= dragInput then return end
-    local d = input.Position - dragStart
-
-    -- Clamp to screen so the window can't be dragged offscreen
-    local vp       = workspace.CurrentCamera.ViewportSize
-    local newX     = math.clamp(dragStartPos.X.Offset + d.X, 0, vp.X - W)
-    local newY     = math.clamp(dragStartPos.Y.Offset + d.Y, 0, vp.Y - H)
-    win.Position   = UDim2.new(0, newX, 0, newY)
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    local t = input.UserInputType
-    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
--- ── Body ───────────────────────────────────────────────────
-
-local body = Instance.new("Frame")
-body.Size               = UDim2.new(1, -PAD*2, 1, -(BAR_H + PAD + 6))
-body.Position           = UDim2.new(0, PAD, 0, BAR_H + 6)
-body.BackgroundTransparency = 1
-body.Parent             = win
-
--- ── Status card ────────────────────────────────────────────
-
-local statusCard = Instance.new("Frame")
-statusCard.Size             = UDim2.new(1, 0, 0, ROW_H_ST)
-statusCard.BackgroundColor3 = C.panel
-statusCard.BorderSizePixel  = 0
-statusCard.ZIndex           = 3
-statusCard.Parent           = body
-Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 8)
-
-local statusStrip = Instance.new("Frame")
-statusStrip.Size             = UDim2.new(0, 3, 0.55, 0)
-statusStrip.Position         = UDim2.new(0, 0, 0.225, 0)
-statusStrip.BackgroundColor3 = C.accentG
-statusStrip.BorderSizePixel  = 0
-statusStrip.ZIndex           = 4
-statusStrip.Parent           = statusCard
-Instance.new("UICorner", statusStrip).CornerRadius = UDim.new(0, 3)
-
-local statusTag = Instance.new("TextLabel")
-statusTag.Size               = UDim2.new(1, -16, 0, isMobile and 16 or 14)
-statusTag.Position           = UDim2.new(0, 12, 0, 7)
-statusTag.Text               = "STATUS"
-statusTag.Font               = Enum.Font.GothamBold
-statusTag.TextSize           = FONT_TAG
-statusTag.TextColor3         = C.muted
-statusTag.TextXAlignment     = Enum.TextXAlignment.Left
-statusTag.BackgroundTransparency = 1
-statusTag.ZIndex             = 4
-statusTag.Parent             = statusCard
-
-local statusLbl = Instance.new("TextLabel")
-statusLbl.Size               = UDim2.new(1, -16, 0, isMobile and 26 or 20)
-statusLbl.Position           = UDim2.new(0, 12, 0, isMobile and 28 or 24)
-statusLbl.Text               = "Idle — equip a tool then press Dupe"
-statusLbl.Font               = Enum.Font.GothamSemibold
-statusLbl.TextSize           = FONT_MD - 1
-statusLbl.TextColor3         = C.muted
-statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
-statusLbl.TextWrapped        = true
-statusLbl.BackgroundTransparency = 1
-statusLbl.ZIndex             = 4
-statusLbl.Parent             = statusCard
-
--- ── Tool name display ──────────────────────────────────────
-
-local toolCard = Instance.new("Frame")
-toolCard.Size             = UDim2.new(1, 0, 0, ROW_H_TL)
-toolCard.Position         = UDim2.new(0, 0, 0, ROW_H_ST + 8)
-toolCard.BackgroundColor3 = C.panel
-toolCard.BorderSizePixel  = 0
-toolCard.ZIndex           = 3
-toolCard.Parent           = body
-Instance.new("UICorner", toolCard).CornerRadius = UDim.new(0, 8)
-
-local toolTag = Instance.new("TextLabel")
-toolTag.Size               = UDim2.new(0, 90, 1, 0)
-toolTag.Position           = UDim2.new(0, 12, 0, 0)
-toolTag.Text               = "EQUIPPED"
-toolTag.Font               = Enum.Font.GothamBold
-toolTag.TextSize           = FONT_TAG
-toolTag.TextColor3         = C.muted
-toolTag.TextXAlignment     = Enum.TextXAlignment.Left
-toolTag.BackgroundTransparency = 1
-toolTag.ZIndex             = 4
-toolTag.Parent             = toolCard
-
-local toolNameLbl = Instance.new("TextLabel")
-toolNameLbl.Size               = UDim2.new(1, -110, 1, 0)
-toolNameLbl.Position           = UDim2.new(0, 100, 0, 0)
-toolNameLbl.Text               = "None"
-toolNameLbl.Font               = Enum.Font.GothamSemibold
-toolNameLbl.TextSize           = FONT_MD
-toolNameLbl.TextColor3         = C.accentD
-toolNameLbl.TextXAlignment     = Enum.TextXAlignment.Right
-toolNameLbl.TextTruncate       = Enum.TextTruncate.AtEnd
-toolNameLbl.BackgroundTransparency = 1
-toolNameLbl.ZIndex             = 4
-toolNameLbl.Parent             = toolCard
-
--- ── Ping display ───────────────────────────────────────────
-
-local pingCard = Instance.new("Frame")
-pingCard.Size             = UDim2.new(1, 0, 0, ROW_H_PG)
-pingCard.Position         = UDim2.new(0, 0, 0, ROW_H_ST + ROW_H_TL + 16)
-pingCard.BackgroundColor3 = C.panel
-pingCard.BorderSizePixel  = 0
-pingCard.ZIndex           = 3
-pingCard.Parent           = body
-Instance.new("UICorner", pingCard).CornerRadius = UDim.new(0, 8)
-
-local pingTag = Instance.new("TextLabel")
-pingTag.Size               = UDim2.new(0, 80, 1, 0)
-pingTag.Position           = UDim2.new(0, 12, 0, 0)
-pingTag.Text               = "PING"
-pingTag.Font               = Enum.Font.GothamBold
-pingTag.TextSize           = FONT_TAG
-pingTag.TextColor3         = C.muted
-pingTag.TextXAlignment     = Enum.TextXAlignment.Left
-pingTag.BackgroundTransparency = 1
-pingTag.ZIndex             = 4
-pingTag.Parent             = pingCard
-
-local pingLbl = Instance.new("TextLabel")
-pingLbl.Size               = UDim2.new(1, -100, 1, 0)
-pingLbl.Position           = UDim2.new(0, 90, 0, 0)
-pingLbl.Text               = "-- ms"
-pingLbl.Font               = Enum.Font.GothamSemibold
-pingLbl.TextSize           = FONT_MD
-pingLbl.TextColor3         = C.accent
-pingLbl.TextXAlignment     = Enum.TextXAlignment.Right
-pingLbl.BackgroundTransparency = 1
-pingLbl.ZIndex             = 4
-pingLbl.Parent             = pingCard
-
--- ── Dupe button ────────────────────────────────────────────
-
-local dupeBtn = Instance.new("TextButton")
-dupeBtn.Size             = UDim2.new(1, 0, 0, BTN_H)
-dupeBtn.Position         = UDim2.new(0, 0, 0, ROW_H_ST + ROW_H_TL + ROW_H_PG + 24)
-dupeBtn.Text             = "Dupe Equipped Tool"
-dupeBtn.Font             = Enum.Font.GothamBold
-dupeBtn.TextSize         = FONT_LG
-dupeBtn.TextColor3       = C.bg
-dupeBtn.BackgroundColor3 = C.accent
-dupeBtn.BorderSizePixel  = 0
-dupeBtn.AutoButtonColor  = false
-dupeBtn.ZIndex           = 3
-dupeBtn.Parent           = body
-Instance.new("UICorner", dupeBtn).CornerRadius = UDim.new(0, 8)
-
-dupeBtn.MouseEnter:Connect(function()
-    TweenService:Create(dupeBtn, ti(), {BackgroundColor3 = C.accentD}):Play()
-end)
-dupeBtn.MouseLeave:Connect(function()
-    TweenService:Create(dupeBtn, ti(), {BackgroundColor3 = C.accent}):Play()
-end)
-
--- ══════════════════════════════════════════════════════════════
---  HELPERS
--- ══════════════════════════════════════════════════════════════
-
-local function setStatus(txt, color)
-    statusLbl.Text               = txt
-    statusLbl.TextColor3         = color or C.text
-    statusStrip.BackgroundColor3 = color or C.accentG
+local function makeInfoRow(p,label,value,vc)
+    local rowH=isMobile and 34 or 28; local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,rowH); row.BackgroundColor3=cardCol; row.BorderSizePixel=0; row.LayoutOrder=nextOrder(); row.Parent=p; mkC(row,6)
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(0.4,0,1,0); lbl.Position=UDim2.new(0,12,0,0); lbl.Text=label; lbl.Font=Enum.Font.GothamBold; lbl.TextSize=isMobile and 9 or 8; lbl.TextColor3=mutedCol; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.BackgroundTransparency=1; lbl.Parent=row
+    local val=Instance.new("TextLabel"); val.Size=UDim2.new(0.58,-12,1,0); val.Position=UDim2.new(0.4,0,0,0); val.Text=value; val.Font=Enum.Font.GothamSemibold; val.TextSize=isMobile and 10 or 9; val.TextColor3=vc or txtCol; val.TextXAlignment=Enum.TextXAlignment.Right; val.TextTruncate=Enum.TextTruncate.AtEnd; val.BackgroundTransparency=1; val.Parent=row
+    return val
 end
 
-local function setDupeEnabled(enabled)
-    dupeBtn.Active          = enabled
-    dupeBtn.AutoButtonColor = false
-    TweenService:Create(dupeBtn, ti(), {
-        BackgroundColor3 = enabled and C.accent or C.dim,
-        TextColor3       = enabled and C.bg or C.muted,
-    }):Play()
+local function makeButton(p,label,cb)
+    local rowH=isMobile and 44 or 36; local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1,0,0,rowH); btn.BackgroundColor3=accent; btn.Text=label; btn.Font=Enum.Font.GothamBold; btn.TextSize=isMobile and 13 or 11; btn.TextColor3=bgCol; btn.BorderSizePixel=0; btn.LayoutOrder=nextOrder(); btn.Parent=p; mkC(btn,8)
+    btn.MouseEnter:Connect(function() TS:Create(btn,tw(),{BackgroundColor3=Color3.fromRGB(200,200,210)}):Play() end)
+    btn.MouseLeave:Connect(function() TS:Create(btn,tw(),{BackgroundColor3=accent}):Play() end)
+    btn.MouseButton1Click:Connect(cb); btn.TouchTap:Connect(cb)
+    return btn
 end
 
--- ══════════════════════════════════════════════════════════════
---  PING MEASUREMENT
--- ══════════════════════════════════════════════════════════════
-
-local function getPing()
-    if typeof(Player.GetNetworkPing) == "function" then
-        local ok, result = pcall(function()
-            return tonumber(string.match(Player:GetNetworkPing(), "%d+"))
-        end)
-        if ok and result then return result end
-    end
-
-    local ok2, pingStat = pcall(function()
-        return Player:FindFirstChild("PlayerGui") and Player.PlayerGui:FindFirstChild("Ping")
-            or Player:FindFirstChild("PlayerScripts") and Player.PlayerScripts:FindFirstChild("Ping")
-    end)
-    if ok2 and pingStat and pingStat:IsA("TextLabel") then
-        local num = tonumber(string.match(pingStat.Text, "%d+"))
-        if num then return num end
-    end
-
-    local t0   = tick()
-    local temp = Instance.new("BoolValue", ReplicatedStorage)
-    temp.Name  = "PingTest_" .. tostring(math.random(10000, 99999))
-    task.wait(0.1)
-    local t1 = tick()
-    temp:Destroy()
-    return math.clamp((t1 - t0) * 1000, 50, 300)
+local function makeToggle(p,label,default,cb)
+    local rowH=isMobile and 46 or 38; local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,rowH); row.BackgroundColor3=cardCol; row.BorderSizePixel=0; row.LayoutOrder=nextOrder(); row.Parent=p; mkC(row,8)
+    local state=default or false
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,-70,1,0); lbl.Position=UDim2.new(0,12,0,0); lbl.Text=label; lbl.Font=Enum.Font.GothamSemibold; lbl.TextSize=isMobile and 11 or 10; lbl.TextColor3=txtCol; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.BackgroundTransparency=1; lbl.Parent=row
+    local pill=Instance.new("Frame"); pill.Size=UDim2.new(0,40,0,20); pill.Position=UDim2.new(1,-50,0.5,-10); pill.BackgroundColor3=state and green or dimCol; pill.BorderSizePixel=0; pill.Parent=row; mkC(pill,10)
+    local knob=Instance.new("Frame"); knob.Size=UDim2.new(0,14,0,14); knob.Position=state and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7); knob.BackgroundColor3=state and Color3.new(1,1,1) or mutedCol; knob.BorderSizePixel=0; knob.Parent=pill; mkC(knob,7)
+    local hit=Instance.new("TextButton"); hit.Size=UDim2.new(1,0,1,0); hit.BackgroundTransparency=1; hit.Text=""; hit.Parent=row
+    local function toggle() state=not state; TS:Create(pill,tw(0.15),{BackgroundColor3=state and green or dimCol}):Play(); TS:Create(knob,tw(0.15),{Position=state and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7),BackgroundColor3=state and Color3.new(1,1,1) or mutedCol}):Play(); pcall(cb,state) end
+    hit.MouseButton1Click:Connect(toggle); hit.TouchTap:Connect(toggle)
 end
 
--- ══════════════════════════════════════════════════════════════
---  CORE DUPE FUNCTION
--- ══════════════════════════════════════════════════════════════
-
+-- ═══ DUPER LOGIC ═══
 local dupeRunning = false
 
-local function runDupe()
-    if dupeRunning then return end
+local function getPing()
+    local ok, p = pcall(function() return math.round(Player:GetNetworkPing() * 1000) end)
+    if ok and p then return p end
+    return 100
+end
 
+local function runDupe(statusLbl, toolLbl, pingLbl)
+    if dupeRunning then return end
+    Character = Player.Character or Player.CharacterAdded:Wait()
     local Tool = Character:FindFirstChildOfClass("Tool")
     if not Tool then
-        setStatus("No tool equipped — equip one first", C.red)
+        statusLbl.Text = "No tool equipped!"; statusLbl.TextColor3 = red
         return
     end
-
     local ToolName = Tool.Name
-    toolNameLbl.Text = ToolName
+    toolLbl.Text = ToolName; toolLbl.TextColor3 = accent
     dupeRunning = true
-    setDupeEnabled(false)
 
-    setStatus("Measuring ping...", C.yellow)
-    local ping  = getPing()
-    pingLbl.Text       = ping .. " ms"
-    pingLbl.TextColor3 = ping < 100 and C.green or ping < 200 and C.yellow or C.red
-
+    statusLbl.Text = "Measuring ping..."; statusLbl.TextColor3 = yellow
+    local ping = getPing()
+    pingLbl.Text = ping.." ms"; pingLbl.TextColor3 = ping < 100 and green or ping < 200 and yellow or red
     local delay = 0.25 + ((math.clamp(ping, 0, 300) / 300) * 0.03)
 
-    setStatus("Unequipping tool...", C.yellow)
-    Tool.Parent = Backpack
-    task.wait(0.5)
+    statusLbl.Text = "Unequipping..."; statusLbl.TextColor3 = yellow
+    Tool.Parent = Backpack; task.wait(0.5)
 
-    local ToolId           = nil
-    local marketConnection = ReplicatedStorage.MarketItems.ChildAdded:Connect(function(item)
+    local ToolId = nil
+    local conn = ReplicatedStorage.MarketItems.ChildAdded:Connect(function(item)
         if item.Name == ToolName then
             local owner = item:WaitForChild("owner", 2)
-            if owner and owner.Value == Player.Name then
-                ToolId = item:GetAttribute("SpecialId")
-            end
+            if owner and owner.Value == Player.Name then ToolId = item:GetAttribute("SpecialId") end
         end
     end)
 
-    setStatus("Listing on market...", C.yellow)
-    task.spawn(function()
-        ReplicatedStorage.ListWeaponRemote:FireServer(ToolName, 99999)
-    end)
+    statusLbl.Text = "Listing on market..."; statusLbl.TextColor3 = yellow
+    task.spawn(function() ReplicatedStorage.ListWeaponRemote:FireServer(ToolName, 99999) end)
     task.wait(delay)
 
-    setStatus("Storing to backpack...", C.yellow)
-    task.spawn(function()
-        ReplicatedStorage.BackpackRemote:InvokeServer("Store", ToolName)
-    end)
+    statusLbl.Text = "Storing to backpack..."; statusLbl.TextColor3 = yellow
+    task.spawn(function() ReplicatedStorage.BackpackRemote:InvokeServer("Store", ToolName) end)
     task.wait(3)
 
     if ToolId then
-        setStatus("Removing market listing...", C.yellow)
-        task.spawn(function()
-            ReplicatedStorage.BuyItemRemote:FireServer(ToolName, "Remove", ToolId)
-        end)
-    else
-        setStatus("Warning: ToolId not found — listing may remain", C.yellow)
+        statusLbl.Text = "Removing listing..."; statusLbl.TextColor3 = yellow
+        task.spawn(function() ReplicatedStorage.BuyItemRemote:FireServer(ToolName, "Remove", ToolId) end)
     end
 
-    setStatus("Grabbing tool back...", C.yellow)
-    task.spawn(function()
-        ReplicatedStorage.BackpackRemote:InvokeServer("Grab", ToolName)
-    end)
+    statusLbl.Text = "Grabbing tool back..."; statusLbl.TextColor3 = yellow
+    task.spawn(function() ReplicatedStorage.BackpackRemote:InvokeServer("Grab", ToolName) end)
 
-    marketConnection:Disconnect()
-    task.wait(0.5)
-    setStatus("Done  —  " .. ToolName .. " duped!", C.green)
-    toolNameLbl.Text = ToolName .. " (duped)"
+    conn:Disconnect(); task.wait(0.5)
+    statusLbl.Text = ToolName.." duped!"; statusLbl.TextColor3 = green
+    toolLbl.Text = ToolName.." (duped)"; toolLbl.TextColor3 = green
     dupeRunning = false
-    setDupeEnabled(true)
 end
 
--- ══════════════════════════════════════════════════════════════
---  BUTTON WIRING  (Mouse + Touch)
--- ══════════════════════════════════════════════════════════════
+-- ═══ JOB FARM LOGIC ═══
+local farming = false
+local farmThread = nil
 
-dupeBtn.MouseButton1Click:Connect(function()
-    task.spawn(runDupe)
-end)
-dupeBtn.TouchTap:Connect(function()
-    task.spawn(runDupe)
-end)
-
--- ══════════════════════════════════════════════════════════════
---  LIVE TOOL TRACKER
--- ══════════════════════════════════════════════════════════════
-
-local function refreshToolLabel()
-    local t = Character:FindFirstChildOfClass("Tool")
-    toolNameLbl.Text       = t and t.Name or "None"
-    toolNameLbl.TextColor3 = t and C.accent or C.muted
+local function tp(cf)
+    pcall(function()
+        local char = Player.Character
+        if not char then return end
+        local hum = char:FindFirstChild("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then return end
+        hum:ChangeState(0)
+        while Player:GetAttribute("LastACPos") do task.wait() end
+        hrp.CFrame = cf; task.wait(); hum:ChangeState(2)
+    end)
 end
 
-refreshToolLabel()
+local function getWallSpot()
+    local ok, result = pcall(function()
+        for _, v in pairs(workspace.ConstructionStuff:GetChildren()) do
+            if v:IsA("Part") and v.Name:find("Wall") then
+                local prompt = v:FindFirstChild("Prompt")
+                if prompt and prompt.Enabled then return v end
+            end
+        end
+    end)
+    return ok and result or nil
+end
 
-Character.ChildAdded:Connect(function(child)
-    if child:IsA("Tool") then refreshToolLabel() end
+local function farmLoop(statusLbl)
+    while farming do
+        pcall(function()
+            local char = Player.Character
+            if not char then task.wait(); return end
+            local hum = char:FindFirstChild("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hum or not hrp or hum.Health <= 0 then task.wait(); return end
+
+            -- Start job if not working
+            if not Player:GetAttribute("WorkingJob") then
+                statusLbl.Text = "Starting job..."; statusLbl.TextColor3 = yellow
+                tp(CFrame.new(-1729, 371, -1171)); task.wait(0.35)
+                pcall(function() fireproximityprompt(workspace.ConstructionStuff["Start Job"].Prompt) end)
+                repeat task.wait() until Player:GetAttribute("WorkingJob") or not farming
+            end
+            if not farming then return end
+
+            -- Grab wood
+            local hasWood = Player.Backpack:FindFirstChild("PlyWood") or char:FindFirstChild("PlyWood")
+            if not hasWood then
+                statusLbl.Text = "Grabbing wood..."; statusLbl.TextColor3 = yellow
+                tp(CFrame.new(-1728, 371, -1178))
+                repeat
+                    task.wait()
+                    pcall(function() fireproximityprompt(workspace.ConstructionStuff["Grab Wood"].Prompt) end)
+                    hasWood = Player.Backpack:FindFirstChild("PlyWood") or char:FindFirstChild("PlyWood")
+                until hasWood or not farming
+            end
+            if not farming then return end
+
+            -- Equip wood
+            local tool = Player.Backpack:FindFirstChild("PlyWood")
+            if tool then pcall(function() hum:EquipTool(tool) end) end
+
+            local spot = getWallSpot()
+            if not spot then statusLbl.Text = "No wall spot found..."; statusLbl.TextColor3 = mutedCol; task.wait(1); return end
+
+            -- Place wood
+            statusLbl.Text = "Placing wood..."; statusLbl.TextColor3 = green
+            tp(spot.CFrame)
+            repeat
+                task.wait()
+                pcall(function() fireproximityprompt(spot.Prompt) end)
+            until not char:FindFirstChild("PlyWood") or not spot.Prompt.Enabled or not farming
+
+            task.wait(0.12)
+        end)
+        task.wait()
+    end
+end
+
+-- ═══ BUILD DUPER TAB ═══
+local pg = tabPages[1]; orderCounter = 0
+makeSection(pg, "Status")
+local statusLbl = makeInfoRow(pg, "STATUS", "Idle — equip a tool", mutedCol)
+local toolLbl = makeInfoRow(pg, "EQUIPPED", "None", mutedCol)
+local pingLbl = makeInfoRow(pg, "PING", "-- ms", mutedCol)
+
+makeSection(pg, "Actions")
+local dupeBtn = makeButton(pg, "Dupe Equipped Tool", function()
+    task.spawn(function() runDupe(statusLbl, toolLbl, pingLbl) end)
 end)
-Character.ChildRemoved:Connect(function(child)
-    if child:IsA("Tool") then refreshToolLabel() end
+
+makeSection(pg, "Info")
+makeInfoRow(pg, "Player", Player.Name, accent)
+
+-- Live tool tracker
+task.spawn(function()
+    while sg and sg.Parent do
+        pcall(function()
+            Character = Player.Character or Player.CharacterAdded:Wait()
+            local t = Character:FindFirstChildOfClass("Tool")
+            if not dupeRunning then
+                toolLbl.Text = t and t.Name or "None"
+                toolLbl.TextColor3 = t and accent or mutedCol
+            end
+        end)
+        task.wait(0.5)
+    end
 end)
 
--- ══════════════════════════════════════════════════════════════
---  INITIAL PING READING
--- ══════════════════════════════════════════════════════════════
-
+-- Initial ping
 task.spawn(function()
     local p = getPing()
-    pingLbl.Text       = p .. " ms"
-    pingLbl.TextColor3 = p < 100 and C.green or p < 200 and C.yellow or C.red
+    pingLbl.Text = p.." ms"
+    pingLbl.TextColor3 = p < 100 and green or p < 200 and yellow or red
 end)
 
--- ══════════════════════════════════════════════════════════════
---  OPENING ANIMATION
--- ══════════════════════════════════════════════════════════════
+-- ═══ BUILD JOB FARM TAB ═══
+pg = tabPages[2]; orderCounter = 0
+makeSection(pg, "Construction Job Farm")
+local farmStatusLbl = makeInfoRow(pg, "STATUS", "Idle", mutedCol)
 
-win.Size                = UDim2.new(0, 0, 0, 0)
-win.BackgroundTransparency = 1
+makeToggle(pg, "Auto Job Farm", false, function(v)
+    farming = v
+    if v then
+        farmStatusLbl.Text = "Starting..."; farmStatusLbl.TextColor3 = yellow
+        farmThread = task.spawn(function() farmLoop(farmStatusLbl) end)
+    else
+        farmStatusLbl.Text = "Idle"; farmStatusLbl.TextColor3 = mutedCol
+        if farmThread then pcall(function() task.cancel(farmThread) end); farmThread = nil end
+    end
+end)
 
-TweenService:Create(win, ti(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size                   = UDim2.new(0, W, 0, H),
-    BackgroundTransparency = 0,
-}):Play()
+makeSection(pg, "Manual Actions")
+makeButton(pg, "TP to Job Start", function() tp(CFrame.new(-1729, 371, -1171)) end)
+makeButton(pg, "TP to Wood Pickup", function() tp(CFrame.new(-1728, 371, -1178)) end)
+makeButton(pg, "Start Job (Prompt)", function()
+    pcall(function() fireproximityprompt(workspace.ConstructionStuff["Start Job"].Prompt) end)
+end)
+makeButton(pg, "Grab Wood (Prompt)", function()
+    pcall(function() fireproximityprompt(workspace.ConstructionStuff["Grab Wood"].Prompt) end)
+end)
+
+makeSection(pg, "Info")
+makeInfoRow(pg, "Method", "Auto wood placement", mutedCol)
+makeInfoRow(pg, "Anti-Cheat", "Bypasses LastACPos", mutedCol)
+
+-- ═══ OPEN ANIMATION ═══
+win.Size = UDim2.new(0,0,0,0); win.BackgroundTransparency = 1
+TS:Create(win, tw(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size=UDim2.new(0,WIN_W,0,WIN_H), BackgroundTransparency=0}):Play()
+task.spawn(function() while sg and sg.Parent do TS:Create(glow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.85}):Play(); task.wait(2.4); TS:Create(glow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.93}):Play(); task.wait(2.4) end end)
+
+print("Feather Hub | Duper + Job Farm v1.0 loaded")
