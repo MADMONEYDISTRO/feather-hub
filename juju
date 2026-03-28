@@ -1,0 +1,840 @@
+--[[
+    ════════════════════════════════════════════════════
+     FEATHER HUB | JUJUTSU
+     Aimbot, Black Flash, Train Remote
+     ════════════════════════════════════════════════════
+]]
+
+-- ══════════════════════════════════════════
+--  SERVICES
+-- ══════════════════════════════════════════
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+local CoreGui           = game:GetService("CoreGui")
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
+local Workspace         = game:GetService("Workspace")
+
+local Player      = Players.LocalPlayer
+local DisplayName = tostring(Player.DisplayName)
+local Username    = tostring(Player.Name)
+
+local isMobile = false
+pcall(function()
+    isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end)
+
+-- ══════════════════════════════════════════
+--  PALETTE
+-- ══════════════════════════════════════════
+local DARK = {
+    bg      = Color3.fromRGB(14,  14,  16),
+    sidebar = Color3.fromRGB(20,  20,  24),
+    card    = Color3.fromRGB(26,  26,  30),
+    border  = Color3.fromRGB(44,  44,  52),
+    text    = Color3.fromRGB(240, 240, 244),
+    muted   = Color3.fromRGB(100, 100, 115),
+    dim     = Color3.fromRGB(32,  32,  38),
+    sep     = Color3.fromRGB(36,  36,  44),
+    header  = Color3.fromRGB(18,  18,  22),
+    inputBg = Color3.fromRGB(10,  10,  14),
+}
+local LIGHT = {
+    bg      = Color3.fromRGB(248, 248, 250),
+    sidebar = Color3.fromRGB(255, 255, 255),
+    card    = Color3.fromRGB(255, 255, 255),
+    border  = Color3.fromRGB(218, 218, 228),
+    text    = Color3.fromRGB(18,  18,  22),
+    muted   = Color3.fromRGB(145, 145, 160),
+    dim     = Color3.fromRGB(235, 235, 242),
+    sep     = Color3.fromRGB(225, 225, 232),
+    header  = Color3.fromRGB(252, 252, 255),
+    inputBg = Color3.fromRGB(242, 242, 248),
+}
+
+local accent = Color3.fromRGB(90, 90, 210)
+local red    = Color3.fromRGB(240, 80, 100)
+local gold   = Color3.fromRGB(241, 196, 15)
+
+local isDark = true
+local T      = DARK
+
+local function tw(t, s, d)
+    return TweenInfo.new(t or 0.2, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out)
+end
+
+-- ══════════════════════════════════════════
+--  SIZING
+-- ══════════════════════════════════════════
+local WIN_W, WIN_H, SIDE_W
+if isMobile then
+    WIN_W = 340; WIN_H = 440; SIDE_W = 78
+else
+    WIN_W = 460; WIN_H = 380; SIDE_W = 100
+end
+
+-- ══════════════════════════════════════════
+--  THEME REGISTRY
+-- ══════════════════════════════════════════
+local themeReg = {}
+local function reg(obj, prop, lv, dv)
+    table.insert(themeReg, {o=obj, p=prop, l=lv, d=dv})
+end
+local function applyReg()
+    for _, e in ipairs(themeReg) do
+        if e.o and e.o.Parent then e.o[e.p] = isDark and e.d or e.l end
+    end
+end
+
+-- ══════════════════════════════════════════
+--  ROOT GUI
+-- ══════════════════════════════════════════
+local sg = Instance.new("ScreenGui")
+sg.Name = "FeatherJujutsu"; sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 999; sg.IgnoreGuiInset = true
+if not pcall(function() sg.Parent = CoreGui end) then
+    sg.Parent = Player:WaitForChild("PlayerGui")
+end
+
+-- ══════════════════════════════════════════
+--  NOTIFICATION
+-- ══════════════════════════════════════════
+local function notify(title, msg, nType)
+    local col = ({success=Color3.fromRGB(40,200,130), error=red, warning=gold})[nType] or accent
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0,0,0,58); n.Position = UDim2.new(1,-10,1,-70)
+    n.AnchorPoint = Vector2.new(1,1); n.BackgroundColor3 = T.bg
+    n.BorderSizePixel = 0; n.Parent = sg
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0,8)
+    local bar = Instance.new("Frame"); bar.Size = UDim2.new(0,4,1,0)
+    bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; bar.Parent = n
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(0,8)
+    local t1 = Instance.new("TextLabel"); t1.Size = UDim2.new(1,-16,0,18); t1.Position = UDim2.new(0,12,0,7)
+    t1.Text = title; t1.Font = Enum.Font.GothamBold; t1.TextSize = 11
+    t1.TextColor3 = T.text; t1.TextXAlignment = Enum.TextXAlignment.Left
+    t1.BackgroundTransparency = 1; t1.Parent = n
+    local t2 = Instance.new("TextLabel"); t2.Size = UDim2.new(1,-16,0,22); t2.Position = UDim2.new(0,12,0,26)
+    t2.Text = msg; t2.Font = Enum.Font.Gotham; t2.TextSize = 9
+    t2.TextColor3 = T.text; t2.TextTransparency = 0.35
+    t2.TextXAlignment = Enum.TextXAlignment.Left; t2.TextWrapped = true
+    t2.BackgroundTransparency = 1; t2.Parent = n
+    TweenService:Create(n, tw(), {Size = UDim2.new(0,280,0,58)}):Play()
+    task.delay(3, function()
+        TweenService:Create(n, tw(), {Size = UDim2.new(0,0,0,58), BackgroundTransparency = 1}):Play()
+        task.wait(0.3); if n and n.Parent then n:Destroy() end
+    end)
+end
+
+-- ══════════════════════════════════════════
+--  MAIN WINDOW
+-- ══════════════════════════════════════════
+local win = Instance.new("Frame")
+win.Name = "Win"; win.Size = UDim2.new(0,WIN_W,0,WIN_H)
+win.Position = UDim2.new(0.5, -math.floor(WIN_W/2), 0.5, -math.floor(WIN_H/2))
+win.BackgroundColor3 = T.bg; win.BorderSizePixel = 0
+win.ClipsDescendants = true; win.ZIndex = 1; win.Parent = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0,14)
+local winStroke = Instance.new("UIStroke"); winStroke.Color = T.border; winStroke.Thickness = 1; winStroke.Parent = win
+local winGlow = Instance.new("ImageLabel")
+winGlow.Size = UDim2.new(1,40,1,40); winGlow.Position = UDim2.new(0,-20,0,-20)
+winGlow.BackgroundTransparency = 1; winGlow.Image = "rbxassetid://1316045217"
+winGlow.ImageColor3 = Color3.fromRGB(80,80,120); winGlow.ImageTransparency = 0.88
+winGlow.ScaleType = Enum.ScaleType.Slice; winGlow.SliceCenter = Rect.new(10,10,118,118)
+winGlow.ZIndex = -1; winGlow.Parent = win
+reg(win, "BackgroundColor3", LIGHT.bg, DARK.bg)
+reg(winStroke, "Color", LIGHT.border, DARK.border)
+
+-- ══════════════════════════════════════════
+--  SIDEBAR
+-- ══════════════════════════════════════════
+local sidebar = Instance.new("Frame"); sidebar.Name = "Sidebar"
+sidebar.Size = UDim2.new(0,SIDE_W,1,0); sidebar.BackgroundColor3 = T.sidebar
+sidebar.BorderSizePixel = 0; sidebar.ZIndex = 3; sidebar.Parent = win
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0,14)
+reg(sidebar, "BackgroundColor3", LIGHT.sidebar, DARK.sidebar)
+
+local sbCover = Instance.new("Frame"); sbCover.Size = UDim2.new(0,14,1,0); sbCover.Position = UDim2.new(1,-14,0,0)
+sbCover.BackgroundColor3 = T.sidebar; sbCover.BorderSizePixel = 0; sbCover.ZIndex = 3; sbCover.Parent = sidebar
+reg(sbCover, "BackgroundColor3", LIGHT.sidebar, DARK.sidebar)
+
+local logoPill = Instance.new("Frame"); logoPill.Size = UDim2.new(0,34,0,34)
+logoPill.Position = UDim2.new(0.5,-17,0,10); logoPill.BackgroundColor3 = accent
+logoPill.BorderSizePixel = 0; logoPill.ZIndex = 5; logoPill.Parent = sidebar
+Instance.new("UICorner", logoPill).CornerRadius = UDim.new(0,9)
+local logoF = Instance.new("TextLabel"); logoF.Size = UDim2.new(1,0,1,0); logoF.Text = "F"
+logoF.TextSize = 18; logoF.Font = Enum.Font.GothamBold; logoF.TextColor3 = Color3.new(1,1,1)
+logoF.BackgroundTransparency = 1; logoF.BorderSizePixel = 0; logoF.ZIndex = 6; logoF.Parent = logoPill
+
+local sbTopSep = Instance.new("Frame"); sbTopSep.Size = UDim2.new(0.72,0,0,1); sbTopSep.Position = UDim2.new(0.14,0,0,52)
+sbTopSep.BackgroundColor3 = T.sep; sbTopSep.BorderSizePixel = 0; sbTopSep.ZIndex = 4; sbTopSep.Parent = sidebar
+reg(sbTopSep, "BackgroundColor3", LIGHT.sep, DARK.sep)
+
+local navCont = Instance.new("Frame"); navCont.Size = UDim2.new(1,0,1,-168); navCont.Position = UDim2.new(0,0,0,58)
+navCont.BackgroundTransparency = 1; navCont.ZIndex = 4; navCont.Parent = sidebar
+local navList = Instance.new("UIListLayout"); navList.SortOrder = Enum.SortOrder.LayoutOrder
+navList.VerticalAlignment = Enum.VerticalAlignment.Top
+navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+navList.Padding = UDim.new(0,3); navList.Parent = navCont
+
+local sbBotSep = Instance.new("Frame"); sbBotSep.Size = UDim2.new(0.72,0,0,1); sbBotSep.Position = UDim2.new(0.14,0,1,-84)
+sbBotSep.BackgroundColor3 = T.sep; sbBotSep.BorderSizePixel = 0; sbBotSep.ZIndex = 4; sbBotSep.Parent = sidebar
+reg(sbBotSep, "BackgroundColor3", LIGHT.sep, DARK.sep)
+
+local wmName = Instance.new("TextLabel"); wmName.Size = UDim2.new(1,0,0,14); wmName.Position = UDim2.new(0,0,1,-78)
+wmName.Text = "feather hub"; wmName.Font = Enum.Font.GothamBold; wmName.TextSize = 9
+wmName.TextColor3 = accent; wmName.BackgroundTransparency = 1
+wmName.TextXAlignment = Enum.TextXAlignment.Center; wmName.ZIndex = 5; wmName.Parent = sidebar
+
+local wmVer = Instance.new("TextLabel"); wmVer.Size = UDim2.new(1,0,0,12); wmVer.Position = UDim2.new(0,0,1,-62)
+wmVer.Text = "v1  •  jujutsu"; wmVer.Font = Enum.Font.Gotham; wmVer.TextSize = 7
+wmVer.TextColor3 = T.muted; wmVer.BackgroundTransparency = 1
+wmVer.TextXAlignment = Enum.TextXAlignment.Center; wmVer.ZIndex = 5; wmVer.Parent = sidebar
+reg(wmVer, "TextColor3", LIGHT.muted, DARK.muted)
+
+local thBtn = Instance.new("TextButton"); thBtn.Size = UDim2.new(1,-12,0,26); thBtn.Position = UDim2.new(0,6,1,-36)
+thBtn.BackgroundColor3 = T.dim; thBtn.BorderSizePixel = 0; thBtn.Text = "Light"
+thBtn.Font = Enum.Font.GothamBold; thBtn.TextSize = 8; thBtn.TextColor3 = T.muted
+thBtn.AutoButtonColor = false; thBtn.ZIndex = 5; thBtn.Parent = sidebar
+Instance.new("UICorner", thBtn).CornerRadius = UDim.new(0,7)
+local thS = Instance.new("UIStroke"); thS.Color = T.border; thS.Thickness = 1; thS.Parent = thBtn
+reg(thBtn, "BackgroundColor3", LIGHT.dim, DARK.dim)
+reg(thBtn, "TextColor3", LIGHT.muted, DARK.muted)
+reg(thS, "Color", LIGHT.border, DARK.border)
+
+-- ══════════════════════════════════════════
+--  HEADER
+-- ══════════════════════════════════════════
+local HDR_H = 44
+local hdr = Instance.new("Frame"); hdr.Size = UDim2.new(1,-SIDE_W,0,HDR_H); hdr.Position = UDim2.new(0,SIDE_W,0,0)
+hdr.BackgroundColor3 = T.header; hdr.BorderSizePixel = 0; hdr.ZIndex = 3; hdr.Parent = win
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0,14)
+reg(hdr, "BackgroundColor3", LIGHT.header, DARK.header)
+
+local hdrLC = Instance.new("Frame"); hdrLC.Size = UDim2.new(0,14,1,0); hdrLC.BackgroundColor3 = T.header
+hdrLC.BorderSizePixel = 0; hdrLC.ZIndex = 3; hdrLC.Parent = hdr
+reg(hdrLC, "BackgroundColor3", LIGHT.header, DARK.header)
+local hdrBC = Instance.new("Frame"); hdrBC.Size = UDim2.new(0,14,0,14); hdrBC.Position = UDim2.new(1,-14,1,-14)
+hdrBC.BackgroundColor3 = T.header; hdrBC.BorderSizePixel = 0; hdrBC.ZIndex = 3; hdrBC.Parent = hdr
+reg(hdrBC, "BackgroundColor3", LIGHT.header, DARK.header)
+
+local hdrLine = Instance.new("Frame"); hdrLine.Size = UDim2.new(1,-8,0,1); hdrLine.Position = UDim2.new(0,4,1,-1)
+hdrLine.BackgroundColor3 = T.sep; hdrLine.BorderSizePixel = 0; hdrLine.ZIndex = 4; hdrLine.Parent = hdr
+reg(hdrLine, "BackgroundColor3", LIGHT.sep, DARK.sep)
+
+local hdrTitle = Instance.new("TextLabel"); hdrTitle.Size = UDim2.new(1,-120,1,0); hdrTitle.Position = UDim2.new(0,14,0,0)
+hdrTitle.Text = "Feather Hub | Jujutsu"; hdrTitle.Font = Enum.Font.GothamBold; hdrTitle.TextSize = isMobile and 13 or 12
+hdrTitle.TextColor3 = T.text; hdrTitle.BackgroundTransparency = 1
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left; hdrTitle.ZIndex = 5; hdrTitle.Parent = hdr
+reg(hdrTitle, "TextColor3", LIGHT.text, DARK.text)
+
+local betaBg = Instance.new("Frame"); betaBg.Size = UDim2.new(0,42,0,16); betaBg.Position = UDim2.new(1,-112,0.5,-8)
+betaBg.BackgroundColor3 = isDark and Color3.fromRGB(28,28,44) or Color3.fromRGB(234,234,248)
+betaBg.BorderSizePixel = 0; betaBg.ZIndex = 5; betaBg.Parent = hdr
+Instance.new("UICorner", betaBg).CornerRadius = UDim.new(1,0)
+local betaS = Instance.new("UIStroke"); betaS.Color = accent; betaS.Thickness = 1; betaS.Parent = betaBg
+local betaTxt = Instance.new("TextLabel"); betaTxt.Size = UDim2.new(1,0,1,0); betaTxt.Text = "BETA"
+betaTxt.Font = Enum.Font.GothamBold; betaTxt.TextSize = 7; betaTxt.TextColor3 = accent
+betaTxt.BackgroundTransparency = 1; betaTxt.ZIndex = 6; betaTxt.Parent = betaBg
+reg(betaBg, "BackgroundColor3", Color3.fromRGB(234,234,248), Color3.fromRGB(28,28,44))
+
+-- Minimize button
+local minimized = false
+local minBtn = Instance.new("TextButton"); minBtn.Size = UDim2.new(0,26,0,26)
+minBtn.Position = UDim2.new(1,-62,0.5,-13); minBtn.Text = "–"
+minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 18; minBtn.TextColor3 = T.muted
+minBtn.BackgroundColor3 = T.dim; minBtn.BorderSizePixel = 0; minBtn.AutoButtonColor = false
+minBtn.ZIndex = 5; minBtn.Parent = hdr
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0,6)
+reg(minBtn, "BackgroundColor3", LIGHT.dim, DARK.dim); reg(minBtn, "TextColor3", LIGHT.muted, DARK.muted)
+minBtn.MouseEnter:Connect(function() TweenService:Create(minBtn, tw(), {BackgroundColor3=gold, TextColor3=Color3.new(1,1,1)}):Play() end)
+minBtn.MouseLeave:Connect(function() TweenService:Create(minBtn, tw(), {BackgroundColor3=T.dim, TextColor3=T.muted}):Play() end)
+
+local content -- forward declaration
+
+local function toggleMinimize()
+    minimized = not minimized
+    if minimized then
+        TweenService:Create(win, tw(0.25), {Size=UDim2.new(0,WIN_W,0,HDR_H)}):Play()
+        sidebar.Visible = false
+        content.Visible = false
+        TweenService:Create(hdr, tw(0.25), {Size=UDim2.new(1,0,0,HDR_H), Position=UDim2.new(0,0,0,0)}):Play()
+        hdrLC.Visible = false
+    else
+        TweenService:Create(win, tw(0.25), {Size=UDim2.new(0,WIN_W,0,WIN_H)}):Play()
+        task.delay(0.15, function()
+            sidebar.Visible = true
+            content.Visible = true
+            hdrLC.Visible = true
+        end)
+        TweenService:Create(hdr, tw(0.25), {Size=UDim2.new(1,-SIDE_W,0,HDR_H), Position=UDim2.new(0,SIDE_W,0,0)}):Play()
+    end
+end
+minBtn.MouseButton1Click:Connect(toggleMinimize)
+minBtn.TouchTap:Connect(toggleMinimize)
+
+-- Close button
+local closeBtn = Instance.new("TextButton"); closeBtn.Size = UDim2.new(0,26,0,26)
+closeBtn.Position = UDim2.new(1,-32,0.5,-13); closeBtn.Text = "x"
+closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 14; closeBtn.TextColor3 = T.muted
+closeBtn.BackgroundColor3 = T.dim; closeBtn.BorderSizePixel = 0; closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 5; closeBtn.Parent = hdr
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,6)
+reg(closeBtn, "BackgroundColor3", LIGHT.dim, DARK.dim); reg(closeBtn, "TextColor3", LIGHT.muted, DARK.muted)
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3=red, TextColor3=Color3.new(1,1,1)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3=T.dim, TextColor3=T.muted}):Play() end)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+closeBtn.TouchTap:Connect(function() sg:Destroy() end)
+
+-- ══════════════════════════════════════════
+--  DRAG
+-- ══════════════════════════════════════════
+do
+    local dragging, dragInput, dragStart, startPos
+    hdr.InputBegan:Connect(function(i)
+        local t = i.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+            dragging = true; dragStart = i.Position; startPos = win.Position end
+    end)
+    hdr.InputChanged:Connect(function(i)
+        local t = i.UserInputType
+        if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then dragInput = i end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i == dragInput and dragging then
+            local d = i.Position - dragStart; local vp = workspace.CurrentCamera.ViewportSize
+            local curH = minimized and HDR_H or WIN_H
+            win.Position = UDim2.new(0, math.clamp(startPos.X.Offset+d.X, 0, vp.X-WIN_W),
+                                     0, math.clamp(startPos.Y.Offset+d.Y, 0, vp.Y-curH))
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        local t = i.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then dragging = false end
+    end)
+end
+
+-- ══════════════════════════════════════════
+--  CONTENT AREA
+-- ══════════════════════════════════════════
+content = Instance.new("Frame")
+content.Size = UDim2.new(1,-SIDE_W,1,-HDR_H); content.Position = UDim2.new(0,SIDE_W,0,HDR_H)
+content.BackgroundTransparency = 1; content.BorderSizePixel = 0; content.ZIndex = 2; content.Parent = win
+
+-- ══════════════════════════════════════════
+--  TAB DEFINITIONS
+-- ══════════════════════════════════════════
+local TABS = {
+    { id="home",    name="HOME",    color=accent },
+    { id="aimbot",  name="AIMBOT",  color=accent },
+    { id="combat",  name="COMBAT",  color=accent },
+    { id="train",   name="TRAIN",   color=accent },
+    { id="info",    name="INFO",    color=accent },
+}
+
+local pages   = {}
+local navBtns = {}
+local activeTab = 1
+
+local function makePage(color)
+    local pg = Instance.new("ScrollingFrame"); pg.Size = UDim2.new(1,0,1,0)
+    pg.BackgroundTransparency = 1; pg.BorderSizePixel = 0; pg.ScrollBarThickness = 3
+    pg.ScrollBarImageColor3 = color; pg.CanvasSize = UDim2.new(0,0,0,0)
+    pg.AutomaticCanvasSize = Enum.AutomaticSize.Y; pg.ScrollingDirection = Enum.ScrollingDirection.Y
+    pg.ElasticBehavior = Enum.ElasticBehavior.Never; pg.Visible = false; pg.ZIndex = 2; pg.Parent = content
+    local l = Instance.new("UIListLayout"); l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Center; l.Padding = UDim.new(0,6); l.Parent = pg
+    local p = Instance.new("UIPadding"); p.PaddingTop = UDim.new(0,10); p.PaddingBottom = UDim.new(0,10)
+    p.PaddingLeft = UDim.new(0,10); p.PaddingRight = UDim.new(0,10); p.Parent = pg
+    return pg
+end
+
+for i, def in ipairs(TABS) do
+    pages[i] = makePage(def.color)
+end
+
+local function setTab(idx)
+    activeTab = idx
+    hdrTitle.Text = TABS[idx].name == "HOME" and "Feather Hub | Jujutsu" or TABS[idx].name
+    for i, btn in ipairs(navBtns) do
+        local on = (i == idx)
+        TweenService:Create(btn.bg, tw(0.15), {
+            BackgroundColor3 = on and btn.color or T.dim,
+            BackgroundTransparency = on and 0.15 or 0,
+        }):Play()
+        TweenService:Create(btn.lbl, tw(0.15), {TextColor3 = on and btn.color or T.muted}):Play()
+        btn.bar.BackgroundTransparency = on and 0 or 1
+        pages[i].Visible = on
+    end
+end
+
+for i, def in ipairs(TABS) do
+    local row = Instance.new("Frame"); row.Size = UDim2.new(1,-6,0,isMobile and 38 or 34)
+    row.BackgroundTransparency = 1; row.LayoutOrder = i; row.ZIndex = 4; row.Parent = navCont
+
+    local bar = Instance.new("Frame"); bar.Size = UDim2.new(0,3,0.5,0); bar.Position = UDim2.new(0,0,0.25,0)
+    bar.BackgroundColor3 = def.color; bar.BackgroundTransparency = 1
+    bar.BorderSizePixel = 0; bar.ZIndex = 5; bar.Parent = row
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1,0)
+
+    local bg = Instance.new("Frame"); bg.Size = UDim2.new(1,-4,1,-4); bg.Position = UDim2.new(0,4,0,2)
+    bg.BackgroundColor3 = T.dim; bg.BackgroundTransparency = 0
+    bg.BorderSizePixel = 0; bg.ZIndex = 4; bg.Parent = row
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0,7)
+
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,-14,1,0); lbl.Position = UDim2.new(0,12,0,0)
+    lbl.Text = def.name; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = isMobile and 8 or 7
+    lbl.TextColor3 = T.muted; lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.ZIndex = 5; lbl.Parent = row
+
+    local hit = Instance.new("TextButton"); hit.Size = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1; hit.Text = ""; hit.ZIndex = 6; hit.Parent = row
+    local ci = i
+    hit.MouseButton1Click:Connect(function() setTab(ci) end)
+    hit.TouchTap:Connect(function() setTab(ci) end)
+
+    navBtns[i] = {bg=bg, lbl=lbl, bar=bar, color=def.color}
+    reg(bg, "BackgroundColor3", LIGHT.dim, DARK.dim)
+    reg(lbl, "TextColor3", LIGHT.muted, DARK.muted)
+end
+
+-- ══════════════════════════════════════════
+--  SHARED UI BUILDERS
+-- ══════════════════════════════════════════
+local function makeCard(parent, order)
+    local c = Instance.new("Frame"); c.Size = UDim2.new(1,0,0,0); c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card; c.BorderSizePixel = 0; c.LayoutOrder = order; c.ZIndex = 3; c.Parent = parent
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0,10)
+    local s = Instance.new("UIStroke"); s.Color = T.border; s.Thickness = 1; s.Parent = c
+    local l = Instance.new("UIListLayout"); l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Center; l.Padding = UDim.new(0,0); l.Parent = c
+    reg(c, "BackgroundColor3", LIGHT.card, DARK.card); reg(s, "Color", LIGHT.border, DARK.border)
+    return c
+end
+
+local function makeSection(parent, label, color, order)
+    local f = Instance.new("Frame"); f.Size = UDim2.new(1,0,0,20); f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0; f.LayoutOrder = order; f.ZIndex = 3; f.Parent = parent
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,0,1,0); lbl.Text = string.upper(label)
+    lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 8; lbl.TextColor3 = color
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.ZIndex = 3; lbl.Parent = f
+    local line = Instance.new("Frame"); line.Size = UDim2.new(0,26,0,2); line.Position = UDim2.new(0,0,1,-2)
+    line.BackgroundColor3 = color; line.BorderSizePixel = 0; line.ZIndex = 3; line.Parent = f
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1,0)
+end
+
+local function makeRow(card, order, isLast, h)
+    local row = Instance.new("Frame"); row.Size = UDim2.new(1,0,0,h or 44)
+    row.BackgroundTransparency = 1; row.BorderSizePixel = 0; row.LayoutOrder = order; row.ZIndex = 4; row.Parent = card
+    if not isLast then
+        local sep = Instance.new("Frame"); sep.Size = UDim2.new(1,-24,0,1); sep.Position = UDim2.new(0,12,1,-1)
+        sep.BackgroundColor3 = T.sep; sep.BorderSizePixel = 0; sep.ZIndex = 4; sep.Parent = row
+        reg(sep, "BackgroundColor3", LIGHT.sep, DARK.sep)
+    end
+    return row
+end
+
+local function makeInfoRow(card, order, labelTxt, valueTxt, valueColor, isLast)
+    local row = makeRow(card, order, isLast, 38)
+    local l = Instance.new("TextLabel"); l.Size = UDim2.new(0.55,0,1,0); l.Position = UDim2.new(0,14,0,0)
+    l.Text = labelTxt; l.Font = Enum.Font.GothamSemibold; l.TextSize = isMobile and 11 or 10
+    l.TextColor3 = T.muted; l.TextXAlignment = Enum.TextXAlignment.Left; l.BackgroundTransparency = 1
+    l.ZIndex = 5; l.Parent = row
+    reg(l, "TextColor3", LIGHT.muted, DARK.muted)
+    local r = Instance.new("TextLabel"); r.Size = UDim2.new(0.45,0,1,0); r.Position = UDim2.new(0.55,0,0,0)
+    r.Text = valueTxt; r.Font = Enum.Font.GothamBold; r.TextSize = isMobile and 11 or 10
+    r.TextColor3 = valueColor or T.text; r.TextXAlignment = Enum.TextXAlignment.Right; r.BackgroundTransparency = 1
+    r.ZIndex = 5; r.Parent = row
+    local rp = Instance.new("UIPadding"); rp.PaddingRight = UDim.new(0,14); rp.Parent = r
+    return row, r
+end
+
+local function makeToggle(card, order, label, color, initVal, cb, isLast)
+    local row = makeRow(card, order, isLast, 42)
+    local state = initVal
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,-80,1,0); lbl.Position = UDim2.new(0,14,0,0)
+    lbl.Text = label; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = isMobile and 12 or 10
+    lbl.TextColor3 = T.text; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1; lbl.ZIndex = 5; lbl.Parent = row
+    reg(lbl, "TextColor3", LIGHT.text, DARK.text)
+    local pill = Instance.new("Frame"); pill.Size = UDim2.new(0,44,0,22); pill.Position = UDim2.new(1,-54,0.5,-11)
+    pill.BackgroundColor3 = state and color or T.dim; pill.BorderSizePixel = 0; pill.ZIndex = 5; pill.Parent = row
+    Instance.new("UICorner", pill).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("Frame"); knob.Size = UDim2.new(0,16,0,16)
+    knob.Position = state and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
+    knob.BackgroundColor3 = state and Color3.new(1,1,1) or T.muted
+    knob.BorderSizePixel = 0; knob.ZIndex = 6; knob.Parent = pill
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+    local hit = Instance.new("TextButton"); hit.Size = UDim2.new(0,60,1,0); hit.Position = UDim2.new(1,-62,0,0)
+    hit.BackgroundTransparency = 1; hit.Text = ""; hit.ZIndex = 7; hit.Parent = row
+    local function toggle()
+        state = not state
+        TweenService:Create(pill, tw(0.15), {BackgroundColor3 = state and color or T.dim}):Play()
+        TweenService:Create(knob, tw(0.15), {
+            Position = state and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8),
+            BackgroundColor3 = state and Color3.new(1,1,1) or T.muted,
+        }):Play()
+        pcall(cb, state)
+    end
+    hit.MouseButton1Click:Connect(toggle); hit.TouchTap:Connect(toggle)
+    return row
+end
+
+local function makeButton(card, order, label, color, callback, isLast)
+    local row = makeRow(card, order, isLast, 42)
+    local btn = Instance.new("TextButton"); btn.Size = UDim2.new(1,-24,0,28); btn.Position = UDim2.new(0,12,0.5,-14)
+    btn.Text = label; btn.Font = Enum.Font.GothamBold; btn.TextSize = isMobile and 12 or 10
+    btn.TextColor3 = Color3.new(1,1,1); btn.BackgroundColor3 = color
+    btn.BorderSizePixel = 0; btn.AutoButtonColor = false; btn.ZIndex = 5; btn.Parent = row
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,7)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3=color:Lerp(Color3.new(1,1,1),0.2)}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3=color}):Play() end)
+    btn.MouseButton1Click:Connect(callback); btn.TouchTap:Connect(callback)
+    return row
+end
+
+local function makeTextbox(card, order, placeholder, valueColor, callback, isLast)
+    local row = makeRow(card, order, isLast, 44)
+    local box = Instance.new("TextBox"); box.Size = UDim2.new(1,-24,0,28); box.Position = UDim2.new(0,12,0.5,-14)
+    box.PlaceholderText = placeholder; box.Text = ""; box.Font = Enum.Font.GothamMedium; box.TextSize = isMobile and 12 or 10
+    box.TextColor3 = T.text; box.PlaceholderColor3 = T.muted; box.BackgroundColor3 = T.inputBg
+    box.BorderSizePixel = 0; box.ClearTextOnFocus = false; box.ZIndex = 5; box.Parent = row
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0,7)
+    local s = Instance.new("UIStroke"); s.Color = T.border; s.Thickness = 1; s.Parent = box
+    local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0,10); pad.PaddingRight = UDim.new(0,10); pad.Parent = box
+    reg(box, "BackgroundColor3", LIGHT.inputBg, DARK.inputBg); reg(box, "TextColor3", LIGHT.text, DARK.text)
+    reg(box, "PlaceholderColor3", LIGHT.muted, DARK.muted); reg(s, "Color", LIGHT.border, DARK.border)
+    box.FocusLost:Connect(function(enterPressed)
+        if enterPressed then pcall(callback, box.Text) end
+    end)
+    return row
+end
+
+-- ══════════════════════════════════════════
+--  AIMBOT SYSTEM
+-- ══════════════════════════════════════════
+local aimbotActive = false
+local aimbotDistance = 50
+local aimbotTilt = false
+local aimbotConnection
+
+local function getAimbotTarget()
+    local char = Player.Character
+    if not char then return nil end
+    local playerRoot = char:FindFirstChild("HumanoidRootPart")
+    if not playerRoot then return nil end
+    local closest = nil
+    local shortest = math.huge
+    for _, obj in ipairs(char.Parent:GetChildren()) do
+        if obj ~= char and obj:FindFirstChild("HumanoidRootPart") and obj:FindFirstChild("Humanoid") then
+            local dist = (playerRoot.Position - obj.HumanoidRootPart.Position).Magnitude
+            if dist < shortest and dist <= aimbotDistance then
+                shortest = dist
+                closest = obj
+            end
+        end
+    end
+    return closest
+end
+
+local function aimAtTarget(target)
+    local char = Player.Character
+    if not char then return end
+    local playerRoot = char:FindFirstChild("HumanoidRootPart")
+    if not playerRoot or not target or not target:FindFirstChild("HumanoidRootPart") then return end
+    local targetPos = target.HumanoidRootPart.Position
+    local direction
+    if aimbotTilt then
+        direction = (targetPos - playerRoot.Position).Unit
+    else
+        direction = Vector3.new(
+            targetPos.X - playerRoot.Position.X, 0,
+            targetPos.Z - playerRoot.Position.Z
+        ).Unit
+    end
+    playerRoot.CFrame = CFrame.new(playerRoot.Position, playerRoot.Position + direction)
+end
+
+local function toggleAimbot(state)
+    aimbotActive = state
+    if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection = nil end
+    if not state then return end
+    aimbotConnection = RunService.RenderStepped:Connect(function()
+        if not aimbotActive then return end
+        local target = getAimbotTarget()
+        if target then aimAtTarget(target) end
+    end)
+end
+
+local function toggleAimbotTilt(state)
+    aimbotTilt = state
+end
+
+local function setAimbotDistance(val)
+    local n = tonumber(val)
+    if n and n > 0 then
+        aimbotDistance = n
+        notify("Aimbot", "Range set to " .. n, "success")
+    else
+        notify("Error", "Invalid distance", "error")
+    end
+end
+
+-- ══════════════════════════════════════════
+--  BLACK FLASH SYSTEM
+-- ══════════════════════════════════════════
+local blackFlashActive = false
+local blackFlashCount = 1
+
+local function getNearestCombatTarget()
+    local char = Player.Character
+    if not char then return nil, math.huge end
+    local rootPart = char:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return nil, math.huge end
+    local nearestRoot = nil
+    local nearestDist = math.huge
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == Player then continue end
+        local c = p.Character
+        if not c then continue end
+        local r = c:FindFirstChild("HumanoidRootPart")
+        if not r then continue end
+        local dist = (rootPart.Position - r.Position).Magnitude
+        if dist < nearestDist then
+            nearestDist = dist
+            nearestRoot = r
+        end
+    end
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj ~= char then
+            local hum = obj:FindFirstChildWhichIsA("Humanoid")
+            local r = obj:FindFirstChild("HumanoidRootPart")
+            if hum and r and hum.Health > 0 then
+                local isPlr = false
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Character == obj then isPlr = true; break end
+                end
+                if not isPlr then
+                    local dist = (rootPart.Position - r.Position).Magnitude
+                    if dist < nearestDist then
+                        nearestDist = dist
+                        nearestRoot = r
+                    end
+                end
+            end
+        end
+    end
+
+    return nearestRoot, nearestDist
+end
+
+local function fireDivergentFist()
+    local char = Player.Character
+    if not char then return end
+    local moveset = char:FindFirstChild("Moveset")
+    if not moveset then return end
+    local df = moveset:FindFirstChild("Divergent Fist")
+    if not df then return end
+    pcall(function()
+        ReplicatedStorage.Knit.Knit.Services.DivergentFistService.RE.Activated:FireServer(df)
+    end)
+end
+
+local function teleportBehindTarget(targetRoot)
+    local char = Player.Character
+    if not char then return end
+    local rootPart = char:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+    rootPart.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3)
+end
+
+local function executeBlackFlash()
+    if blackFlashActive then return end
+    blackFlashActive = true
+    local count = math.clamp(blackFlashCount, 1, 4)
+
+    local nearestRoot, nearestDist = getNearestCombatTarget()
+    if nearestRoot and nearestDist > 20 then
+        teleportBehindTarget(nearestRoot)
+        task.wait(0.1)
+    end
+
+    for i = 1, count do
+        fireDivergentFist()
+        task.wait(0.3)
+        fireDivergentFist()
+        nearestRoot = getNearestCombatTarget()
+        if nearestRoot then
+            teleportBehindTarget(nearestRoot)
+        end
+        task.wait(0.5)
+    end
+
+    blackFlashActive = false
+    notify("Black Flash", "Completed " .. count .. " hit(s)", "success")
+end
+
+local function setBlackFlashCount(val)
+    local n = tonumber(val)
+    if n then
+        blackFlashCount = math.clamp(math.floor(n), 1, 4)
+        notify("Black Flash", "Hit count set to " .. blackFlashCount, "success")
+    else
+        notify("Error", "Enter a number 1-4", "error")
+    end
+end
+
+-- ══════════════════════════════════════════
+--  TRAIN REMOTE SYSTEM
+-- ══════════════════════════════════════════
+local trainActive = false
+local trainConnection
+
+local function fireTrainRemote()
+    pcall(function()
+        local remote = Workspace.Map.Destructible.Model.StationControl.Handle.Train
+        if remote then remote:FireServer() end
+    end)
+end
+
+local function isTrainPromptReady()
+    local ok, result = pcall(function()
+        local prompt = Workspace.Map.Destructible.Model.StationControl.ButtonTrain.Button.Button
+        return prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled
+    end)
+    return ok and result
+end
+
+local function toggleAutoTrain(state)
+    trainActive = state
+    if trainConnection then trainConnection:Disconnect(); trainConnection = nil end
+    if not state then return end
+    trainConnection = RunService.Heartbeat:Connect(function()
+        if trainActive and isTrainPromptReady() then
+            fireTrainRemote()
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════
+--  PAGE 1: HOME
+-- ══════════════════════════════════════════
+local pg_home = pages[1]
+local welcomeCard = makeCard(pg_home, 1)
+local wRow = makeRow(welcomeCard, 1, true, isMobile and 60 or 54)
+local wIbg = Instance.new("Frame"); wIbg.Size = UDim2.new(0,34,0,34); wIbg.Position = UDim2.new(0,12,0.5,-17)
+wIbg.BackgroundColor3 = accent; wIbg.BackgroundTransparency = 0.85; wIbg.BorderSizePixel = 0; wIbg.Parent = wRow
+Instance.new("UICorner", wIbg).CornerRadius = UDim.new(0,8)
+local wIco = Instance.new("TextLabel"); wIco.Size = UDim2.new(1,0,1,0); wIco.Text = "F"
+wIco.TextSize = 20; wIco.Font = Enum.Font.GothamBold; wIco.TextColor3 = accent
+wIco.BackgroundTransparency = 1; wIco.Parent = wIbg
+local wTitle = Instance.new("TextLabel"); wTitle.Size = UDim2.new(1,-60,0,18); wTitle.Position = UDim2.new(0,54,0,8)
+wTitle.Text = "Welcome, " .. DisplayName; wTitle.Font = Enum.Font.GothamBold; wTitle.TextSize = isMobile and 13 or 11
+wTitle.TextColor3 = T.text; wTitle.TextXAlignment = Enum.TextXAlignment.Left; wTitle.BackgroundTransparency = 1; wTitle.ZIndex = 5; wTitle.Parent = wRow
+reg(wTitle, "TextColor3", LIGHT.text, DARK.text)
+local wSub = Instance.new("TextLabel"); wSub.Size = UDim2.new(1,-60,0,14); wSub.Position = UDim2.new(0,54,0,26)
+wSub.Text = "Feather Hub v1  •  Jujutsu"
+wSub.Font = Enum.Font.Gotham; wSub.TextSize = isMobile and 9 or 8; wSub.TextColor3 = T.muted; wSub.TextXAlignment = Enum.TextXAlignment.Left
+wSub.BackgroundTransparency = 1; wSub.ZIndex = 5; wSub.Parent = wRow
+reg(wSub, "TextColor3", LIGHT.muted, DARK.muted)
+
+local statusCard = makeCard(pg_home, 2)
+makeInfoRow(statusCard, 1, "Script Version", "v1 (beta)", accent, false)
+makeInfoRow(statusCard, 2, "Player", Username, T.text, false)
+makeInfoRow(statusCard, 3, "Display", DisplayName, T.text, true)
+
+-- ══════════════════════════════════════════
+--  PAGE 2: AIMBOT
+-- ══════════════════════════════════════════
+local pg_aimbot = pages[2]
+makeSection(pg_aimbot, "Targeting", accent, 1)
+local aimCard = makeCard(pg_aimbot, 2)
+makeToggle(aimCard, 1, "Enable Aimbot", accent, false, toggleAimbot, false)
+makeToggle(aimCard, 2, "Vertical Tilt", accent, false, toggleAimbotTilt, false)
+makeTextbox(aimCard, 3, "range (default 50)", T.text, setAimbotDistance, true)
+
+-- ══════════════════════════════════════════
+--  PAGE 3: COMBAT
+-- ══════════════════════════════════════════
+local pg_combat = pages[3]
+makeSection(pg_combat, "Black Flash", accent, 1)
+local bfCard = makeCard(pg_combat, 2)
+makeTextbox(bfCard, 1, "hit count (1-4)", T.text, setBlackFlashCount, false)
+makeButton(bfCard, 2, "Execute Black Flash", accent, executeBlackFlash, false)
+makeButton(bfCard, 3, "Teleport Behind Nearest", accent, function()
+    local target = getNearestCombatTarget()
+    if target then
+        teleportBehindTarget(target)
+        notify("Combat", "Teleported behind target", "success")
+    else
+        notify("Combat", "No target found", "error")
+    end
+end, true)
+
+-- ══════════════════════════════════════════
+--  PAGE 4: TRAIN
+-- ══════════════════════════════════════════
+local pg_train = pages[4]
+makeSection(pg_train, "Station Control", accent, 1)
+local trainCard = makeCard(pg_train, 2)
+makeToggle(trainCard, 1, "Auto Fire Train", accent, false, toggleAutoTrain, false)
+makeButton(trainCard, 2, "Fire Train Once", accent, function()
+    fireTrainRemote()
+    notify("Train", "Remote fired", "success")
+end, true)
+
+-- ══════════════════════════════════════════
+--  PAGE 5: INFO
+-- ══════════════════════════════════════════
+local pg_info = pages[5]
+makeSection(pg_info, "About", accent, 1)
+local infoCard = makeCard(pg_info, 2)
+makeInfoRow(infoCard, 1, "Version", "1 (beta)", accent, false)
+makeInfoRow(infoCard, 2, "UI Framework", "Feather Hub", accent, true)
+
+-- ══════════════════════════════════════════
+--  THEME TOGGLE
+-- ══════════════════════════════════════════
+local function applyTheme()
+    T = isDark and DARK or LIGHT
+    applyReg()
+    thBtn.Text = isDark and "Light" or "Dark"
+    winGlow.ImageColor3 = isDark and Color3.fromRGB(80,80,120) or Color3.fromRGB(180,180,220)
+    for i, btn in ipairs(navBtns) do
+        if i ~= activeTab then
+            btn.bg.BackgroundColor3 = T.dim; btn.lbl.TextColor3 = T.muted
+        end
+    end
+end
+
+local function doTheme() isDark = not isDark; applyTheme() end
+thBtn.MouseButton1Click:Connect(doTheme); thBtn.TouchTap:Connect(doTheme)
+thBtn.MouseEnter:Connect(function() TweenService:Create(thBtn, tw(0.12), {BackgroundColor3=accent, TextColor3=Color3.new(1,1,1)}):Play() end)
+thBtn.MouseLeave:Connect(function() TweenService:Create(thBtn, tw(0.12), {BackgroundColor3=T.dim, TextColor3=T.muted}):Play() end)
+
+-- ══════════════════════════════════════════
+--  HIDE KEYBIND  ]
+-- ══════════════════════════════════════════
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.RightBracket then
+        sg.Enabled = not sg.Enabled
+    end
+end)
+
+-- ══════════════════════════════════════════
+--  OPEN ANIMATION
+-- ══════════════════════════════════════════
+win.Visible = true
+win.Size = UDim2.new(0,0,0,0)
+win.BackgroundTransparency = 1
+TweenService:Create(win, tw(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0,WIN_W,0,WIN_H),
+    BackgroundTransparency = 0,
+}):Play()
+
+setTab(1)
+notify("Feather Hub", "Loaded — press ] to hide", "success")
+print("[Feather Hub | Jujutsu] v1  •  beta")
