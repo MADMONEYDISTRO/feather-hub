@@ -1,0 +1,441 @@
+--[[
+    FEATHER HUB | Flee the Facility v1.1
+    Full ESP, smooth drag, all FTF game logic
+    Fixed: all per-frame loops wrapped in pcall, safe property access
+]]
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local TS = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+
+local isMobile = false
+pcall(function() isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled end)
+
+-- ═══════════════════════════════════════════════
+-- ESP INDICATOR (safe version — all pcall'd)
+-- ═══════════════════════════════════════════════
+local ESP = {}
+ESP.__index = ESP
+ESP.Groups = {}
+ESP.TargetIndex = {}
+
+function ESP.new(opts)
+    local self = setmetatable({}, ESP)
+    opts = opts or {}
+    self.ScreenGui = Instance.new("ScreenGui")
+    self.ScreenGui.Name = "FeatherESP"
+    self.ScreenGui.IgnoreGuiInset = true
+    self.ScreenGui.ResetOnSpawn = false
+    self.ScreenGui.Parent = opts.Parent or Player:WaitForChild("PlayerGui")
+    self.Indicators = {}
+    self.Settings = {
+        ArrowEdgePadding = opts.ArrowEdgePadding or 50,
+        ArrowSize = opts.ArrowSize or UDim2.new(0,30,0,30),
+        ArrowImage = opts.ArrowImage or "rbxassetid://97136202386756",
+        ArrowShowDistanceText = opts.ArrowShowDistanceText ~= false,
+        FillTransparency = opts.FillTransparency or 0.7,
+    }
+    -- Arrow template
+    self.ArrowTemplate = Instance.new("ImageLabel")
+    self.ArrowTemplate.Name = "ArrowTpl"
+    self.ArrowTemplate.Size = self.Settings.ArrowSize
+    self.ArrowTemplate.AnchorPoint = Vector2.new(0.5,0.5)
+    self.ArrowTemplate.BackgroundTransparency = 1
+    self.ArrowTemplate.Image = self.Settings.ArrowImage
+    self.ArrowTemplate.Visible = false
+    self.ArrowTemplate.Parent = self.ScreenGui
+    local sc = Instance.new("UIScale"); sc.Scale = 0; sc.Name = "Scaler"; sc.Parent = self.ArrowTemplate
+
+    self._conn = RS.RenderStepped:Connect(function() pcall(function() self:_update() end) end)
+    return self
+end
+
+function ESP:AddGroup(n)
+    if not ESP.Groups[n] then ESP.Groups[n] = {enabled=true, targets={}} end
+    return ESP.Groups[n]
+end
+
+function ESP:RemoveGroup(n)
+    local g = ESP.Groups[n]
+    if not g then return end
+    for _,t in ipairs(g.targets) do
+        self:Remove(t)
+    end
+    ESP.Groups[n] = nil
+end
+
+function ESP:ClearAllGroups()
+    local names = {}
+    for n in pairs(ESP.Groups) do table.insert(names, n) end
+    for _, n in ipairs(names) do self:RemoveGroup(n) end
+end
+
+function ESP:Add(target, opts)
+    if not target then return end
+    opts = opts or {}
+    -- Remove existing first
+    if self.Indicators[target] then self:Remove(target) end
+
+    local hl = Instance.new("Highlight")
+    hl.Adornee = target
+    hl.FillTransparency = opts.FillTransparency or self.Settings.FillTransparency
+    hl.FillColor = opts.AccentColor or Color3.new(1,1,0)
+    hl.OutlineColor = opts.AccentColor or Color3.new(1,1,0)
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Parent = self.ScreenGui
+
+    local arrow, scaler, distLabel
+    if opts.ArrowShow then
+        arrow = self.ArrowTemplate:Clone()
+        arrow.ImageColor3 = opts.AccentColor or Color3.new(1,1,0)
+        arrow.Visible = true
+        arrow.Parent = self.ScreenGui
+        scaler = arrow:FindFirstChild("Scaler")
+        if self.Settings.ArrowShowDistanceText then
+            distLabel = Instance.new("TextLabel")
+            distLabel.Name = "Dist"
+            distLabel.AnchorPoint = Vector2.new(0.5,0)
+            distLabel.BackgroundTransparency = 1
+            distLabel.Font = Enum.Font.Montserrat
+            distLabel.TextSize = 18
+            distLabel.TextColor3 = opts.AccentColor or Color3.new(1,1,0)
+            distLabel.Size = UDim2.new(0,60,0,20)
+            distLabel.Parent = arrow
+        end
+    end
+
+    local label
+    if opts.ShowLabel then
+        label = Instance.new("BillboardGui")
+        label.AlwaysOnTop = true
+        label.MaxDistance = 99999
+        label.Size = UDim2.new(0,70,0,70)
+        label.StudsOffset = Vector3.new(0,2,0)
+        label.Adornee = target
+        label.Parent = self.ScreenGui
+        local tl = Instance.new("TextLabel")
+        tl.Size = UDim2.new(1,0,1,0)
+        tl.AnchorPoint = Vector2.new(0.5,0.5)
+        tl.Position = UDim2.new(0.5,0,0.5,0)
+        tl.BackgroundTransparency = 1
+        tl.Font = Enum.Font.SourceSansBold
+        tl.TextScaled = true
+        tl.TextColor3 = opts.AccentColor or Color3.new(1,1,0)
+        tl.Text = opts.LabelText or "?"
+        tl.Parent = label
+        Instance.new("UIStroke", tl)
+    end
+
+    self.Indicators[target] = {Highlight=hl, Arrow=arrow, Scaler=scaler, DistanceLabel=distLabel, Label=label, Options=opts}
+
+    if opts.GroupName then
+        local g = self:AddGroup(opts.GroupName)
+        if not table.find(g.targets, target) then table.insert(g.targets, target) end
+    end
+end
+
+function ESP:Remove(t)
+    local ind = self.Indicators[t]
+    if not ind then return end
+    pcall(function() if ind.Highlight then ind.Highlight.Adornee = nil; ind.Highlight:Destroy() end end)
+    pcall(function() if ind.Arrow then ind.Arrow:Destroy() end end)
+    pcall(function() if ind.Label then ind.Label.Adornee = nil; ind.Label:Destroy() end end)
+    self.Indicators[t] = nil
+end
+
+function ESP:_update()
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local vp = cam.ViewportSize
+    local vpX, vpY = vp.X, vp.Y
+    local pad = self.Settings.ArrowEdgePadding
+    local toRemove = {}
+
+    for target, ind in pairs(self.Indicators) do
+        local ok = pcall(function()
+            local arrow = ind.Arrow
+            local scaler = ind.Scaler
+            if not arrow or not scaler then return end
+
+            -- Check target still exists
+            if not target or not target.Parent then table.insert(toRemove, target); return end
+
+            -- Get position
+            local pos3
+            if target:IsA("Model") then
+                local pp = target.PrimaryPart
+                if pp then pos3 = pp.Position else local bp = target:FindFirstChildWhichIsA("BasePart"); if bp then pos3 = bp.Position end end
+            elseif target:IsA("BasePart") then
+                pos3 = target.Position
+            end
+            if not pos3 then return end
+
+            local sp, onScreen = cam:WorldToViewportPoint(pos3)
+            local dist = (cam.CFrame.Position - pos3).Magnitude
+            local minDist = ind.Options.ArrowMinDistance or 0
+
+            -- If on screen, hide arrow
+            if onScreen and dist > minDist then
+                scaler.Scale = 0; return
+            end
+
+            -- Off screen — position arrow at edge
+            scaler.Scale = 1
+            local hW, hH = (vpX-pad*2)/2, (vpY-pad*2)/2
+            local objLocal = cam.CFrame:VectorToObjectSpace(pos3 - cam.CFrame.Position)
+            local r2 = Vector2.new(objLocal.X, objLocal.Y)
+            if r2.Magnitude < 0.001 then scaler.Scale = 0; return end
+            local d2 = r2.Unit
+
+            local cX = math.clamp(sp.X, pad, vpX-pad)
+            local cY = math.clamp(sp.Y, pad, vpY-pad)
+            if cX == sp.X and cY == sp.Y and onScreen then scaler.Scale = 0; return end
+
+            local ev
+            local absX, absY = math.max(math.abs(d2.X), 0.001), math.max(math.abs(d2.Y), 0.001)
+            if absY * hW > absX * hH then ev = d2 * (hH / absY) else ev = d2 * (hW / absX) end
+
+            arrow.Position = UDim2.fromOffset(vpX/2 + ev.X, vpY/2 - ev.Y)
+            arrow.Rotation = math.deg(math.atan2(d2.X, d2.Y))
+
+            if ind.DistanceLabel then
+                ind.DistanceLabel.Text = string.format("%dm", math.round(dist))
+                ind.DistanceLabel.Position = UDim2.new(0.5, 0, 0, (ind.Options.ArrowSize and ind.Options.ArrowSize.Y.Offset or 30) + 16)
+            end
+        end)
+        if not ok then table.insert(toRemove, target) end
+    end
+
+    for _, t in ipairs(toRemove) do self:Remove(t) end
+end
+
+function ESP:Destroy()
+    if self._conn then self._conn:Disconnect() end
+    self:ClearAllGroups()
+    for t in pairs(self.Indicators) do self:Remove(t) end
+    pcall(function() self.ScreenGui:Destroy() end)
+end
+
+-- ═══════════════════════════════════════════════
+-- FEATHER HUB UI
+-- ═══════════════════════════════════════════════
+local bgCol = Color3.fromRGB(14,14,16)
+local hdrCol = Color3.fromRGB(18,18,22)
+local cardCol = Color3.fromRGB(26,26,30)
+local borderCol = Color3.fromRGB(44,44,52)
+local txtCol = Color3.fromRGB(240,240,244)
+local mutedCol = Color3.fromRGB(100,100,115)
+local dimCol = Color3.fromRGB(32,32,38)
+local sepCol = Color3.fromRGB(36,36,44)
+local accent = Color3.fromRGB(130,90,220)
+
+local function tw(t,s,d) return TweenInfo.new(t or 0.2, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
+local function mkC(p,r) Instance.new("UICorner",p).CornerRadius = UDim.new(0,r or 6) end
+
+local sg = Instance.new("ScreenGui"); sg.Name="FeatherFTF"; sg.ResetOnSpawn=false; sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; sg.IgnoreGuiInset=true; sg.DisplayOrder=999; sg.Parent=Player:WaitForChild("PlayerGui")
+
+local WIN_W=isMobile and 340 or 380; local WIN_H=isMobile and 460 or 420; local HDR_H=44
+local win=Instance.new("Frame"); win.Size=UDim2.new(0,WIN_W,0,WIN_H); win.Position=UDim2.new(0.5,-math.floor(WIN_W/2),0.5,-math.floor(WIN_H/2)); win.BackgroundColor3=bgCol; win.BorderSizePixel=0; win.ClipsDescendants=true; win.Parent=sg; mkC(win,14); Instance.new("UIStroke",win).Color=borderCol
+local glow=Instance.new("ImageLabel"); glow.Size=UDim2.new(1,40,1,40); glow.Position=UDim2.new(0,-20,0,-20); glow.BackgroundTransparency=1; glow.Image="rbxassetid://1316045217"; glow.ImageColor3=Color3.fromRGB(100,70,160); glow.ImageTransparency=0.88; glow.ScaleType=Enum.ScaleType.Slice; glow.SliceCenter=Rect.new(10,10,118,118); glow.ZIndex=-1; glow.Parent=win
+
+-- HEADER
+local hdr=Instance.new("Frame"); hdr.Size=UDim2.new(1,0,0,HDR_H); hdr.BackgroundColor3=hdrCol; hdr.BorderSizePixel=0; hdr.ZIndex=3; hdr.Parent=win; mkC(hdr,14)
+local hdrBot=Instance.new("Frame"); hdrBot.Size=UDim2.new(1,0,0,14); hdrBot.Position=UDim2.new(0,0,1,-14); hdrBot.BackgroundColor3=hdrCol; hdrBot.BorderSizePixel=0; hdrBot.ZIndex=3; hdrBot.Parent=hdr
+local hdrLine=Instance.new("Frame"); hdrLine.Size=UDim2.new(1,-8,0,1); hdrLine.Position=UDim2.new(0,4,1,-1); hdrLine.BackgroundColor3=sepCol; hdrLine.BorderSizePixel=0; hdrLine.ZIndex=4; hdrLine.Parent=hdr
+local logoPill=Instance.new("Frame"); logoPill.Size=UDim2.new(0,28,0,28); logoPill.Position=UDim2.new(0,10,0.5,-14); logoPill.BackgroundColor3=accent; logoPill.BorderSizePixel=0; logoPill.ZIndex=5; logoPill.Parent=hdr; mkC(logoPill,7)
+local logoF=Instance.new("TextLabel"); logoF.Size=UDim2.new(1,0,1,0); logoF.Text="F"; logoF.TextSize=14; logoF.Font=Enum.Font.GothamBold; logoF.TextColor3=Color3.new(1,1,1); logoF.BackgroundTransparency=1; logoF.ZIndex=6; logoF.Parent=logoPill
+local hdrTitle=Instance.new("TextLabel"); hdrTitle.Size=UDim2.new(0,0,1,0); hdrTitle.AutomaticSize=Enum.AutomaticSize.X; hdrTitle.Position=UDim2.new(0,46,0,0); hdrTitle.Text="Feather Hub | FTF"; hdrTitle.Font=Enum.Font.GothamBold; hdrTitle.TextSize=isMobile and 12 or 11; hdrTitle.TextColor3=txtCol; hdrTitle.TextXAlignment=Enum.TextXAlignment.Left; hdrTitle.BackgroundTransparency=1; hdrTitle.ZIndex=5; hdrTitle.Parent=hdr
+local verBg=Instance.new("Frame"); verBg.Size=UDim2.new(0,36,0,16); verBg.Position=UDim2.new(0,isMobile and 180 or 176,0.5,-8); verBg.BackgroundColor3=Color3.fromRGB(28,28,44); verBg.BorderSizePixel=0; verBg.ZIndex=5; verBg.Parent=hdr; mkC(verBg,8); Instance.new("UIStroke",verBg).Color=accent
+local verTxt=Instance.new("TextLabel"); verTxt.Size=UDim2.new(1,0,1,0); verTxt.Text="v1.1"; verTxt.Font=Enum.Font.GothamBold; verTxt.TextSize=7; verTxt.TextColor3=accent; verTxt.BackgroundTransparency=1; verTxt.ZIndex=6; verTxt.Parent=verBg
+local btnSize=isMobile and 32 or 26
+local minBtn=Instance.new("TextButton"); minBtn.Size=UDim2.new(0,btnSize,0,btnSize); minBtn.Position=UDim2.new(1,-(btnSize*2+14),0.5,-math.floor(btnSize/2)); minBtn.Text="-"; minBtn.Font=Enum.Font.GothamBold; minBtn.TextSize=isMobile and 20 or 16; minBtn.TextColor3=mutedCol; minBtn.BackgroundColor3=dimCol; minBtn.BorderSizePixel=0; minBtn.ZIndex=5; minBtn.Parent=hdr; mkC(minBtn,6)
+local isMinimized=false
+minBtn.MouseButton1Click:Connect(function() isMinimized=not isMinimized; if isMinimized then TS:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,HDR_H)}):Play();minBtn.Text="+" else TS:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,WIN_H)}):Play();minBtn.Text="-" end end)
+local closeBtn=Instance.new("TextButton"); closeBtn.Size=UDim2.new(0,btnSize,0,btnSize); closeBtn.Position=UDim2.new(1,-(btnSize+6),0.5,-math.floor(btnSize/2)); closeBtn.Text="x"; closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=isMobile and 18 or 14; closeBtn.TextColor3=mutedCol; closeBtn.BackgroundColor3=dimCol; closeBtn.BorderSizePixel=0; closeBtn.ZIndex=5; closeBtn.Parent=hdr; mkC(closeBtn,6)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- SMOOTH DRAG (YARHM style — tweened)
+local dragging, dragStart, startPos
+hdr.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = i.Position; startPos = win.Position
+    end
+end)
+hdr.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+end)
+UIS.InputChanged:Connect(function(i)
+    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local d = i.Position - dragStart
+        TS:Create(win, TweenInfo.new(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {
+            Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        }):Play()
+    end
+end)
+UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+
+-- CONTENT
+local content = Instance.new("ScrollingFrame"); content.Size=UDim2.new(1,-16,1,-(HDR_H+8)); content.Position=UDim2.new(0,8,0,HDR_H+4); content.BackgroundTransparency=1; content.ScrollBarThickness=3; content.ScrollBarImageColor3=accent; content.CanvasSize=UDim2.new(0,0,0,0); content.AutomaticCanvasSize=Enum.AutomaticSize.Y; content.BorderSizePixel=0; content.ZIndex=2; content.Parent=win
+Instance.new("UIListLayout",content).SortOrder=Enum.SortOrder.LayoutOrder; content:FindFirstChildOfClass("UIListLayout").Padding=UDim.new(0,6)
+local cp=Instance.new("UIPadding"); cp.PaddingTop=UDim.new(0,4); cp.PaddingBottom=UDim.new(0,8); cp.Parent=content
+
+-- UI BUILDERS
+local orderCounter=0; local function nextOrder() orderCounter=orderCounter+1; return orderCounter end
+local function makeSection(p,l) local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,18); f.BackgroundTransparency=1; f.LayoutOrder=nextOrder(); f.Parent=p; local lb=Instance.new("TextLabel"); lb.Size=UDim2.new(1,0,1,0); lb.Text=string.upper(l); lb.Font=Enum.Font.GothamBold; lb.TextSize=8; lb.TextColor3=accent; lb.TextXAlignment=Enum.TextXAlignment.Left; lb.BackgroundTransparency=1; lb.Parent=f; local ln=Instance.new("Frame"); ln.Size=UDim2.new(0,26,0,2); ln.Position=UDim2.new(0,0,1,-2); ln.BackgroundColor3=accent; ln.BorderSizePixel=0; ln.Parent=f; mkC(ln,4) end
+local function makeToggle(p,label,default,cb) local rowH=isMobile and 46 or 38; local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,rowH); row.BackgroundColor3=cardCol; row.BorderSizePixel=0; row.LayoutOrder=nextOrder(); row.Parent=p; mkC(row,8); local state=default or false; local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,-70,1,0); lbl.Position=UDim2.new(0,12,0,0); lbl.Text=label; lbl.Font=Enum.Font.GothamSemibold; lbl.TextSize=isMobile and 11 or 10; lbl.TextColor3=txtCol; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.BackgroundTransparency=1; lbl.Parent=row; local pill=Instance.new("Frame"); pill.Size=UDim2.new(0,40,0,20); pill.Position=UDim2.new(1,-50,0.5,-10); pill.BackgroundColor3=state and accent or dimCol; pill.BorderSizePixel=0; pill.Parent=row; mkC(pill,10); local knob=Instance.new("Frame"); knob.Size=UDim2.new(0,14,0,14); knob.Position=state and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7); knob.BackgroundColor3=state and Color3.new(1,1,1) or mutedCol; knob.BorderSizePixel=0; knob.Parent=pill; mkC(knob,7); local hit=Instance.new("TextButton"); hit.Size=UDim2.new(1,0,1,0); hit.BackgroundTransparency=1; hit.Text=""; hit.Parent=row; local function toggle() state=not state; TS:Create(pill,tw(0.15),{BackgroundColor3=state and accent or dimCol}):Play(); TS:Create(knob,tw(0.15),{Position=state and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7),BackgroundColor3=state and Color3.new(1,1,1) or mutedCol}):Play(); pcall(cb,state) end; hit.MouseButton1Click:Connect(toggle); hit.TouchTap:Connect(toggle) end
+local function makeButton(p,label,cb) local rowH=isMobile and 40 or 34; local btn=Instance.new("TextButton"); btn.Size=UDim2.new(1,0,0,rowH); btn.BackgroundColor3=accent; btn.Text=label; btn.Font=Enum.Font.GothamBold; btn.TextSize=isMobile and 12 or 10; btn.TextColor3=Color3.new(1,1,1); btn.BorderSizePixel=0; btn.LayoutOrder=nextOrder(); btn.Parent=p; mkC(btn,8); btn.MouseButton1Click:Connect(cb); btn.TouchTap:Connect(cb) end
+local function makeTextbox(p,label,placeholder,cb) local rowH=isMobile and 42 or 36; local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,rowH); row.BackgroundColor3=cardCol; row.BorderSizePixel=0; row.LayoutOrder=nextOrder(); row.Parent=p; mkC(row,8); local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(0.45,0,1,0); lbl.Position=UDim2.new(0,12,0,0); lbl.Text=label; lbl.Font=Enum.Font.GothamSemibold; lbl.TextSize=isMobile and 10 or 9; lbl.TextColor3=txtCol; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.BackgroundTransparency=1; lbl.Parent=row; local box=Instance.new("TextBox"); box.Size=UDim2.new(0.5,-10,0,rowH-10); box.Position=UDim2.new(0.48,5,0.5,-(rowH-10)/2); box.BackgroundColor3=dimCol; box.Text=""; box.PlaceholderText=placeholder; box.Font=Enum.Font.GothamBold; box.TextSize=isMobile and 11 or 9; box.TextColor3=txtCol; box.PlaceholderColor3=mutedCol; box.ClearTextOnFocus=false; box.BorderSizePixel=0; box.Parent=row; mkC(box,5); box.FocusLost:Connect(function() pcall(cb,box.Text) end) end
+
+-- ═══════════════════════════════════════════════
+-- FTF GAME LOGIC
+-- ═══════════════════════════════════════════════
+local espContainer = ESP.new({ArrowEdgePadding=50, ArrowShowDistanceText=false, Parent=Player:WaitForChild("PlayerGui")})
+local ftf = {players=false, pcs=false, pods=false, exits=false}
+
+local function getBeast()
+    for _,p in ipairs(Players:GetPlayers()) do
+        pcall(function()
+            if p.Character and p.Character:FindFirstChild("BeastPowers") then return p end
+        end)
+        -- pcall swallows the return, do it properly:
+        if p.Character and p.Character:FindFirstChild("BeastPowers") then return p end
+    end
+    return nil
+end
+
+local function reloadESP()
+    espContainer:ClearAllGroups()
+    if ftf.players then
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p ~= Player and p.Character then
+                if p == getBeast() then
+                    espContainer:Add(p.Character, {AccentColor=Color3.new(1,0,0), ArrowShow=true, ArrowMinDistance=999999, ArrowSize=UDim2.new(0,40,0,40), LabelText="Beast", ShowLabel=true, GroupName="players"})
+                else
+                    espContainer:Add(p.Character, {AccentColor=Color3.new(0,1,0), ArrowShow=false, ShowLabel=false, GroupName="players"})
+                end
+            end
+        end
+    end
+    if ftf.pcs then
+        for _,obj in ipairs(workspace:GetDescendants()) do
+            pcall(function()
+                if obj.Name == "ComputerTable" and obj:FindFirstChild("Screen") then
+                    if obj.Screen.Color == Color3.fromRGB(40,127,71) then
+                        espContainer:Add(obj, {AccentColor=Color3.new(0.133,0.333,0.008), ArrowShow=false, ShowLabel=false, GroupName="pcs"})
+                    else
+                        espContainer:Add(obj, {AccentColor=Color3.new(0,0.37,1), ArrowShow=true, ArrowMinDistance=99999, ArrowSize=UDim2.new(0,10,0,10), ShowLabel=false, GroupName="pcs"})
+                    end
+                end
+            end)
+        end
+    end
+    if ftf.pods then
+        for _,obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "FreezePod" then
+                espContainer:Add(obj, {AccentColor=Color3.new(0,1,1), ArrowShow=false, ShowLabel=false, GroupName="pods"})
+            end
+        end
+    end
+    if ftf.exits then
+        for _,obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "ExitDoor" then
+                espContainer:Add(obj, {AccentColor=Color3.new(1,1,0), ArrowShow=false, ShowLabel=false, GroupName="exits"})
+            end
+        end
+    end
+end
+
+-- Auto-reload on game state change
+pcall(function()
+    local iga = game:GetService("ReplicatedStorage"):WaitForChild("IsGameActive", 5)
+    local gs = game:GetService("ReplicatedStorage"):WaitForChild("GameStatus", 5)
+    if iga then iga.Changed:Connect(function() reloadESP() end) end
+    if gs then gs.Changed:Connect(function() reloadESP() end) end
+end)
+
+-- Flashlight
+local light
+local function setupLight()
+    pcall(function()
+        if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+            light = Instance.new("PointLight", Player.Character.HumanoidRootPart)
+            light.Brightness = 0
+            light.Range = 9999999999
+        end
+    end)
+end
+setupLight()
+Player.CharacterAdded:Connect(function(ch)
+    task.wait(1)
+    setupLight()
+end)
+
+-- Anti PC Error
+local antifail = false
+task.spawn(function()
+    pcall(function()
+        if game:GetService("RunService"):IsStudio() then return end
+        if not hookmetamethod then return end
+        local Old
+        Old = hookmetamethod(game, "__namecall", function(Self, ...)
+            local Args = {...}
+            local Method = getnamecallmethod()
+            if Method == "FireServer" and Args[1] == "SetPlayerMinigameResult" and antifail then
+                Args[2] = true
+            end
+            return Old(Self, unpack(Args))
+        end)
+    end)
+end)
+
+-- Walkspeed
+local wsLock = false
+local ws = 18
+task.spawn(function()
+    while task.wait(0.1) do
+        pcall(function()
+            if wsLock and Player.Character and Player.Character:FindFirstChildOfClass("Humanoid") then
+                Player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = ws
+            end
+        end)
+    end
+end)
+
+-- ═══════════════════════════════════════════════
+-- BUILD UI
+-- ═══════════════════════════════════════════════
+makeSection(content, "ESP Toggles")
+makeToggle(content, "Player ESP", false, function(v) ftf.players = v; reloadESP() end)
+makeToggle(content, "PC ESP", false, function(v) ftf.pcs = v; reloadESP() end)
+makeToggle(content, "Pod ESP", false, function(v) ftf.pods = v; reloadESP() end)
+makeToggle(content, "Exit ESP", false, function(v) ftf.exits = v; reloadESP() end)
+
+makeSection(content, "Tools")
+makeButton(content, "Reload ESP", function() reloadESP() end)
+makeButton(content, "Third Person Camera", function()
+    Player.CameraMode = Enum.CameraMode.Classic
+    Player.CameraMaxZoomDistance = 400
+end)
+makeToggle(content, "Anti PC Error", false, function(v) antifail = v end)
+makeToggle(content, "Flashlight", false, function(v)
+    if light then pcall(function() light.Brightness = v and 2.5 or 0 end) end
+end)
+
+makeSection(content, "Speed")
+makeTextbox(content, "Walkspeed", "18", function(text)
+    local num = tonumber(text)
+    if num then ws = num; wsLock = true end
+end)
+makeToggle(content, "Lock Walkspeed", false, function(v) wsLock = v end)
+makeButton(content, "Unlock Speed", function() wsLock = false end)
+
+-- Open animation
+win.Size=UDim2.new(0,0,0,0); win.BackgroundTransparency=1
+TS:Create(win, tw(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size=UDim2.new(0,WIN_W,0,WIN_H), BackgroundTransparency=0}):Play()
+task.spawn(function() while sg and sg.Parent do TS:Create(glow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.82}):Play(); task.wait(2.4); TS:Create(glow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.92}):Play(); task.wait(2.4) end end)
+print("Feather Hub | FTF v1.1 loaded")
