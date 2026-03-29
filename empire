@@ -1,0 +1,670 @@
+--// FeatherHub v1 – Complete Script (Fixed Minimize & UI Logic)
+--// UI + ATM + AutoFarm merged and fixed
+
+local Players         = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService    = game:GetService("TweenService")
+local RunService     = game:GetService("RunService")
+local StarterGui     = game:GetService("StarterGui")
+local VirtualUser    = game:GetService("VirtualUser")
+local workspace      = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera      = workspace.CurrentCamera
+
+--// ─── ANIMATION HELPERS ──────────────────────────────────────────────────────
+
+local function Ripple(btn)
+    btn.ClipsDescendants = true
+    btn.MouseButton1Click:Connect(function(x, y)
+        local absPos  = btn.AbsolutePosition
+        local absSize = btn.AbsoluteSize
+        local circle  = Instance.new("Frame")
+        circle.BackgroundColor3    = Color3.fromRGB(255, 255, 255)
+        circle.BackgroundTransparency = 0.7
+        circle.BorderSizePixel     = 0
+        circle.ZIndex              = btn.ZIndex + 1
+        circle.AnchorPoint         = Vector2.new(0.5, 0.5)
+        circle.Position            = UDim2.new(0, x - absPos.X, 0, y - absPos.Y)
+        circle.Size                = UDim2.new(0, 0, 0, 0)
+        circle.Parent              = btn
+        Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+        local finalSize = math.max(absSize.X, absSize.Y) * 2
+        TweenService:Create(circle, TweenInfo.new(0.4, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(0, finalSize, 0, finalSize),
+            BackgroundTransparency = 1
+        }):Play()
+        task.delay(0.4, function() if circle then circle:Destroy() end end)
+    end)
+end
+
+local function AnimateButton(btn)
+    local defaultColor = btn.BackgroundColor3
+    local hoverColor   = defaultColor:Lerp(Color3.fromRGB(120, 100, 220), 0.4)
+    local pressColor   = defaultColor:Lerp(Color3.fromRGB(150, 120, 240), 0.6)
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad), { BackgroundColor3 = hoverColor }):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad), { BackgroundColor3 = defaultColor }):Play()
+    end)
+    btn.MouseButton1Down:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.08, Enum.EasingStyle.Quad), { BackgroundColor3 = pressColor }):Play()
+    end)
+    btn.MouseButton1Up:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.08, Enum.EasingStyle.Quad), { BackgroundColor3 = hoverColor }):Play()
+    end)
+    Ripple(btn)
+end
+
+local function InertiaDrag(frame)
+    local dragging, dragStart, startPos = false, Vector2.new(), UDim2.new()
+    local velocity, lastPos, lastTime   = Vector2.new(), Vector2.new(), tick()
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging  = true
+            dragStart = input.Position
+            startPos  = frame.Position
+            velocity  = Vector2.new()
+            lastPos   = input.Position
+            lastTime  = tick()
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+            local dt = tick() - lastTime
+            if dt > 0 then velocity = (input.Position - lastPos) / dt end
+            lastPos  = input.Position
+            lastTime = tick()
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
+            dragging = false
+            local speed = velocity.Magnitude
+            if speed > 0 then
+                local offset = velocity.Unit * math.clamp(speed * 0.03, 20, 120)
+                TweenService:Create(frame, TweenInfo.new(0.35, Enum.EasingStyle.Quart), {
+                    Position = frame.Position + UDim2.new(0, offset.X, 0, offset.Y)
+                }):Play()
+            end
+        end
+    end)
+end
+
+--// ─── NOTIFICATION ────────────────────────────────────────────────────────────
+
+local function Notify(title, msg, dur)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title    = title,
+            Text     = msg,
+            Duration = dur or 3
+        })
+    end)
+end
+
+--// ─── UI HELPERS ──────────────────────────────────────────────────────────────
+
+local function MakeLabel(parent, text, yOffset, textSize)
+    local lbl = Instance.new("TextLabel", parent)
+    lbl.Size               = UDim2.new(1, -16, 0, 22)
+    lbl.Position           = UDim2.new(0, 8, 0, yOffset)
+    lbl.BackgroundTransparency = 1
+    lbl.Font               = Enum.Font.GothamSemibold
+    lbl.TextSize           = textSize or 12
+    lbl.TextColor3         = Color3.fromRGB(200, 195, 240)
+    lbl.TextXAlignment     = Enum.TextXAlignment.Left
+    lbl.Text               = text
+    return lbl
+end
+
+local function MakeToggle(parent, label, yOffset, onToggle)
+    local isOn = false
+    local ON_COLOR  = Color3.fromRGB(80, 60, 180)
+    local OFF_COLOR = Color3.fromRGB(30, 24, 60)
+
+    local row = Instance.new("Frame", parent)
+    row.Size                   = UDim2.new(1, -16, 0, 30)
+    row.Position               = UDim2.new(0, 8, 0, yOffset)
+    row.BackgroundColor3       = OFF_COLOR
+    row.BorderSizePixel        = 0
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size               = UDim2.new(1, -60, 1, 0)
+    lbl.Position           = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Font               = Enum.Font.GothamSemibold
+    lbl.TextSize           = 12
+    lbl.TextColor3         = Color3.fromRGB(200, 195, 240)
+    lbl.TextXAlignment     = Enum.TextXAlignment.Left
+    lbl.Text               = label
+
+    local btn = Instance.new("TextButton", row)
+    btn.Size               = UDim2.new(0, 48, 0, 22)
+    btn.Position           = UDim2.new(1, -54, 0.5, -11)
+    btn.BackgroundColor3   = OFF_COLOR
+    btn.Font               = Enum.Font.GothamBold
+    btn.TextSize           = 11
+    btn.TextColor3         = Color3.fromRGB(180, 170, 230)
+    btn.Text               = "OFF"
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    AnimateButton(btn)
+
+    btn.MouseButton1Click:Connect(function()
+        isOn = not isOn
+        btn.Text             = isOn and "ON" or "OFF"
+        btn.BackgroundColor3 = isOn and ON_COLOR or OFF_COLOR
+        if onToggle then onToggle(isOn) end
+    end)
+
+    return btn, function() return isOn end
+end
+
+--// ─── MAIN UI ─────────────────────────────────────────────────────────────────
+
+local function BuildUI()
+    local existing = game:GetService("CoreGui"):FindFirstChild("FeatherHubV1")
+    if existing then existing:Destroy() end
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name            = "FeatherHubV1"
+    sg.ResetOnSpawn    = false
+    sg.IgnoreGuiInset  = true
+    sg.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
+    sg.Parent          = game:GetService("CoreGui")
+
+    local main = Instance.new("Frame", sg)
+    main.Size               = UDim2.new(0, 430, 0, 370)
+    main.Position           = UDim2.new(0.5, -215, 0.5, -185)
+    main.BackgroundColor3   = Color3.fromRGB(18, 16, 30)
+    main.BorderSizePixel    = 0
+    main.ClipsDescendants   = true -- CRITICAL FOR MINIMIZE
+    Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+    InertiaDrag(main)
+
+    local header = Instance.new("Frame", main)
+    header.Size             = UDim2.new(1, 0, 0, 40)
+    header.BackgroundColor3 = Color3.fromRGB(22, 18, 40)
+    header.BorderSizePixel  = 0
+    Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
+
+    local titleLbl = Instance.new("TextLabel", header)
+    titleLbl.Size               = UDim2.new(1, -80, 1, 0)
+    titleLbl.Position           = UDim2.new(0, 14, 0, 0)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Font               = Enum.Font.GothamBold
+    titleLbl.TextSize           = 14
+    titleLbl.TextColor3         = Color3.fromRGB(230, 225, 255)
+    titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+    titleLbl.Text               = "FeatherHub  •  Driving Empire"
+
+    -- Tab bar
+    local tabBar = Instance.new("Frame", main)
+    tabBar.Size               = UDim2.new(1, -16, 0, 30)
+    tabBar.Position           = UDim2.new(0, 8, 0, 46)
+    tabBar.BackgroundTransparency = 1
+
+    local tabLayout = Instance.new("UIListLayout", tabBar)
+    tabLayout.FillDirection     = Enum.FillDirection.Horizontal
+    tabLayout.Padding           = UDim.new(0, 6)
+    tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+
+    -- Content container
+    local content = Instance.new("Frame", main)
+    content.Size               = UDim2.new(1, -16, 1, -84)
+    content.Position           = UDim2.new(0, 8, 0, 82)
+    content.BackgroundTransparency = 1
+    content.ClipsDescendants   = true
+
+    -- Minimize Logic
+    local minimised   = false
+    local FULL_HEIGHT = 370
+    local MINI_HEIGHT = 40
+
+    local minBtn = Instance.new("TextButton", header)
+    minBtn.Size             = UDim2.new(0, 28, 0, 28)
+    minBtn.Position         = UDim2.new(1, -68, 0, 6)
+    minBtn.BackgroundColor3 = Color3.fromRGB(40, 25, 60)
+    minBtn.Text             = "–"
+    minBtn.Font             = Enum.Font.GothamBold
+    minBtn.TextSize         = 16
+    minBtn.TextColor3       = Color3.fromRGB(220, 210, 255)
+    Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 8)
+    AnimateButton(minBtn)
+
+    minBtn.MouseButton1Click:Connect(function()
+        minimised = not minimised
+        minBtn.Text = minimised and "□" or "–"
+        
+        TweenService:Create(main, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, 430, 0, minimised and MINI_HEIGHT or FULL_HEIGHT)
+        }):Play()
+
+        -- Hide main interactive elements immediately
+        tabBar.Visible = not minimised
+        content.Visible = not minimised
+    end)
+
+    local closeBtn = Instance.new("TextButton", header)
+    closeBtn.Size             = UDim2.new(0, 28, 0, 28)
+    closeBtn.Position         = UDim2.new(1, -34, 0, 6)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 25, 60)
+    closeBtn.Text             = "×"
+    closeBtn.Font             = Enum.Font.GothamBold
+    closeBtn.TextSize         = 16
+    closeBtn.TextColor3       = Color3.fromRGB(220, 210, 255)
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+    AnimateButton(closeBtn)
+    closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+    local ACTIVE   = Color3.fromRGB(80, 60, 180)
+    local INACTIVE = Color3.fromRGB(30, 24, 60)
+
+    local function MakeTabBtn(label)
+        local b = Instance.new("TextButton", tabBar)
+        b.Size             = UDim2.new(0, 96, 1, 0)
+        b.BackgroundColor3 = INACTIVE
+        b.Text             = label
+        b.Font             = Enum.Font.GothamBold
+        b.TextSize         = 11
+        b.TextColor3       = Color3.fromRGB(180, 170, 230)
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+        AnimateButton(b)
+        return b
+    end
+
+    local mainTabBtn  = MakeTabBtn("MAIN")
+    local atmTabBtn   = MakeTabBtn("ATM")
+    local otherTabBtn = MakeTabBtn("OTHER")
+
+    local function MakePage()
+        local f = Instance.new("Frame", content)
+        f.Size               = UDim2.new(1, 0, 1, 0)
+        f.BackgroundTransparency = 1
+        f.Visible            = false
+        return f
+    end
+
+    local mainPage  = MakePage() mainPage.Visible = true
+    local atmPage   = MakePage()
+    local otherPage = MakePage()
+
+    local function SetTab(name)
+        mainPage.Visible  = (name == "MAIN")
+        atmPage.Visible   = (name == "ATM")
+        otherPage.Visible = (name == "OTHER")
+        mainTabBtn.BackgroundColor3  = (name == "MAIN")  and ACTIVE or INACTIVE
+        atmTabBtn.BackgroundColor3   = (name == "ATM")   and ACTIVE or INACTIVE
+        otherTabBtn.BackgroundColor3 = (name == "OTHER") and ACTIVE or INACTIVE
+    end
+
+    mainTabBtn.MouseButton1Click:Connect(function()  SetTab("MAIN")  end)
+    atmTabBtn.MouseButton1Click:Connect(function()   SetTab("ATM")   end)
+    otherTabBtn.MouseButton1Click:Connect(function() SetTab("OTHER") end)
+
+    SetTab("MAIN")
+
+    return {
+        ScreenGui = sg,
+        Main      = main,
+        MainPage  = mainPage,
+        ATMPage   = atmPage,
+        OtherPage = otherPage,
+    }
+end
+
+--// ─── MAIN PAGE CONTENT ───────────────────────────────────────────────────────
+
+local function BuildMainPage(mainPage, callbacks)
+    local sectionLbl = MakeLabel(mainPage, "⚙  AUTO FARM", 8, 11)
+    sectionLbl.TextColor3 = Color3.fromRGB(140, 120, 210)
+
+    local timeLabel  = MakeLabel(mainPage, "Time Farmed:  0s",         36)
+    local moneyLabel = MakeLabel(mainPage, "Money Earned: $0",         60)
+    local estLabel   = MakeLabel(mainPage, "Estimated:    $0 / hr",    84)
+
+    local div = Instance.new("Frame", mainPage)
+    div.Size             = UDim2.new(1, -16, 0, 1)
+    div.Position         = UDim2.new(0, 8, 0, 112)
+    div.BackgroundColor3 = Color3.fromRGB(60, 50, 100)
+    div.BorderSizePixel  = 0
+
+    local _, getAutoFarm = MakeToggle(mainPage, "Auto Farm", 120, function(state)
+        if callbacks.OnAutoFarmToggle then callbacks.OnAutoFarmToggle(state) end
+    end)
+
+    local antiAfkBtn, getAntiAfk = MakeToggle(mainPage, "Anti AFK", 158, function(state)
+        if callbacks.OnAntiAfkToggle then callbacks.OnAntiAfkToggle(state) end
+    end)
+
+    task.defer(function()
+        antiAfkBtn.MouseButton1Click:Fire() 
+    end)
+
+    local infoLbl = MakeLabel(mainPage, "ℹ  SCRIPT INFO", 198, 11)
+    infoLbl.TextColor3 = Color3.fromRGB(140, 120, 210)
+
+    MakeLabel(mainPage, "FeatherHub v1  •  Driving Empire", 218, 11)
+    MakeLabel(mainPage, "Toggle UI:  RightShift", 238, 11)
+    MakeLabel(mainPage, "ATM Tab:  click ROB to auto-rob ATM", 258, 11)
+
+    return {
+        TimeLabel  = timeLabel,
+        MoneyLabel = moneyLabel,
+        EstLabel   = estLabel,
+    }
+end
+
+--// ─── OTHER PAGE CONTENT ──────────────────────────────────────────────────────
+
+local function BuildOtherPage(otherPage, mainFrame)
+    MakeLabel(otherPage, "⚙  OTHER OPTIONS", 8, 11).TextColor3 = Color3.fromRGB(140, 120, 210)
+    local keybindLbl = MakeLabel(otherPage, "Toggle UI Bind:  RightShift", 36)
+
+    local currentKey = Enum.KeyCode.RightShift
+    local listening  = false
+
+    local bindBtn = Instance.new("TextButton", otherPage)
+    bindBtn.Size             = UDim2.new(1, -16, 0, 28)
+    bindBtn.Position         = UDim2.new(0, 8, 0, 62)
+    bindBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 80)
+    bindBtn.Font             = Enum.Font.GothamBold
+    bindBtn.TextSize         = 12
+    bindBtn.TextColor3       = Color3.fromRGB(210, 205, 255)
+    bindBtn.Text             = "Click to Rebind"
+    Instance.new("UICorner", bindBtn).CornerRadius = UDim.new(0, 8)
+    AnimateButton(bindBtn)
+
+    bindBtn.MouseButton1Click:Connect(function()
+        if listening then return end
+        listening = true
+        bindBtn.Text             = "Press any key..."
+        bindBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 160)
+
+        local conn
+        conn = UserInputService.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+            conn:Disconnect()
+            currentKey = input.KeyCode
+            local keyName = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
+            keybindLbl.Text  = "Toggle UI Bind:  " .. keyName
+            bindBtn.Text     = "Click to Rebind"
+            bindBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 80)
+            listening = false
+        end)
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == currentKey then
+            mainFrame.Visible = not mainFrame.Visible
+        end
+    end)
+
+    MakeLabel(otherPage, "More features coming soon.", 100)
+end
+
+--// ─── ATM PAGE CONTENT ────────────────────────────────────────────────────────
+
+local function isInsideSpawner(obj)
+    local cur = obj.Parent
+    while cur and cur ~= workspace do
+        if cur.Name == "CriminalATMSpawner" or cur.Name == "CriminalATMSpawners" then
+            return true
+        end
+        cur = cur.Parent
+    end
+    return false
+end
+
+local function BuildATMPage(atmPage)
+    atmPage:ClearAllChildren()
+
+    local titleLbl = Instance.new("TextLabel", atmPage)
+    titleLbl.Size               = UDim2.new(1, -12, 0, 30)
+    titleLbl.Position           = UDim2.new(0, 6, 0, 4)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Font               = Enum.Font.GothamBold
+    titleLbl.TextSize           = 13
+    titleLbl.TextColor3         = Color3.fromRGB(230, 225, 255)
+    titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+    titleLbl.Text               = "ATM Rob  (Front-Facing)"
+
+    local scroll = Instance.new("ScrollingFrame", atmPage)
+    scroll.Size               = UDim2.new(1, 0, 1, -38)
+    scroll.Position           = UDim2.new(0, 0, 0, 38)
+    scroll.BackgroundTransparency = 1
+    scroll.CanvasSize         = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollBarImageColor3 = Color3.fromRGB(120, 90, 210)
+
+    local layout = Instance.new("UIListLayout", scroll)
+    layout.Padding    = UDim.new(0, 5)
+    layout.SortOrder  = Enum.SortOrder.LayoutOrder
+
+    local char = LocalPlayer.Character
+    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+
+    local count = 0
+    for _, atm in ipairs(workspace:GetDescendants()) do
+        if atm.Name == "CriminalATM" and isInsideSpawner(atm) then
+            count += 1
+            local isBroken  = atm:FindFirstChildWhichIsA("SurfaceAppearance", true) ~= nil
+            local dist      = hrp and math.floor((hrp.Position - atm:GetPivot().Position).Magnitude) or 0
+            local statusTxt = isBroken and "EMPTY" or "READY"
+            local statusClr = isBroken and Color3.new(1, 0, 0) or Color3.new(0, 1, 0)
+
+            local row = Instance.new("Frame", scroll)
+            row.Size             = UDim2.new(1, -8, 0, 32)
+            row.BackgroundColor3 = Color3.fromRGB(28, 22, 52)
+            row.BorderSizePixel  = 0
+            row.LayoutOrder      = count
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+            local nameLbl = Instance.new("TextLabel", row)
+            nameLbl.Size               = UDim2.new(1, -110, 1, 0)
+            nameLbl.Position           = UDim2.new(0, 10, 0, 0)
+            nameLbl.BackgroundTransparency = 1
+            nameLbl.Font               = Enum.Font.GothamSemibold
+            nameLbl.TextSize           = 11
+            nameLbl.TextColor3         = Color3.fromRGB(210, 205, 255)
+            nameLbl.TextXAlignment     = Enum.TextXAlignment.Left
+            nameLbl.Text               = string.format("ATM #%d  –  %d studs", count, dist)
+
+            local statusLbl = Instance.new("TextLabel", row)
+            statusLbl.Size               = UDim2.new(0, 50, 1, 0)
+            statusLbl.Position           = UDim2.new(1, -114, 0, 0)
+            statusLbl.BackgroundTransparency = 1
+            statusLbl.Font               = Enum.Font.GothamBold
+            statusLbl.TextSize           = 11
+            statusLbl.TextColor3         = statusClr
+            statusLbl.TextXAlignment     = Enum.TextXAlignment.Right
+            statusLbl.Text               = statusTxt
+
+            local robBtn = Instance.new("TextButton", row)
+            robBtn.Size             = UDim2.new(0, 50, 0, 22)
+            robBtn.Position         = UDim2.new(1, -58, 0.5, -11)
+            robBtn.BackgroundColor3 = Color3.fromRGB(70, 50, 160)
+            robBtn.Font             = Enum.Font.GothamBold
+            robBtn.TextSize         = 11
+            robBtn.TextColor3       = Color3.fromRGB(230, 225, 255)
+            robBtn.Text             = "ROB"
+            Instance.new("UICorner", robBtn).CornerRadius = UDim.new(0, 6)
+            AnimateButton(robBtn)
+
+            local atmRef = atm
+            robBtn.MouseButton1Click:Connect(function()
+                local ch   = LocalPlayer.Character
+                local root = ch and ch:FindFirstChild("HumanoidRootPart")
+                if not root then return end
+
+                local atmCF    = atmRef:GetPivot()
+                local targetCF = atmCF * CFrame.new(0, 0.5, -3)
+                root.CFrame = CFrame.new(targetCF.Position, atmCF.Position)
+                task.wait(0.2)
+
+                local prompt = atmRef:FindFirstChildWhichIsA("ProximityPrompt", true)
+                if prompt then
+                    prompt:InputHoldBegin()
+                    task.wait(7)
+                    prompt:InputHoldEnd()
+                end
+
+                root.CFrame = root.CFrame * CFrame.new(0, 0, 5)
+
+                local broken = atmRef:FindFirstChildWhichIsA("SurfaceAppearance", true) ~= nil
+                statusLbl.Text      = broken and "EMPTY" or "READY"
+                statusLbl.TextColor3 = broken and Color3.new(1, 0, 0) or Color3.new(0, 1, 0)
+            end)
+        end
+    end
+
+    scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 6)
+end
+
+--// ─── AUTO FARM LOGIC ─────────────────────────────────────────────────────────
+
+local AutoFarm        = false
+local AutoFarmRunning = false
+local AntiAFK         = true
+
+local FarmStartTime   = 0
+local MoneyStart      = 0
+local MoneyEarned     = 0
+
+local StartPos = Vector3.new(811.013184,  27.3421249, 2203.55542)
+local EndPos   = Vector3.new(-76.4760208, 27.7194824, 1993.84229)
+
+local function GetVehicle()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or not hum.SeatPart then return nil end
+    return hum.SeatPart.Parent
+end
+
+local function GetCarHeight(car)
+    if not car or not car.PrimaryPart then return 1 end
+    return car.PrimaryPart.Size.Y / 2 + 0.5
+end
+
+local function GetMoney()
+    local holder = LocalPlayer:FindFirstChild("Holder")
+    if not holder then return 0 end
+    local money = holder:FindFirstChild("Money")
+    if not money then return 0 end
+    return tonumber(money.Value) or 0
+end
+
+local function TPWithFacing(fromPos, toPos, car)
+    if not car or not car.PrimaryPart then return end
+    local height = GetCarHeight(car)
+    car:SetPrimaryPartCFrame(CFrame.new(fromPos + Vector3.new(0, height, 0), toPos))
+end
+
+local function VelocityTPWithFacing(fromPos, toPos, car)
+    if not car or not car.PrimaryPart then return end
+    local primary = car.PrimaryPart
+    local height  = GetCarHeight(car)
+    local speed   = math.random(200, 600)
+
+    primary.CFrame = CFrame.new(fromPos + Vector3.new(0, height, 0), toPos)
+
+    local gyro = Instance.new("BodyGyro", primary)
+    gyro.P          = 5000
+    gyro.MaxTorque  = Vector3.new(9e9, 9e9, 9e9)
+    gyro.CFrame     = CFrame.new(primary.Position, toPos)
+
+    local vel = Instance.new("BodyVelocity", primary)
+    vel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    vel.Velocity = (toPos - primary.Position).Unit * speed
+
+    task.wait((primary.Position - toPos).Magnitude / speed)
+    vel.Velocity = Vector3.new()
+    task.wait(0.1)
+    vel:Destroy()
+    gyro:Destroy()
+end
+
+LocalPlayer.Idled:Connect(function()
+    if not AntiAFK then return end
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new(), Camera.CFrame)
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if not AutoFarm then
+            AutoFarmRunning = false
+            continue
+        end
+
+        AutoFarmRunning = true
+        local car = GetVehicle()
+        if not car then
+            Notify("FeatherHub", "Enter a vehicle to AutoFarm.", 2)
+            task.wait(2)
+            continue
+        end
+
+        TPWithFacing(StartPos, EndPos, car)
+        VelocityTPWithFacing(StartPos, EndPos, car)
+        TPWithFacing(EndPos, StartPos, car)
+        VelocityTPWithFacing(EndPos, StartPos, car)
+    end
+end)
+
+--// ─── BUILD & CONNECT EVERYTHING ─────────────────────────────────────────────
+
+local refs = BuildUI()
+
+local callbacks = {
+    OnAutoFarmToggle = function(state)
+        AutoFarm = state
+        if state then
+            FarmStartTime = tick()
+            MoneyStart    = GetMoney()
+        end
+    end,
+    OnAntiAfkToggle = function(state)
+        AntiAFK = state
+    end,
+}
+
+local mainUIRefs = BuildMainPage(refs.MainPage, callbacks)
+BuildOtherPage(refs.OtherPage, refs.Main)
+BuildATMPage(refs.ATMPage)
+
+RunService.RenderStepped:Connect(function()
+    if not AutoFarmRunning then return end
+
+    local tf = tick() - FarmStartTime
+    mainUIRefs.TimeLabel.Text = string.format("Time Farmed:  %ds", math.floor(tf))
+
+    local me = GetMoney() - MoneyStart
+    mainUIRefs.MoneyLabel.Text = "Money Earned: $" .. me
+
+    local mph = tf > 0 and math.floor((me / tf) * 3600) or 0
+    mainUIRefs.EstLabel.Text = "Estimated:    $" .. mph .. " / hr"
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(4)
+        if refs.ATMPage.Visible then
+            BuildATMPage(refs.ATMPage)
+        end
+    end
+end)
+
+Notify("FeatherHub v1", "Loaded. Press RightShift to toggle.", 4)
