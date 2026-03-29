@@ -1,0 +1,246 @@
+--[[
+    FeatherHub | Volleyball Legends Elite V11
+    FINAL STABLE BUILD
+    Features: Smooth Dragging, Tab Content Fix, Minimize/Close
+]]
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local TS = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Config = {
+    UIBind = Enum.KeyCode.RightShift,
+    Accent = Color3.fromRGB(160, 130, 255),
+    Minimized = false,
+    Visible = true
+}
+
+--// ─── UTILS ──────────────────────────────────────────────────────────────
+local function AddCorner(obj, px)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, px or 12)
+    c.Parent = obj
+end
+
+--// ─── UI CONSTRUCTION ─────────────────────────────────────────────────────
+local sg = Instance.new("ScreenGui", CoreGui)
+sg.Name = "FeatherV11_Final"
+sg.ResetOnSpawn = false
+
+local main = Instance.new("Frame", sg)
+main.Name = "MainFrame"
+main.Size = UDim2.new(0, 500, 0, 380)
+main.Position = UDim2.new(0.5, -250, 0.5, -190)
+main.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+main.BorderSizePixel = 0
+main.Active = true
+AddCorner(main, 16)
+
+-- Header (The Drag Bar)
+local header = Instance.new("Frame", main)
+header.Name = "Header"
+header.Size = UDim2.new(1, 0, 0, 50)
+header.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+header.BorderSizePixel = 0
+header.ZIndex = 10
+AddCorner(header, 16)
+
+local title = Instance.new("TextLabel", header)
+title.Size = UDim2.new(0, 200, 1, 0)
+title.Position = UDim2.new(0, 20, 0, 0)
+title.Text = "FEATHER HUB • Volley ball legends"
+title.Font = Enum.Font.GothamBold
+title.TextColor3 = Config.Accent
+title.TextSize = 14
+title.BackgroundTransparency = 1
+title.TextXAlignment = "Left"
+title.ZIndex = 11
+
+-- Header Buttons
+local close = Instance.new("TextButton", header)
+close.Size = UDim2.new(0, 30, 0, 30)
+close.Position = UDim2.new(1, -40, 0.5, -15)
+close.BackgroundColor3 = Color3.fromRGB(45, 25, 25)
+close.Text = "×"
+close.TextColor3 = Color3.fromRGB(255, 100, 100)
+close.Font = "GothamBold"
+close.TextSize = 20
+close.ZIndex = 12
+AddCorner(close, 8)
+
+local min = Instance.new("TextButton", header)
+min.Size = UDim2.new(0, 30, 0, 30)
+min.Position = UDim2.new(1, -75, 0.5, -15)
+min.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+min.Text = "-"
+min.TextColor3 = Color3.new(0.8, 0.8, 0.8)
+min.Font = "GothamBold"
+min.TextSize = 20
+min.ZIndex = 12
+AddCorner(min, 8)
+
+-- Body Area
+local body = Instance.new("Frame", main)
+body.Size = UDim2.new(1, 0, 1, -50)
+body.Position = UDim2.new(0, 0, 0, 50)
+body.BackgroundTransparency = 1
+
+local sidebar = Instance.new("Frame", body)
+sidebar.Size = UDim2.new(0, 130, 1, -20)
+sidebar.Position = UDim2.new(0, 10, 0, 10)
+sidebar.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
+AddCorner(sidebar, 12)
+
+local container = Instance.new("Frame", body)
+container.Size = UDim2.new(1, -160, 1, -20)
+container.Position = UDim2.new(0, 150, 0, 10)
+container.BackgroundTransparency = 1
+
+-- Pages
+local homePage = Instance.new("ScrollingFrame", container)
+homePage.Size = UDim2.new(1, 0, 1, 0)
+homePage.BackgroundTransparency = 1
+homePage.ScrollBarThickness = 0
+homePage.Visible = true
+Instance.new("UIListLayout", homePage).Padding = UDim.new(0, 8)
+
+local settingsPage = Instance.new("ScrollingFrame", container)
+settingsPage.Size = UDim2.new(1, 0, 1, 0)
+settingsPage.BackgroundTransparency = 1
+settingsPage.ScrollBarThickness = 0
+settingsPage.Visible = false
+Instance.new("UIListLayout", settingsPage).Padding = UDim.new(0, 8)
+
+-- Tab Switcher
+local function AddTab(txt, id, target)
+    local b = Instance.new("TextButton", sidebar)
+    b.Size = UDim2.new(1, -20, 0, 35)
+    b.Position = UDim2.new(0, 10, 0, 10 + (id-1) * 40)
+    b.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+    b.Text = txt
+    b.Font = "GothamMedium"
+    b.TextColor3 = Color3.new(0.8, 0.8, 0.8)
+    b.TextSize = 12
+    AddCorner(b, 6)
+    
+    b.MouseButton1Click:Connect(function()
+        homePage.Visible = false
+        settingsPage.Visible = false
+        target.Visible = true
+    end)
+end
+
+AddTab("Home", 1, homePage)
+AddTab("Settings", 2, settingsPage)
+
+-- Module Toggle
+local function NewToggle(parent, text, callback)
+    local f = Instance.new("TextButton", parent)
+    f.Size = UDim2.new(1, 0, 0, 45)
+    f.BackgroundColor3 = Color3.fromRGB(24, 24, 34)
+    f.Text = ""
+    f.AutoButtonColor = false
+    AddCorner(f, 8)
+
+    local l = Instance.new("TextLabel", f)
+    l.Size = UDim2.new(1, -60, 1, 0)
+    l.Position = UDim2.new(0, 15, 0, 0)
+    l.Text = text
+    l.TextColor3 = Color3.new(0.9, 0.9, 0.9)
+    l.Font = "GothamMedium"
+    l.TextSize = 13
+    l.BackgroundTransparency = 1
+    l.TextXAlignment = "Left"
+
+    local s = Instance.new("Frame", f)
+    s.Size = UDim2.new(0, 36, 0, 18)
+    s.Position = UDim2.new(1, -50, 0.5, -9)
+    s.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+    AddCorner(s, 10)
+
+    local d = Instance.new("Frame", s)
+    d.Size = UDim2.new(0, 12, 0, 12)
+    d.Position = UDim2.new(0, 3, 0.5, -6)
+    d.BackgroundColor3 = Color3.new(1, 1, 1)
+    AddCorner(d, 10)
+
+    local active = false
+    f.MouseButton1Click:Connect(function()
+        active = not active
+        TS:Create(s, TweenInfo.new(0.2), {BackgroundColor3 = active and Config.Accent or Color3.fromRGB(50, 50, 60)}):Play()
+        TS:Create(d, TweenInfo.new(0.25, Enum.EasingStyle.Back), {Position = active and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)}):Play()
+        callback(active)
+    end)
+end
+
+-- Populate Contents
+NewToggle(homePage, "Ball Hitboxes", function(v) end)
+NewToggle(homePage, "Air Control", function(v) end)
+NewToggle(homePage, "Enemy Lines", function(v) end)
+NewToggle(homePage, "Jump ESP", function(v) end)
+
+local bindBtn = Instance.new("TextButton", settingsPage)
+bindBtn.Size = UDim2.new(1, 0, 0, 45)
+bindBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 34)
+bindBtn.Text = "Menu Bind: " .. Config.UIBind.Name
+bindBtn.Font = "GothamMedium"
+bindBtn.TextColor3 = Config.Accent
+AddCorner(bindBtn, 8)
+
+bindBtn.MouseButton1Click:Connect(function()
+    bindBtn.Text = "..."
+    local input = UIS.InputBegan:Wait()
+    if input.KeyCode ~= Enum.KeyCode.Unknown then
+        Config.UIBind = input.KeyCode
+        bindBtn.Text = "Menu Bind: " .. input.KeyCode.Name
+    end
+end)
+
+--// ─── DRAGGING ENGINE (FIXED) ─────────────────────────────────────────────
+local dragging, dragInput, dragStart, startPos
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = main.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if dragging and dragInput then
+        local delta = dragInput.Position - dragStart
+        local targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        TS:Create(main, TweenInfo.new(0.08, Enum.EasingStyle.Linear), {Position = targetPos}):Play()
+    end
+end)
+
+-- Minimize/Close
+min.MouseButton1Click:Connect(function()
+    Config.Minimized = not Config.Minimized
+    TS:Create(main, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Size = Config.Minimized and UDim2.new(0, 500, 0, 50) or UDim2.new(0, 500, 0, 380)}):Play()
+    body.Visible = not Config.Minimized
+    min.Text = Config.Minimized and "+" or "-"
+end)
+
+close.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- Visibility
+UIS.InputBegan:Connect(function(i, g)
+    if not g and i.KeyCode == Config.UIBind then main.Visible = not main.Visible end
+end)
