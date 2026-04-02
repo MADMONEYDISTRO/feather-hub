@@ -1,5 +1,6 @@
 --[[
-    Console Logger + Game Dumper v3 (Fixed)
+    Console Logger + Game Dumper v3 (Fixed + No Copy Limit)
+    - Removed clipboard size limit (was 512KB)
     - Fixed UI positioning so it actually shows
     - Added minimize button (shrinks to just title bar)
     - Title bar stays draggable when minimized
@@ -23,7 +24,6 @@ local LocalPlayer       = Players.LocalPlayer
 local BATCH_SIZE      = 20
 local MAX_ENTRIES     = 2000
 local MAX_DEPTH       = 6
-local CLIP_MAX_BYTES  = 512000
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- EXECUTOR COMPATIBILITY
@@ -544,16 +544,11 @@ pcall(function()
     end)
 end)
 
--- Copy & Clear
+-- Copy & Clear (NO SIZE LIMIT)
 copyBtn.MouseButton1Click:Connect(function()
     local entries = (activeTab == "console") and consoleEntries or dumpEntries
     local fullLog = table.concat(entries, "\n")
-    if #fullLog > CLIP_MAX_BYTES then
-        statusLbl.Text = "Too big!"
-        statusLbl.TextColor3 = Color3.fromRGB(255, 100, 100)
-        task.delay(2, function() statusLbl.Text = "" end)
-        return
-    end
+    -- Removed the CLIP_MAX_BYTES check – now copies regardless of size
     local ok = tryClipboard(fullLog)
     statusLbl.Text = ok and "Copied!" or "No clip"
     statusLbl.TextColor3 = ok and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
