@@ -1,9 +1,9 @@
 --[[
-    FLICK AIMLOCK + ESP v5 – Fixed Dropdowns + Smooth Drag
-    - All dropdowns show all options correctly
-    - Smooth spring drag animation (window follows with easing)
-    - Feather Hub style UI
-    - Press ] to open/close, E to toggle aimbot
+    FLICK AIMLOCK + ESP v6 – Clean ESP & Toggles
+    - ESP updates instantly when changing color/transparency/toggle
+    - Dead bodies removed from ESP automatically
+    - Toggle buttons use colored pills without "ON/OFF" text
+    - Smooth spring drag animation
 ]]
 
 local Players = game:GetService("Players")
@@ -47,8 +47,9 @@ local tracers = {}
 local highlights = {}
 local screenGui = nil
 local uiElements = {}
+local lastESPUpdate = 0
 
--- ==================== ENEMY DETECTION ====================
+-- ==================== ENEMY DETECTION (alive only) ====================
 local function getEnemyCharacters()
     local enemies = {}
     local myChar = LocalPlayer.Character
@@ -71,6 +72,7 @@ local function getHitboxPosition(character)
     return part and part.Position or nil
 end
 
+-- ==================== AIMBOT LOGIC ====================
 local function getClosestToMouse()
     local closest = nil
     local minScreenDist = math.huge
@@ -135,7 +137,6 @@ local function aimAt(targetChar)
     end
 end
 
--- Aimbot loop
 RunService.RenderStepped:Connect(function()
     if settings.aimbotEnabled then
         local target = getTarget()
@@ -143,27 +144,47 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ==================== ESP ====================
-local function updateESP()
+-- ==================== ESP SYSTEM (FULL CLEANUP ON UPDATE) ====================
+local function destroyAllESP()
+    for _, line in pairs(tracers) do
+        pcall(function() line:Remove() end)
+    end
+    for _, hl in pairs(highlights) do
+        pcall(function() hl:Destroy() end)
+    end
+    tracers = {}
+    highlights = {}
+end
+
+local function refreshESP()
     if not settings.espEnabled then
-        for _, line in pairs(tracers) do pcall(function() line:Remove() end) end
-        for _, hl in pairs(highlights) do pcall(function() hl:Destroy() end) end
-        tracers = {}; highlights = {}
+        destroyAllESP()
         return
     end
 
+    -- Get current alive enemies
+    local enemies = getEnemyCharacters()
+    local enemyMap = {}
+    for _, enemy in ipairs(enemies) do
+        enemyMap[enemy] = true
+    end
+
+    -- Remove ESP for dead or gone enemies
     for enemy, line in pairs(tracers) do
-        if not enemy or not enemy.Parent or (enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health <= 0) then
-            pcall(function() line:Remove() end); tracers[enemy] = nil
+        if not enemyMap[enemy] then
+            pcall(function() line:Remove() end)
+            tracers[enemy] = nil
         end
     end
     for enemy, hl in pairs(highlights) do
-        if not enemy or not enemy.Parent or (enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health <= 0) then
-            pcall(function() hl:Destroy() end); highlights[enemy] = nil
+        if not enemyMap[enemy] then
+            pcall(function() hl:Destroy() end)
+            highlights[enemy] = nil
         end
     end
 
-    for _, enemy in ipairs(getEnemyCharacters()) do
+    -- Add new ESP for alive enemies
+    for _, enemy in ipairs(enemies) do
         if settings.tracersEnabled and not tracers[enemy] then
             local line = Drawing.new("Line")
             line.Color = settings.espColor
@@ -183,12 +204,37 @@ local function updateESP()
             hl.Parent = enemy
             highlights[enemy] = hl
         end
+        -- Update color/transparency for existing ESP (if changed)
+        if settings.tracersEnabled and tracers[enemy] then
+            tracers[enemy].Color = settings.espColor
+            tracers[enemy].Transparency = settings.espTransparency
+        end
+        if settings.highlightsEnabled and highlights[enemy] then
+            highlights[enemy].FillColor = settings.espColor
+            highlights[enemy].FillTransparency = settings.espTransparency
+            highlights[enemy].OutlineColor = settings.espColor
+        end
     end
 end
 
-RunService.Heartbeat:Connect(updateESP)
+-- Refresh ESP on any setting change that affects visuals
+local function onESPSettingChanged()
+    refreshESP()
+end
 
--- Draw tracers
+-- Run ESP refresh every second (also catches dead bodies)
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if settings.espEnabled then
+            refreshESP()
+        else
+            destroyAllESP()
+        end
+    end
+end)
+
+-- Draw tracers on screen
 RunService.RenderStepped:Connect(function()
     if not settings.espEnabled or not settings.tracersEnabled then
         for _, line in pairs(tracers) do if line then line.Visible = false end end
@@ -204,7 +250,9 @@ RunService.RenderStepped:Connect(function()
                 local screenPos = Vector2.new(vec.X, vec.Y)
                 if vec.Z < 0 then screenPos = center + (center - screenPos) end
                 screenPos = Vector2.new(math.clamp(screenPos.X, 0, viewport.X), math.clamp(screenPos.Y, 0, viewport.Y))
-                line.From = center; line.To = screenPos; line.Visible = true
+                line.From = center
+                line.To = screenPos
+                line.Visible = true
             else
                 line.Visible = false
             end
@@ -228,9 +276,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
     if input.KeyCode == settings.aimKey then
         settings.aimbotEnabled = not settings.aimbotEnabled
-        if uiElements.aimbotToggle then
-            uiElements.aimbotToggle.Text = settings.aimbotEnabled and "ON" or "OFF"
-            uiElements.aimbotToggle.BackgroundColor3 = settings.aimbotEnabled and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(180, 60, 60)
+        if uiElements.aimbotPill then
+            uiElements.aimbotPill.BackgroundColor3 = settings.aimbotEnabled and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(180, 60, 60)
         end
     end
     if input.KeyCode == Enum.KeyCode.RightBracket then
@@ -239,7 +286,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- ==================== SMOOTH DRAG (Spring Animation) ====================
+-- ==================== SMOOTH DRAG ====================
 local function createSmoothDrag(frame)
     local dragData = {
         active = false,
@@ -252,7 +299,6 @@ local function createSmoothDrag(frame)
 
     local function updateDrag()
         if not dragData.active then
-            -- Apply spring smoothing
             local delta = dragData.targetPos - Vector2.new(frame.Position.X.Offset, frame.Position.Y.Offset)
             dragData.currentVel = dragData.currentVel * 0.85 + delta * 0.2
             local newX = math.clamp(frame.Position.X.Offset + dragData.currentVel.X, 0, workspace.CurrentCamera.ViewportSize.X - frame.AbsoluteSize.X)
@@ -266,7 +312,7 @@ local function createSmoothDrag(frame)
         end
     end
 
-    local titleBar = frame:FindFirstChild("TitleBar") or frame:FindFirstChild("Header") or frame:FindFirstChild("DragHandle")
+    local titleBar = frame:FindFirstChild("TitleBar")
     if not titleBar then return end
 
     titleBar.InputBegan:Connect(function(input)
@@ -412,14 +458,14 @@ local function createUI()
     local wmVer = Instance.new("TextLabel")
     wmVer.Size = UDim2.new(1, 0, 0, 10)
     wmVer.Position = UDim2.new(0, 0, 1, -22)
-    wmVer.Text = "v1.0"
+    wmVer.Text = "v6.0"
     wmVer.Font = Enum.Font.Gotham
     wmVer.TextSize = 6
     wmVer.TextColor3 = T.muted
     wmVer.BackgroundTransparency = 1
     wmVer.Parent = sidebar
 
-    -- Header (draggable area)
+    -- Header (draggable)
     local hdr = Instance.new("Frame")
     hdr.Name = "TitleBar"
     hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
@@ -456,7 +502,6 @@ local function createUI()
     closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play() end)
     closeBtn.MouseButton1Click:Connect(function() screenGui:Destroy() end)
 
-    -- Apply smooth drag to window
     createSmoothDrag(win)
 
     -- Content area
@@ -550,7 +595,61 @@ local function createUI()
         navBtns[i] = {bg = bg, lbl = lbl, bar = bar}
     end
 
-    -- UI Helpers
+    -- Helper: clean toggle row (no text on toggle, just colored pill)
+    local function addCleanToggleRow(parent, order, labelText, getter, setter, callback)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 38)
+        row.BackgroundTransparency = 1
+        row.LayoutOrder = order
+        row.Parent = parent
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -60, 1, 0)
+        label.Position = UDim2.new(0, 12, 0, 0)
+        label.Text = labelText
+        label.Font = Enum.Font.GothamSemibold
+        label.TextSize = 10
+        label.TextColor3 = T.text
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.BackgroundTransparency = 1
+        label.Parent = row
+
+        local pill = Instance.new("Frame")
+        pill.Size = UDim2.new(0, 36, 0, 18)
+        pill.Position = UDim2.new(1, -48, 0.5, -9)
+        pill.BackgroundColor3 = getter() and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(180, 60, 60)
+        pill.Parent = row
+        Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+        local pillStroke = Instance.new("UIStroke")
+        pillStroke.Color = T.border
+        pillStroke.Thickness = 1
+        pillStroke.Parent = pill
+
+        local circle = Instance.new("Frame")
+        circle.Size = UDim2.new(0, 14, 0, 14)
+        circle.Position = getter() and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+        circle.BackgroundColor3 = Color3.new(1, 1, 1)
+        circle.Parent = pill
+        Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+
+        local hit = Instance.new("TextButton")
+        hit.Size = UDim2.new(0, 50, 1, 0)
+        hit.Position = UDim2.new(1, -56, 0, 0)
+        hit.BackgroundTransparency = 1
+        hit.Text = ""
+        hit.Parent = row
+
+        hit.MouseButton1Click:Connect(function()
+            local newState = not getter()
+            setter(newState)
+            TweenService:Create(pill, tw(0.25), {BackgroundColor3 = newState and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(180, 60, 60)}):Play()
+            TweenService:Create(circle, tw(0.25, Enum.EasingStyle.Back), {Position = newState and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}):Play()
+            if callback then callback(newState) end
+        end)
+        return pill
+    end
+
+    -- Helper: card, section, row, slider, dropdown (same as before)
     local function makeCard(parent, order)
         local c = Instance.new("Frame")
         c.Size = UDim2.new(1, 0, 0, 0)
@@ -594,132 +693,6 @@ local function createUI()
         line.BorderSizePixel = 0
         line.Parent = f
         Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
-    end
-
-    local function makeRow(card, order, isLast, h)
-        local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, h or 38)
-        row.BackgroundTransparency = 1
-        row.LayoutOrder = order
-        row.Parent = card
-        if not isLast then
-            local sep = Instance.new("Frame")
-            sep.Size = UDim2.new(1, -20, 0, 1)
-            sep.Position = UDim2.new(0, 10, 1, -1)
-            sep.BackgroundColor3 = T.sep
-            sep.BorderSizePixel = 0
-            sep.Parent = row
-        end
-        return row
-    end
-
-    -- Improved Dropdown (always shows all options, positioned correctly)
-    local function addDropdown(parent, text, options, getter, setter, order)
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1, 0, 0, 40)
-        frame.BackgroundColor3 = T.card
-        frame.LayoutOrder = order
-        frame.Parent = parent
-        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
-
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.5, -10, 1, 0)
-        label.Position = UDim2.new(0, 8, 0, 0)
-        label.Text = text
-        label.Font = Enum.Font.GothamSemibold
-        label.TextSize = 10
-        label.TextColor3 = T.text
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.BackgroundTransparency = 1
-        label.Parent = frame
-
-        local drop = Instance.new("TextButton")
-        drop.Size = UDim2.new(0.4, 0, 0, 26)
-        drop.Position = UDim2.new(0.55, 0, 0, 7)
-        drop.Text = getter()
-        drop.Font = Enum.Font.Gotham
-        drop.TextSize = 10
-        drop.BackgroundColor3 = T.dim
-        drop.TextColor3 = T.text
-        drop.BorderSizePixel = 0
-        drop.Parent = frame
-        Instance.new("UICorner", drop).CornerRadius = UDim.new(0, 4)
-
-        local menuOpen = false
-        local menu = nil
-        drop.MouseButton1Click:Connect(function()
-            if menuOpen then return end
-            menuOpen = true
-            local absPos = drop.AbsolutePosition
-            local menuHeight = #options * 26
-            menu = Instance.new("Frame")
-            menu.Size = UDim2.new(0, 140, 0, menuHeight)
-            menu.Position = UDim2.new(0, absPos.X + 5, 0, absPos.Y + 26)
-            menu.BackgroundColor3 = T.card
-            menu.BorderSizePixel = 0
-            menu.ZIndex = 200
-            menu.Parent = screenGui
-            Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 6)
-            local menuStroke = Instance.new("UIStroke")
-            menuStroke.Color = T.border
-            menuStroke.Thickness = 1
-            menuStroke.Parent = menu
-
-            -- Scrollable container in case many options
-            local scroll = Instance.new("ScrollingFrame")
-            scroll.Size = UDim2.new(1, 0, 1, 0)
-            scroll.BackgroundTransparency = 1
-            scroll.BorderSizePixel = 0
-            scroll.CanvasSize = UDim2.new(0, 0, 0, menuHeight)
-            scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-            scroll.ScrollBarThickness = 4
-            scroll.Parent = menu
-            local layout = Instance.new("UIListLayout")
-            layout.SortOrder = Enum.SortOrder.LayoutOrder
-            layout.Padding = UDim.new(0, 1)
-            layout.Parent = scroll
-
-            for _, opt in ipairs(options) do
-                local btn = Instance.new("TextButton")
-                btn.Size = UDim2.new(1, 0, 0, 26)
-                btn.Text = opt
-                btn.Font = Enum.Font.Gotham
-                btn.TextSize = 10
-                btn.BackgroundColor3 = T.dim
-                btn.TextColor3 = T.text
-                btn.BorderSizePixel = 0
-                btn.Parent = scroll
-                btn.MouseButton1Click:Connect(function()
-                    setter(opt)
-                    drop.Text = opt
-                    menu:Destroy()
-                    menuOpen = false
-                end)
-            end
-
-            local function closeMenu()
-                if menu then menu:Destroy() end
-                menuOpen = false
-            end
-            -- Close when clicking outside
-            local clickConn
-            clickConn = UserInputService.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                    local mousePos = inp.Position
-                    if menu and menu.Parent then
-                        local mAbs = menu.AbsolutePosition
-                        local mSize = menu.AbsoluteSize
-                        if mousePos.X < mAbs.X or mousePos.X > mAbs.X + mSize.X or mousePos.Y < mAbs.Y or mousePos.Y > mAbs.Y + mSize.Y then
-                            closeMenu()
-                            clickConn:Disconnect()
-                        end
-                    else
-                        clickConn:Disconnect()
-                    end
-                end
-            end)
-        end)
-        return frame
     end
 
     local function addSlider(parent, labelText, minVal, maxVal, getter, setter, order)
@@ -796,64 +769,122 @@ local function createUI()
         return frame
     end
 
-    -- Build Pages
-    -- Page 1: Aimbot
+    local function addDropdown(parent, text, options, getter, setter, order)
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 0, 40)
+        frame.BackgroundColor3 = T.card
+        frame.LayoutOrder = order
+        frame.Parent = parent
+        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.5, -10, 1, 0)
+        label.Position = UDim2.new(0, 8, 0, 0)
+        label.Text = text
+        label.Font = Enum.Font.GothamSemibold
+        label.TextSize = 10
+        label.TextColor3 = T.text
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.BackgroundTransparency = 1
+        label.Parent = frame
+
+        local drop = Instance.new("TextButton")
+        drop.Size = UDim2.new(0.4, 0, 0, 26)
+        drop.Position = UDim2.new(0.55, 0, 0, 7)
+        drop.Text = getter()
+        drop.Font = Enum.Font.Gotham
+        drop.TextSize = 10
+        drop.BackgroundColor3 = T.dim
+        drop.TextColor3 = T.text
+        drop.BorderSizePixel = 0
+        drop.Parent = frame
+        Instance.new("UICorner", drop).CornerRadius = UDim.new(0, 4)
+
+        local menuOpen = false
+        local menu = nil
+        drop.MouseButton1Click:Connect(function()
+            if menuOpen then return end
+            menuOpen = true
+            local absPos = drop.AbsolutePosition
+            local menuHeight = #options * 26
+            menu = Instance.new("Frame")
+            menu.Size = UDim2.new(0, 140, 0, menuHeight)
+            menu.Position = UDim2.new(0, absPos.X + 5, 0, absPos.Y + 26)
+            menu.BackgroundColor3 = T.card
+            menu.BorderSizePixel = 0
+            menu.ZIndex = 200
+            menu.Parent = screenGui
+            Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 6)
+            local menuStroke = Instance.new("UIStroke")
+            menuStroke.Color = T.border
+            menuStroke.Thickness = 1
+            menuStroke.Parent = menu
+
+            local scroll = Instance.new("ScrollingFrame")
+            scroll.Size = UDim2.new(1, 0, 1, 0)
+            scroll.BackgroundTransparency = 1
+            scroll.BorderSizePixel = 0
+            scroll.CanvasSize = UDim2.new(0, 0, 0, menuHeight)
+            scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            scroll.ScrollBarThickness = 4
+            scroll.Parent = menu
+            local layout = Instance.new("UIListLayout")
+            layout.SortOrder = Enum.SortOrder.LayoutOrder
+            layout.Padding = UDim.new(0, 1)
+            layout.Parent = scroll
+
+            for _, opt in ipairs(options) do
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(1, 0, 0, 26)
+                btn.Text = opt
+                btn.Font = Enum.Font.Gotham
+                btn.TextSize = 10
+                btn.BackgroundColor3 = T.dim
+                btn.TextColor3 = T.text
+                btn.BorderSizePixel = 0
+                btn.Parent = scroll
+                btn.MouseButton1Click:Connect(function()
+                    setter(opt)
+                    drop.Text = opt
+                    menu:Destroy()
+                    menuOpen = false
+                end)
+            end
+
+            local function closeMenu()
+                if menu then menu:Destroy() end
+                menuOpen = false
+            end
+            local clickConn
+            clickConn = UserInputService.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                    local mousePos = inp.Position
+                    if menu and menu.Parent then
+                        local mAbs = menu.AbsolutePosition
+                        local mSize = menu.AbsoluteSize
+                        if mousePos.X < mAbs.X or mousePos.X > mAbs.X + mSize.X or mousePos.Y < mAbs.Y or mousePos.Y > mAbs.Y + mSize.Y then
+                            closeMenu()
+                            clickConn:Disconnect()
+                        end
+                    else
+                        clickConn:Disconnect()
+                    end
+                end
+            end)
+        end)
+        return frame
+    end
+
+    -- ========== PAGE 1: AIMBOT ==========
     local pgAim = pages[1]
     makeSection(pgAim, "Aimbot", 1)
     local card1 = makeCard(pgAim, 2)
 
-    local function updateAimbotToggleUI()
-        if uiElements.aimbotToggle then
-            uiElements.aimbotToggle.Text = settings.aimbotEnabled and "ON" or "OFF"
-            uiElements.aimbotToggle.BackgroundColor3 = settings.aimbotEnabled and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(180, 60, 60)
-        end
-    end
-
-    -- Custom toggle row (so we can store reference)
-    local aimRow = makeRow(card1, 1, false, 38)
-    local aimLabel = Instance.new("TextLabel")
-    aimLabel.Size = UDim2.new(1, -60, 1, 0)
-    aimLabel.Position = UDim2.new(0, 12, 0, 0)
-    aimLabel.Text = "Enable Aimbot"
-    aimLabel.Font = Enum.Font.GothamSemibold
-    aimLabel.TextSize = 10
-    aimLabel.TextColor3 = T.text
-    aimLabel.TextXAlignment = Enum.TextXAlignment.Left
-    aimLabel.BackgroundTransparency = 1
-    aimLabel.Parent = aimRow
-
-    local aimToggleBg = Instance.new("Frame")
-    aimToggleBg.Size = UDim2.new(0, 36, 0, 18)
-    aimToggleBg.Position = UDim2.new(1, -48, 0.5, -9)
-    aimToggleBg.BackgroundColor3 = settings.aimbotEnabled and accent or T.dim
-    aimToggleBg.Parent = aimRow
-    Instance.new("UICorner", aimToggleBg).CornerRadius = UDim.new(1, 0)
-    local aimToggleStroke = Instance.new("UIStroke")
-    aimToggleStroke.Color = T.border
-    aimToggleStroke.Thickness = 1
-    aimToggleStroke.Parent = aimToggleBg
-
-    local aimToggleCircle = Instance.new("Frame")
-    aimToggleCircle.Size = UDim2.new(0, 14, 0, 14)
-    aimToggleCircle.Position = settings.aimbotEnabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
-    aimToggleCircle.BackgroundColor3 = Color3.new(1, 1, 1)
-    aimToggleCircle.Parent = aimToggleBg
-    Instance.new("UICorner", aimToggleCircle).CornerRadius = UDim.new(1, 0)
-
-    local aimClick = Instance.new("TextButton")
-    aimClick.Size = UDim2.new(0, 50, 1, 0)
-    aimClick.Position = UDim2.new(1, -56, 0, 0)
-    aimClick.BackgroundTransparency = 1
-    aimClick.Text = ""
-    aimClick.Parent = aimRow
-
-    aimClick.MouseButton1Click:Connect(function()
-        settings.aimbotEnabled = not settings.aimbotEnabled
-        TweenService:Create(aimToggleBg, tw(0.25), {BackgroundColor3 = settings.aimbotEnabled and accent or T.dim}):Play()
-        TweenService:Create(aimToggleCircle, tw(0.25, Enum.EasingStyle.Back), {Position = settings.aimbotEnabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}):Play()
-        updateAimbotToggleUI()
-    end)
-    uiElements.aimbotToggle = aimClick
+    local aimbotPill = addCleanToggleRow(card1, 1, "Enable Aimbot", 
+        function() return settings.aimbotEnabled end,
+        function(v) settings.aimbotEnabled = v end,
+        nil)
+    uiElements.aimbotPill = aimbotPill
 
     addDropdown(card1, "Target Priority", {"mouse", "player"}, function() return settings.targetMode end, function(v) settings.targetMode = v end, 2)
     addSlider(card1, "FOV Distance (studs)", 50, 500, function() return settings.fovDistance end, function(v) settings.fovDistance = v end, 3)
@@ -861,7 +892,12 @@ local function createUI()
     addDropdown(card1, "Aim Part", {"Head", "HumanoidRootPart"}, function() return settings.aimPart end, function(v) settings.aimPart = v end, 5)
 
     -- Keybind row
-    local keyRow = makeRow(card1, 6, true, 40)
+    local keyRow = Instance.new("Frame")
+    keyRow.Size = UDim2.new(1, 0, 0, 40)
+    keyRow.BackgroundTransparency = 1
+    keyRow.LayoutOrder = 6
+    keyRow.Parent = card1
+
     local keyLabel = Instance.new("TextLabel")
     keyLabel.Size = UDim2.new(0.6, -10, 1, 0)
     keyLabel.Position = UDim2.new(0, 12, 0, 0)
@@ -894,186 +930,48 @@ local function createUI()
         keyButton.Text = settings.aimKey.Name
     end)
 
-    -- Page 2: ESP
+    -- ========== PAGE 2: ESP ==========
     local pgEsp = pages[2]
     makeSection(pgEsp, "ESP", 1)
     local espCard = makeCard(pgEsp, 2)
 
-    local function updateESPUI()
-        if uiElements.espToggle then
-            uiElements.espToggle.Text = settings.espEnabled and "ON" or "OFF"
-            uiElements.espToggle.BackgroundColor3 = settings.espEnabled and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(180, 60, 60)
-        end
-    end
+    addCleanToggleRow(espCard, 1, "Enable ESP",
+        function() return settings.espEnabled end,
+        function(v)
+            settings.espEnabled = v
+            refreshESP()
+        end,
+        nil)
 
-    local espRow = makeRow(espCard, 1, false, 38)
-    local espLabel = Instance.new("TextLabel")
-    espLabel.Size = UDim2.new(1, -60, 1, 0)
-    espLabel.Position = UDim2.new(0, 12, 0, 0)
-    espLabel.Text = "Enable ESP"
-    espLabel.Font = Enum.Font.GothamSemibold
-    espLabel.TextSize = 10
-    espLabel.TextColor3 = T.text
-    espLabel.TextXAlignment = Enum.TextXAlignment.Left
-    espLabel.BackgroundTransparency = 1
-    espLabel.Parent = espRow
-
-    local espToggleBg = Instance.new("Frame")
-    espToggleBg.Size = UDim2.new(0, 36, 0, 18)
-    espToggleBg.Position = UDim2.new(1, -48, 0.5, -9)
-    espToggleBg.BackgroundColor3 = settings.espEnabled and accent or T.dim
-    espToggleBg.Parent = espRow
-    Instance.new("UICorner", espToggleBg).CornerRadius = UDim.new(1, 0)
-    local espToggleStroke = Instance.new("UIStroke")
-    espToggleStroke.Color = T.border
-    espToggleStroke.Thickness = 1
-    espToggleStroke.Parent = espToggleBg
-
-    local espToggleCircle = Instance.new("Frame")
-    espToggleCircle.Size = UDim2.new(0, 14, 0, 14)
-    espToggleCircle.Position = settings.espEnabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
-    espToggleCircle.BackgroundColor3 = Color3.new(1, 1, 1)
-    espToggleCircle.Parent = espToggleBg
-    Instance.new("UICorner", espToggleCircle).CornerRadius = UDim.new(1, 0)
-
-    local espClick = Instance.new("TextButton")
-    espClick.Size = UDim2.new(0, 50, 1, 0)
-    espClick.Position = UDim2.new(1, -56, 0, 0)
-    espClick.BackgroundTransparency = 1
-    espClick.Text = ""
-    espClick.Parent = espRow
-
-    espClick.MouseButton1Click:Connect(function()
-        settings.espEnabled = not settings.espEnabled
-        TweenService:Create(espToggleBg, tw(0.25), {BackgroundColor3 = settings.espEnabled and accent or T.dim}):Play()
-        TweenService:Create(espToggleCircle, tw(0.25, Enum.EasingStyle.Back), {Position = settings.espEnabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}):Play()
-        updateESP()
-        updateESPUI()
-    end)
-    uiElements.espToggle = espClick
-
-    -- Color preset dropdown
     local colorOptions = {"White", "Red", "Green", "Blue", "Yellow", "Purple", "Orange"}
     addDropdown(espCard, "ESP Color", colorOptions, function() return settings.espColorPreset end, function(v)
         settings.espColorPreset = v
         settings.espColor = colorPresets[v]
-        updateESP()
+        refreshESP()
     end, 2)
 
     addSlider(espCard, "ESP Transparency", 0, 1, function() return settings.espTransparency end, function(v)
         settings.espTransparency = v
-        updateESP()
+        refreshESP()
     end, 3)
 
-    -- Tracers toggle
-    local function updateTracersUI()
-        if uiElements.tracersToggle then
-            uiElements.tracersToggle.Text = settings.tracersEnabled and "ON" or "OFF"
-            uiElements.tracersToggle.BackgroundColor3 = settings.tracersEnabled and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(180, 60, 60)
-        end
-    end
+    addCleanToggleRow(espCard, 4, "Tracers",
+        function() return settings.tracersEnabled end,
+        function(v)
+            settings.tracersEnabled = v
+            refreshESP()
+        end,
+        nil)
 
-    local tracersRow = makeRow(espCard, 4, false, 38)
-    local tracersLabel = Instance.new("TextLabel")
-    tracersLabel.Size = UDim2.new(1, -60, 1, 0)
-    tracersLabel.Position = UDim2.new(0, 12, 0, 0)
-    tracersLabel.Text = "Tracers"
-    tracersLabel.Font = Enum.Font.GothamSemibold
-    tracersLabel.TextSize = 10
-    tracersLabel.TextColor3 = T.text
-    tracersLabel.TextXAlignment = Enum.TextXAlignment.Left
-    tracersLabel.BackgroundTransparency = 1
-    tracersLabel.Parent = tracersRow
+    addCleanToggleRow(espCard, 5, "Highlights",
+        function() return settings.highlightsEnabled end,
+        function(v)
+            settings.highlightsEnabled = v
+            refreshESP()
+        end,
+        nil)
 
-    local tracersToggleBg = Instance.new("Frame")
-    tracersToggleBg.Size = UDim2.new(0, 36, 0, 18)
-    tracersToggleBg.Position = UDim2.new(1, -48, 0.5, -9)
-    tracersToggleBg.BackgroundColor3 = settings.tracersEnabled and accent or T.dim
-    tracersToggleBg.Parent = tracersRow
-    Instance.new("UICorner", tracersToggleBg).CornerRadius = UDim.new(1, 0)
-    local tracersToggleStroke = Instance.new("UIStroke")
-    tracersToggleStroke.Color = T.border
-    tracersToggleStroke.Thickness = 1
-    tracersToggleStroke.Parent = tracersToggleBg
-
-    local tracersToggleCircle = Instance.new("Frame")
-    tracersToggleCircle.Size = UDim2.new(0, 14, 0, 14)
-    tracersToggleCircle.Position = settings.tracersEnabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
-    tracersToggleCircle.BackgroundColor3 = Color3.new(1, 1, 1)
-    tracersToggleCircle.Parent = tracersToggleBg
-    Instance.new("UICorner", tracersToggleCircle).CornerRadius = UDim.new(1, 0)
-
-    local tracersClick = Instance.new("TextButton")
-    tracersClick.Size = UDim2.new(0, 50, 1, 0)
-    tracersClick.Position = UDim2.new(1, -56, 0, 0)
-    tracersClick.BackgroundTransparency = 1
-    tracersClick.Text = ""
-    tracersClick.Parent = tracersRow
-
-    tracersClick.MouseButton1Click:Connect(function()
-        settings.tracersEnabled = not settings.tracersEnabled
-        TweenService:Create(tracersToggleBg, tw(0.25), {BackgroundColor3 = settings.tracersEnabled and accent or T.dim}):Play()
-        TweenService:Create(tracersToggleCircle, tw(0.25, Enum.EasingStyle.Back), {Position = settings.tracersEnabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}):Play()
-        updateESP()
-        updateTracersUI()
-    end)
-    uiElements.tracersToggle = tracersClick
-
-    -- Highlights toggle
-    local function updateHighlightsUI()
-        if uiElements.highlightsToggle then
-            uiElements.highlightsToggle.Text = settings.highlightsEnabled and "ON" or "OFF"
-            uiElements.highlightsToggle.BackgroundColor3 = settings.highlightsEnabled and Color3.fromRGB(80, 180, 80) or Color3.fromRGB(180, 60, 60)
-        end
-    end
-
-    local highlightsRow = makeRow(espCard, 5, true, 38)
-    local highlightsLabel = Instance.new("TextLabel")
-    highlightsLabel.Size = UDim2.new(1, -60, 1, 0)
-    highlightsLabel.Position = UDim2.new(0, 12, 0, 0)
-    highlightsLabel.Text = "Highlights"
-    highlightsLabel.Font = Enum.Font.GothamSemibold
-    highlightsLabel.TextSize = 10
-    highlightsLabel.TextColor3 = T.text
-    highlightsLabel.TextXAlignment = Enum.TextXAlignment.Left
-    highlightsLabel.BackgroundTransparency = 1
-    highlightsLabel.Parent = highlightsRow
-
-    local highlightsToggleBg = Instance.new("Frame")
-    highlightsToggleBg.Size = UDim2.new(0, 36, 0, 18)
-    highlightsToggleBg.Position = UDim2.new(1, -48, 0.5, -9)
-    highlightsToggleBg.BackgroundColor3 = settings.highlightsEnabled and accent or T.dim
-    highlightsToggleBg.Parent = highlightsRow
-    Instance.new("UICorner", highlightsToggleBg).CornerRadius = UDim.new(1, 0)
-    local highlightsToggleStroke = Instance.new("UIStroke")
-    highlightsToggleStroke.Color = T.border
-    highlightsToggleStroke.Thickness = 1
-    highlightsToggleStroke.Parent = highlightsToggleBg
-
-    local highlightsToggleCircle = Instance.new("Frame")
-    highlightsToggleCircle.Size = UDim2.new(0, 14, 0, 14)
-    highlightsToggleCircle.Position = settings.highlightsEnabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
-    highlightsToggleCircle.BackgroundColor3 = Color3.new(1, 1, 1)
-    highlightsToggleCircle.Parent = highlightsToggleBg
-    Instance.new("UICorner", highlightsToggleCircle).CornerRadius = UDim.new(1, 0)
-
-    local highlightsClick = Instance.new("TextButton")
-    highlightsClick.Size = UDim2.new(0, 50, 1, 0)
-    highlightsClick.Position = UDim2.new(1, -56, 0, 0)
-    highlightsClick.BackgroundTransparency = 1
-    highlightsClick.Text = ""
-    highlightsClick.Parent = highlightsRow
-
-    highlightsClick.MouseButton1Click:Connect(function()
-        settings.highlightsEnabled = not settings.highlightsEnabled
-        TweenService:Create(highlightsToggleBg, tw(0.25), {BackgroundColor3 = settings.highlightsEnabled and accent or T.dim}):Play()
-        TweenService:Create(highlightsToggleCircle, tw(0.25, Enum.EasingStyle.Back), {Position = settings.highlightsEnabled and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)}):Play()
-        updateESP()
-        updateHighlightsUI()
-    end)
-    uiElements.highlightsToggle = highlightsClick
-
-    -- Page 3: Settings
+    -- ========== PAGE 3: SETTINGS ==========
     local pgSet = pages[3]
     makeSection(pgSet, "Info", 1)
     local infoCard = makeCard(pgSet, 2)
@@ -1114,7 +1012,7 @@ local function createUI()
         settings.espTransparency = 0.6
         settings.tracersEnabled = true
         settings.highlightsEnabled = true
-        updateESP()
+        refreshESP()
         createUI()
     end)
 
@@ -1133,7 +1031,10 @@ local function createUI()
             task.wait(2.4)
         end
     end)
+
+    -- Initial ESP refresh
+    refreshESP()
 end
 
 createUI()
-print("Flick Aim+ESP v1 loaded. Press ] to open UI, E to toggle aimbot.")
+print("Flick Aim+ESP v6 loaded. Press ] to open UI, E to toggle aimbot.")
