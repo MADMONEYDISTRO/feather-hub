@@ -1,567 +1,932 @@
---// ════════════════════════════════════════════
---//  FEATHER HUB  —  Auto Parry  v1.0
---//  Matches Feather Hub key system aesthetic
---// ════════════════════════════════════════════
+--[[
+    ════════════════════════════════════════════════════
+     FEATHER BLADE  v16
+     FeatherHub-style sidebar window
+     Tabs: HOME → status/stats, COMBAT → parry/dodge/spam,
+           VISUALS → range vis/prediction/beam, SETTINGS → sliders
+     Purple theme, smooth drag, notifications, theme toggle
+    ════════════════════════════════════════════════════
+]]
 
-getgenv().autoparry = false
-
-local VirtualManager = game:GetService("VirtualInputManager")
-local Stats          = game:GetService("Stats")
-local Players        = game:GetService("Players")
-local RunService     = game:GetService("RunService")
-local TweenService   = game:GetService("TweenService")
+-- ══════════════════════════════════════════
+--  SERVICES
+-- ══════════════════════════════════════════
+local RunService       = game:GetService("RunService")
+local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local CoreGui        = game:GetService("CoreGui")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local TweenService     = game:GetService("TweenService")
+local Debris           = game:GetService("Debris")
+local Stats            = game:GetService("Stats")
+local CoreGui          = game:GetService("CoreGui")
 
-local Player  = Players.LocalPlayer or Players.PlayerAdded:Wait()
-local ero     = false
+local Player    = Players.LocalPlayer
+local DisplayName = tostring(Player.DisplayName)
+local Username    = tostring(Player.Name)
 
-local parry_helper = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/TripleScript/TripleHub/main/helper_.lua"
-))()
+local char = Player.Character or Player.CharacterAdded:Wait()
+local root = char:WaitForChild("HumanoidRootPart")
+local humanoid = char:WaitForChild("Humanoid")
+
+local isMobile = false
+pcall(function()
+    isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end)
 
 -- ══════════════════════════════════════════
---  THEME  (matches Feather Hub key system)
+--  CONFIG
 -- ══════════════════════════════════════════
-
-local C = {
-    background   = Color3.fromRGB(22,  22,  26),
-    dragBar      = Color3.fromRGB(30,  30,  35),
-    accent       = Color3.fromRGB(0,   120, 215),
-    text         = Color3.fromRGB(220, 220, 220),
-    buttonBg     = Color3.fromRGB(45,  45,  50),
-    buttonHover  = Color3.fromRGB(60,  60,  65),
-    success      = Color3.fromRGB(46,  204, 113),
-    error        = Color3.fromRGB(231, 76,  60),
-    warning      = Color3.fromRGB(241, 196, 15),
-    panel        = Color3.fromRGB(30,  30,  36),
-    muted        = Color3.fromRGB(90,  90,  100),
-    dim          = Color3.fromRGB(38,  38,  43),
+local CFG = {
+    BASE_RANGE = 20, PAD = 14, PANIC = 7, LAST_LAYER = 4,
+    Y_LIMIT = 15, REACT = 0.25, DODGE_PWR = 15, DODGE_DUR = 0.25,
+    KEY = Enum.KeyCode.F, DYN_SCALE = true, SCALE_F = 20, SCALE_CAP = 60,
+    PRED_STEPS = 10,
 }
 
-local function ti(t, style, dir)
-    return TweenInfo.new(
-        t     or 0.3,
-        style or Enum.EasingStyle.Quad,
-        dir   or Enum.EasingDirection.Out
-    )
+local S = {
+    autoParry = false, autoDodge = false, autoWalk = false,
+    rangeVis = false, spamParry = false, ballPred = false, targetBeam = false,
+    range = CFG.BASE_RANGE, pad = CFG.PAD,
+    lastDodge = 0, parriedCurrent = false, ball = nil,
+    parries = 0, dodges = 0, speed = 0,
+}
+
+local visPart, predParts, beamObj, att0, att1 = nil, {}, nil, nil, nil
+
+-- ══════════════════════════════════════════
+--  HELPERS
+-- ══════════════════════════════════════════
+local function GetPing()
+    local ok, p = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()/1000 end)
+    return ok and p or 0.1
+end
+
+local function Parry()
+    VirtualInputManager:SendKeyEvent(true, CFG.KEY, false, game)
+    VirtualInputManager:SendKeyEvent(false, CFG.KEY, false, game)
+end
+
+local function FindBall()
+    local folder = workspace:FindFirstChild("Balls")
+    if not folder then return nil end
+    local best, dist = nil, math.huge
+    for _, b in ipairs(folder:GetChildren()) do
+        if b:IsA("BasePart") then
+            local t = b:GetAttribute("target")
+            local d = (b.Position - root.Position).Magnitude
+            local me = (t == Player.Name)
+            if me then
+                if not best or best:GetAttribute("target") ~= Player.Name or d < dist then best, dist = b, d end
+            elseif not best or (best:GetAttribute("target") ~= Player.Name and d < dist) then
+                best, dist = b, d
+            end
+        end
+    end
+    return best
 end
 
 -- ══════════════════════════════════════════
---  SCREEN GUI
+--  VISUAL SYSTEMS
 -- ══════════════════════════════════════════
+local function UpdateVis(targeted, dynRange)
+    if not root or not root.Parent then return end
+    if not S.rangeVis then if visPart then visPart:Destroy() visPart = nil end return end
+    if not visPart then
+        visPart = Instance.new("Part")
+        visPart.Name = "FBVis"; visPart.Shape = Enum.PartType.Cylinder
+        visPart.Anchored, visPart.CanCollide, visPart.CastShadow = true, false, false
+        visPart.Parent = workspace
+    end
+    visPart.Color = targeted and Color3.fromRGB(255,60,60) or Color3.fromRGB(80,200,255)
+    visPart.Transparency = targeted and 0.35 or 0.8
+    visPart.Material = targeted and Enum.Material.Neon or Enum.Material.ForceField
+    local sz = math.clamp(dynRange or S.range, 5, 300) * 2
+    visPart.Size = Vector3.new(0.5, sz, sz)
+    visPart.CFrame = root.CFrame * CFrame.Angles(0,0,math.rad(90)) - Vector3.new(0,2.5,0)
+end
 
+local function ClearPred()
+    for _,p in ipairs(predParts) do if p and p.Parent then p:Destroy() end end
+    predParts = {}
+end
+
+local function UpdatePred()
+    ClearPred()
+    if not S.ballPred or not S.ball or not S.ball.Parent then return end
+    local pos, vel = S.ball.Position, S.ball.AssemblyLinearVelocity
+    for i = 1, CFG.PRED_STEPS do
+        local d = Instance.new("Part")
+        d.Shape = Enum.PartType.Ball; d.Size = Vector3.new(0.6,0.6,0.6)
+        d.Material = Enum.Material.Neon
+        d.Color = Color3.fromHSV(0.75 + (i/CFG.PRED_STEPS)*0.15, 0.8, 1)
+        d.Transparency = 0.15 + (i/CFG.PRED_STEPS)*0.6
+        d.Anchored, d.CanCollide, d.CastShadow = true, false, false
+        d.Position = pos + vel * (0.05 * i)
+        d.Parent = workspace
+        predParts[#predParts+1] = d
+    end
+end
+
+local function ClearBeam()
+    if beamObj then beamObj:Destroy() beamObj = nil end
+    if att0 then att0:Destroy() att0 = nil end
+    if att1 then att1:Destroy() att1 = nil end
+end
+
+local function UpdateBeam()
+    if not S.targetBeam or not S.ball or not S.ball.Parent then ClearBeam() return end
+    local tn = S.ball:GetAttribute("target")
+    if not tn then ClearBeam() return end
+    local tp = Players:FindFirstChild(tn)
+    if not tp or not tp.Character then ClearBeam() return end
+    local tr = tp.Character:FindFirstChild("HumanoidRootPart")
+    if not tr then ClearBeam() return end
+    if not beamObj then
+        att0 = Instance.new("Attachment"); att0.Parent = S.ball
+        att1 = Instance.new("Attachment"); att1.Parent = tr
+        beamObj = Instance.new("Beam")
+        beamObj.Attachment0, beamObj.Attachment1 = att0, att1
+        beamObj.Width0, beamObj.Width1 = 0.25, 0.25
+        beamObj.FaceCamera, beamObj.Segments = true, 1
+        beamObj.Transparency = NumberSequence.new(0.3)
+        beamObj.Parent = S.ball
+    end
+    beamObj.Color = ColorSequence.new(tn == Player.Name and Color3.fromRGB(255,60,60) or Color3.fromRGB(80,200,255))
+    pcall(function()
+        if att0.Parent ~= S.ball then att0.Parent = S.ball end
+        if att1.Parent ~= tr then att1.Parent = tr end
+    end)
+end
+
+local function Dodge(ball)
+    if not root then return end
+    S.lastDodge = tick(); S.dodges = S.dodges + 1
+    local dir = (ball.Position - root.Position).Unit
+    local r = dir:Cross(Vector3.new(0,1,0)).Unit
+    local rp = RaycastParams.new()
+    rp.FilterDescendantsInstances = {Player.Character}
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    local hr, hl = workspace:Raycast(root.Position, r*10, rp), workspace:Raycast(root.Position, -r*10, rp)
+    local chosen = (hr and not hl) and -r or (hr and hl) and -dir or r
+    local old = root:FindFirstChild("FBDodge"); if old then old:Destroy() end
+    local bv = Instance.new("BodyVelocity")
+    bv.Name = "FBDodge"; bv.Velocity = chosen * CFG.DODGE_PWR
+    bv.MaxForce = Vector3.new(15000,0,15000); bv.P = 300; bv.Parent = root
+    Debris:AddItem(bv, CFG.DODGE_DUR)
+end
+
+-- ══════════════════════════════════════════
+--  PALETTE  (unified purple — matches FeatherHub)
+-- ══════════════════════════════════════════
+local DARK = {
+    bg      = Color3.fromRGB(14,  14,  16),
+    sidebar = Color3.fromRGB(20,  20,  24),
+    card    = Color3.fromRGB(26,  26,  30),
+    border  = Color3.fromRGB(44,  44,  52),
+    text    = Color3.fromRGB(240, 240, 244),
+    muted   = Color3.fromRGB(100, 100, 115),
+    dim     = Color3.fromRGB(32,  32,  38),
+    sep     = Color3.fromRGB(36,  36,  44),
+    header  = Color3.fromRGB(18,  18,  22),
+}
+local LIGHT = {
+    bg      = Color3.fromRGB(248, 248, 250),
+    sidebar = Color3.fromRGB(255, 255, 255),
+    card    = Color3.fromRGB(255, 255, 255),
+    border  = Color3.fromRGB(218, 218, 228),
+    text    = Color3.fromRGB(18,  18,  22),
+    muted   = Color3.fromRGB(145, 145, 160),
+    dim     = Color3.fromRGB(235, 235, 242),
+    sep     = Color3.fromRGB(225, 225, 232),
+    header  = Color3.fromRGB(252, 252, 255),
+}
+
+local accent      = Color3.fromRGB(90,  90,  210)
+local accentLight = Color3.fromRGB(120, 110, 230)
+local green       = Color3.fromRGB(100, 200, 160)
+local red         = Color3.fromRGB(220, 80,  100)
+local gold        = Color3.fromRGB(200, 170, 80)
+local cyan        = Color3.fromRGB(80,  200, 220)
+
+local isDark = true
+local T      = DARK
+
+local function tw(t, s, d)
+    return TweenInfo.new(t or 0.2, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out)
+end
+
+-- ══════════════════════════════════════════
+--  THEME REGISTRY
+-- ══════════════════════════════════════════
+local themeReg = {}
+local function reg(obj, prop, lv, dv)
+    table.insert(themeReg, {o=obj, p=prop, l=lv, d=dv})
+end
+local function applyReg()
+    for _, e in ipairs(themeReg) do
+        if e.o and e.o.Parent then e.o[e.p] = isDark and e.d or e.l end
+    end
+end
+
+-- ══════════════════════════════════════════
+--  SIZING
+-- ══════════════════════════════════════════
+local WIN_W, WIN_H, SIDE_W
+if isMobile then WIN_W=340; WIN_H=440; SIDE_W=72
+else WIN_W=440; WIN_H=380; SIDE_W=96 end
+local HDR_H = 44
+
+-- ══════════════════════════════════════════
+--  ROOT GUI
+-- ══════════════════════════════════════════
 local sg = Instance.new("ScreenGui")
-sg.Name           = "FeatherAutoParry"
-sg.ResetOnSpawn   = false
-sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-sg.DisplayOrder   = 999999999
-sg.IgnoreGuiInset = true
-
-local ok = pcall(function() sg.Parent = CoreGui end)
-if not ok then sg.Parent = Player:WaitForChild("PlayerGui") end
-
--- ══════════════════════════════════════════
---  MAIN WINDOW  (240 × 210)
--- ══════════════════════════════════════════
-
-local W, H = 240, 210
-
-local win = Instance.new("Frame")
-win.Name             = "AutoParryWin"
-win.Size             = UDim2.new(0, W, 0, H)
-win.Position         = UDim2.new(0.5, -W/2, 0.5, -H/2)
-win.BackgroundColor3 = C.background
-win.BorderSizePixel  = 0
-win.Parent           = sg
-Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
-
--- subtle border stroke
-local stroke = Instance.new("UIStroke")
-stroke.Color     = Color3.fromRGB(50, 50, 58)
-stroke.Thickness = 1
-stroke.Parent    = win
-
--- drop shadow (same asset as key system)
-local shadow = Instance.new("ImageLabel")
-shadow.Image              = "rbxassetid://1316045217"
-shadow.ScaleType          = Enum.ScaleType.Slice
-shadow.SliceCenter        = Rect.new(10, 10, 118, 118)
-shadow.ImageColor3        = Color3.new(0, 0, 0)
-shadow.ImageTransparency  = 0.7
-shadow.Size               = UDim2.new(1, 20, 1, 20)
-shadow.Position           = UDim2.new(0, -10, 0, -10)
-shadow.BackgroundTransparency = 1
-shadow.ZIndex             = 0
-shadow.Parent             = win
-
--- ── Drag bar ───────────────────────────────────────────────
-
-local dragBar = Instance.new("Frame")
-dragBar.Size             = UDim2.new(1, 0, 0, 40)
-dragBar.BackgroundColor3 = C.dragBar
-dragBar.BorderSizePixel  = 0
-dragBar.ZIndex           = 2
-dragBar.Parent           = win
-Instance.new("UICorner", dragBar).CornerRadius = UDim.new(0, 12)
-
--- cover the bottom-rounded corners of the drag bar
-local dragBarCover = Instance.new("Frame")
-dragBarCover.Size             = UDim2.new(1, 0, 0, 12)
-dragBarCover.Position         = UDim2.new(0, 0, 1, -12)
-dragBarCover.BackgroundColor3 = C.dragBar
-dragBarCover.BorderSizePixel  = 0
-dragBarCover.ZIndex           = 2
-dragBarCover.Parent           = dragBar
-
--- "F" logo badge (same as key system)
-local logoFrame = Instance.new("Frame")
-logoFrame.Size             = UDim2.new(0, 28, 0, 28)
-logoFrame.Position         = UDim2.new(0, 8, 0, 6)
-logoFrame.BackgroundColor3 = C.accent
-logoFrame.BorderSizePixel  = 0
-logoFrame.ZIndex           = 3
-logoFrame.Parent           = dragBar
-Instance.new("UICorner", logoFrame).CornerRadius = UDim.new(0, 6)
-
-local logoText = Instance.new("TextLabel")
-logoText.Size               = UDim2.new(1, 0, 1, 0)
-logoText.Text               = "F"
-logoText.Font               = Enum.Font.GothamBold
-logoText.TextSize           = 16
-logoText.TextColor3         = Color3.new(1, 1, 1)
-logoText.BackgroundTransparency = 1
-logoText.ZIndex             = 4
-logoText.Parent             = logoFrame
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size               = UDim2.new(1, -100, 1, 0)
-titleLabel.Position           = UDim2.new(0, 44, 0, 0)
-titleLabel.Text               = "Auto Parry"
-titleLabel.Font               = Enum.Font.GothamSemibold
-titleLabel.TextSize           = 15
-titleLabel.TextColor3         = C.text
-titleLabel.TextXAlignment     = Enum.TextXAlignment.Left
-titleLabel.BackgroundTransparency = 1
-titleLabel.ZIndex             = 3
-titleLabel.Parent             = dragBar
-
-local verBadge = Instance.new("TextLabel")
-verBadge.Size             = UDim2.new(0, 40, 0, 20)
-verBadge.Position         = UDim2.new(1, -76, 0, 10)
-verBadge.Text             = "v1.0"
-verBadge.Font             = Enum.Font.GothamMedium
-verBadge.TextSize         = 10
-verBadge.TextColor3       = C.text
-verBadge.BackgroundColor3 = C.buttonBg
-verBadge.BorderSizePixel  = 0
-verBadge.ZIndex           = 3
-verBadge.Parent           = dragBar
-Instance.new("UICorner", verBadge).CornerRadius = UDim.new(0, 4)
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0, 28, 0, 28)
-closeBtn.Position         = UDim2.new(1, -36, 0, 6)
-closeBtn.Text             = "x"
-closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.TextSize         = 20
-closeBtn.TextColor3       = C.text
-closeBtn.BackgroundColor3 = C.buttonBg
-closeBtn.BorderSizePixel  = 0
-closeBtn.AutoButtonColor  = false
-closeBtn.ZIndex           = 3
-closeBtn.Parent           = dragBar
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-
-closeBtn.MouseEnter:Connect(function()
-    TweenService:Create(closeBtn, ti(), {
-        BackgroundColor3 = Color3.fromRGB(220, 50, 50),
-        TextColor3       = Color3.new(1, 1, 1),
-    }):Play()
-end)
-closeBtn.MouseLeave:Connect(function()
-    TweenService:Create(closeBtn, ti(), {
-        BackgroundColor3 = C.buttonBg,
-        TextColor3       = C.text,
-    }):Play()
-end)
-closeBtn.MouseButton1Click:Connect(function()
-    TweenService:Create(win, ti(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In),
-        {Size = UDim2.new(0, 0, 0, 0)}):Play()
-    task.wait(0.25)
-    if sg and sg.Parent then sg:Destroy() end
-end)
-
--- ── Drag logic (Mouse + Touch) ─────────────────────────────
-
-local dragging, dragInput, dragStart, startPos
-
-dragBar.InputBegan:Connect(function(input)
-    local t = input.UserInputType
-    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-        dragging  = true
-        dragStart = input.Position
-        startPos  = win.Position
-    end
-end)
-dragBar.InputChanged:Connect(function(input)
-    local t = input.UserInputType
-    if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local d  = input.Position - dragStart
-        local vp = workspace.CurrentCamera.ViewportSize
-        win.Position = UDim2.new(
-            0, math.clamp(startPos.X.Offset + d.X, 0, vp.X - W),
-            0, math.clamp(startPos.Y.Offset + d.Y, 0, vp.Y - H)
-        )
-    end
-end)
-UserInputService.InputEnded:Connect(function(input)
-    local t = input.UserInputType
-    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
--- ══════════════════════════════════════════
---  BODY  (below drag bar)
--- ══════════════════════════════════════════
-
-local body = Instance.new("Frame")
-body.Size               = UDim2.new(1, -24, 1, -52)
-body.Position           = UDim2.new(0, 12, 0, 46)
-body.BackgroundTransparency = 1
-body.Parent             = win
-
--- ── Status card ────────────────────────────────────────────
-
-local statusCard = Instance.new("Frame")
-statusCard.Size             = UDim2.new(1, 0, 0, 48)
-statusCard.BackgroundColor3 = C.panel
-statusCard.BorderSizePixel  = 0
-statusCard.ZIndex           = 3
-statusCard.Parent           = body
-Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0, 8)
-
--- left colour strip (red when off, green when on)
-local statusStrip = Instance.new("Frame")
-statusStrip.Size             = UDim2.new(0, 3, 0.6, 0)
-statusStrip.Position         = UDim2.new(0, 0, 0.2, 0)
-statusStrip.BackgroundColor3 = C.error
-statusStrip.BorderSizePixel  = 0
-statusStrip.ZIndex           = 4
-statusStrip.Parent           = statusCard
-Instance.new("UICorner", statusStrip).CornerRadius = UDim.new(0, 3)
-
-local statusTag = Instance.new("TextLabel")
-statusTag.Size               = UDim2.new(1, -16, 0, 14)
-statusTag.Position           = UDim2.new(0, 12, 0, 6)
-statusTag.Text               = "STATUS"
-statusTag.Font               = Enum.Font.GothamBold
-statusTag.TextSize           = 8
-statusTag.TextColor3         = C.muted
-statusTag.TextXAlignment     = Enum.TextXAlignment.Left
-statusTag.BackgroundTransparency = 1
-statusTag.ZIndex             = 4
-statusTag.Parent             = statusCard
-
-local statusLbl = Instance.new("TextLabel")
-statusLbl.Size               = UDim2.new(1, -16, 0, 18)
-statusLbl.Position           = UDim2.new(0, 12, 0, 22)
-statusLbl.Text               = "Parry is disabled"
-statusLbl.Font               = Enum.Font.GothamSemibold
-statusLbl.TextSize           = 12
-statusLbl.TextColor3         = C.error
-statusLbl.TextXAlignment     = Enum.TextXAlignment.Left
-statusLbl.BackgroundTransparency = 1
-statusLbl.ZIndex             = 4
-statusLbl.Parent             = statusCard
-
--- ── Toggle button ──────────────────────────────────────────
-
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size             = UDim2.new(1, 0, 0, 44)
-toggleBtn.Position         = UDim2.new(0, 0, 0, 58)
-toggleBtn.Text             = ""
-toggleBtn.BackgroundColor3 = C.buttonBg
-toggleBtn.BorderSizePixel  = 0
-toggleBtn.AutoButtonColor  = false
-toggleBtn.ZIndex           = 3
-toggleBtn.Parent           = body
-Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
-
--- icon background circle
-local iconBg = Instance.new("Frame")
-iconBg.Size               = UDim2.new(0, 32, 0, 32)
-iconBg.Position           = UDim2.new(0, 8, 0.5, -16)
-iconBg.BackgroundColor3   = C.error
-iconBg.BackgroundTransparency = 0.82
-iconBg.BorderSizePixel    = 0
-iconBg.ZIndex             = 4
-iconBg.Parent             = toggleBtn
-Instance.new("UICorner", iconBg).CornerRadius = UDim.new(0, 7)
-
-local iconLbl = Instance.new("TextLabel")
-iconLbl.Size               = UDim2.new(1, 0, 1, 0)
-iconLbl.Text               = "🛡️"
-iconLbl.TextSize           = 16
-iconLbl.BackgroundTransparency = 1
-iconLbl.ZIndex             = 5
-iconLbl.Parent             = iconBg
-
-local toggleTitle = Instance.new("TextLabel")
-toggleTitle.Size               = UDim2.new(1, -100, 0, 18)
-toggleTitle.Position           = UDim2.new(0, 48, 0, 7)
-toggleTitle.Text               = "Auto Parry"
-toggleTitle.Font               = Enum.Font.GothamSemibold
-toggleTitle.TextSize           = 13
-toggleTitle.TextColor3         = C.text
-toggleTitle.TextXAlignment     = Enum.TextXAlignment.Left
-toggleTitle.BackgroundTransparency = 1
-toggleTitle.ZIndex             = 4
-toggleTitle.Parent             = toggleBtn
-
-local toggleSub = Instance.new("TextLabel")
-toggleSub.Size               = UDim2.new(1, -100, 0, 14)
-toggleSub.Position           = UDim2.new(0, 48, 0, 25)
-toggleSub.Text               = "Click to enable"
-toggleSub.Font               = Enum.Font.Gotham
-toggleSub.TextSize           = 10
-toggleSub.TextColor3         = C.text
-toggleSub.TextTransparency   = 0.5
-toggleSub.TextXAlignment     = Enum.TextXAlignment.Left
-toggleSub.BackgroundTransparency = 1
-toggleSub.ZIndex             = 4
-toggleSub.Parent             = toggleBtn
-
--- pill toggle (right side of button row)
-local pill = Instance.new("Frame")
-pill.Size             = UDim2.new(0, 44, 0, 22)
-pill.Position         = UDim2.new(1, -52, 0.5, -11)
-pill.BackgroundColor3 = C.dim
-pill.BorderSizePixel  = 0
-pill.ZIndex           = 4
-pill.Parent           = toggleBtn
-Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
-
-local knob = Instance.new("Frame")
-knob.Size             = UDim2.new(0, 16, 0, 16)
-knob.Position         = UDim2.new(0, 3, 0.5, -8)
-knob.BackgroundColor3 = C.muted
-knob.BorderSizePixel  = 0
-knob.ZIndex           = 5
-knob.Parent           = pill
-Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
--- hover effects for the button row
-toggleBtn.MouseEnter:Connect(function()
-    TweenService:Create(toggleBtn, ti(), {BackgroundColor3 = C.buttonHover}):Play()
-end)
-toggleBtn.MouseLeave:Connect(function()
-    TweenService:Create(toggleBtn, ti(), {BackgroundColor3 = C.buttonBg}):Play()
-end)
-
--- ── Parry count display ────────────────────────────────────
-
-local countCard = Instance.new("Frame")
-countCard.Size             = UDim2.new(1, 0, 0, 36)
-countCard.Position         = UDim2.new(0, 0, 0, 112)
-countCard.BackgroundColor3 = C.panel
-countCard.BorderSizePixel  = 0
-countCard.ZIndex           = 3
-countCard.Parent           = body
-Instance.new("UICorner", countCard).CornerRadius = UDim.new(0, 8)
-
-local countTag = Instance.new("TextLabel")
-countTag.Size               = UDim2.new(0, 100, 1, 0)
-countTag.Position           = UDim2.new(0, 12, 0, 0)
-countTag.Text               = "PARRIES"
-countTag.Font               = Enum.Font.GothamBold
-countTag.TextSize           = 9
-countTag.TextColor3         = C.muted
-countTag.TextXAlignment     = Enum.TextXAlignment.Left
-countTag.BackgroundTransparency = 1
-countTag.ZIndex             = 4
-countTag.Parent             = countCard
-
-local countLbl = Instance.new("TextLabel")
-countLbl.Size               = UDim2.new(1, -110, 1, 0)
-countLbl.Position           = UDim2.new(0, 100, 0, 0)
-countLbl.Text               = "0"
-countLbl.Font               = Enum.Font.GothamBold
-countLbl.TextSize           = 14
-countLbl.TextColor3         = C.accent
-countLbl.TextXAlignment     = Enum.TextXAlignment.Right
-countLbl.BackgroundTransparency = 1
-countLbl.ZIndex             = 4
-countLbl.Parent             = countCard
-
-local parryCount = 0
-
--- ══════════════════════════════════════════
---  TOGGLE LOGIC
--- ══════════════════════════════════════════
-
-local function setParry(enabled)
-    getgenv().autoparry = enabled
-
-    -- pill animation
-    TweenService:Create(pill, ti(), {
-        BackgroundColor3 = enabled and C.success or C.dim,
-    }):Play()
-    TweenService:Create(knob, ti(), {
-        Position         = enabled and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8),
-        BackgroundColor3 = enabled and Color3.new(1, 1, 1) or C.muted,
-    }):Play()
-
-    -- status card
-    TweenService:Create(statusStrip, ti(), {
-        BackgroundColor3 = enabled and C.success or C.error,
-    }):Play()
-    statusLbl.Text       = enabled and "Parry is active" or "Parry is disabled"
-    statusLbl.TextColor3 = enabled and C.success or C.error
-
-    -- icon bg
-    TweenService:Create(iconBg, ti(), {
-        BackgroundColor3 = enabled and C.success or C.error,
-    }):Play()
-
-    -- sub text
-    toggleSub.Text = enabled and "Click to disable" or "Click to enable"
+sg.Name="FeatherBlade16"; sg.ResetOnSpawn=false
+sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder=999; sg.IgnoreGuiInset=true
+if not pcall(function() sg.Parent=CoreGui end) then
+    sg.Parent=Player:WaitForChild("PlayerGui")
 end
-
-toggleBtn.MouseButton1Click:Connect(function()
-    setParry(not getgenv().autoparry)
-end)
 
 -- ══════════════════════════════════════════
 --  NOTIFICATION
 -- ══════════════════════════════════════════
-
-local function notify(title, message, nType)
-    local col = C.accent
-    if nType == "success" then col = C.success
-    elseif nType == "error" then col = C.error
-    elseif nType == "warning" then col = C.warning
-    end
-
-    local notif = Instance.new("Frame")
-    notif.Size             = UDim2.new(0, 0, 0, 60)
-    notif.Position         = UDim2.new(1, -10, 0.95, -70)
-    notif.AnchorPoint      = Vector2.new(1, 1)
-    notif.BackgroundColor3 = C.background
-    notif.BorderSizePixel  = 0
-    notif.Parent           = sg
-    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
-
-    local bar = Instance.new("Frame")
-    bar.Size             = UDim2.new(0, 4, 1, 0)
-    bar.BackgroundColor3 = col
-    bar.BorderSizePixel  = 0
-    bar.Parent           = notif
-    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 8)
-
-    local t1 = Instance.new("TextLabel")
-    t1.Size               = UDim2.new(1, -16, 0, 20)
-    t1.Position           = UDim2.new(0, 12, 0, 8)
-    t1.Text               = title
-    t1.Font               = Enum.Font.GothamBold
-    t1.TextSize           = 12
-    t1.TextColor3         = C.text
-    t1.TextXAlignment     = Enum.TextXAlignment.Left
-    t1.BackgroundTransparency = 1
-    t1.Parent             = notif
-
-    local t2 = Instance.new("TextLabel")
-    t2.Size               = UDim2.new(1, -16, 0, 24)
-    t2.Position           = UDim2.new(0, 12, 0, 28)
-    t2.Text               = message
-    t2.Font               = Enum.Font.Gotham
-    t2.TextSize           = 10
-    t2.TextColor3         = C.text
-    t2.TextTransparency   = 0.3
-    t2.TextWrapped        = true
-    t2.TextXAlignment     = Enum.TextXAlignment.Left
-    t2.BackgroundTransparency = 1
-    t2.Parent             = notif
-
-    TweenService:Create(notif, ti(), {Size = UDim2.new(0, 260, 0, 60)}):Play()
-    task.delay(3, function()
-        TweenService:Create(notif, ti(), {
-            Size = UDim2.new(0, 0, 0, 60),
-            BackgroundTransparency = 1,
-        }):Play()
-        task.wait(0.3)
-        if notif and notif.Parent then notif:Destroy() end
+local function notify(title, msg, nType)
+    local col = ({success=green,error=red,warning=gold})[nType] or accent
+    local n = Instance.new("Frame")
+    n.Size=UDim2.new(0,0,0,50); n.Position=UDim2.new(1,-10,1,-62)
+    n.AnchorPoint=Vector2.new(1,1); n.BackgroundColor3=T.bg
+    n.BorderSizePixel=0; n.ClipsDescendants=true; n.Parent=sg
+    Instance.new("UICorner",n).CornerRadius=UDim.new(0,8)
+    local nStroke = Instance.new("UIStroke",n); nStroke.Color=T.border; nStroke.Thickness=1
+    local bar=Instance.new("Frame"); bar.Size=UDim2.new(0,3,1,0)
+    bar.BackgroundColor3=col; bar.BorderSizePixel=0; bar.Parent=n
+    Instance.new("UICorner",bar).CornerRadius=UDim.new(0,8)
+    local t1=Instance.new("TextLabel"); t1.Size=UDim2.new(1,-16,0,16); t1.Position=UDim2.new(0,12,0,7)
+    t1.Text=title; t1.Font=Enum.Font.GothamBold; t1.TextSize=10
+    t1.TextColor3=T.text; t1.TextXAlignment=Enum.TextXAlignment.Left
+    t1.BackgroundTransparency=1; t1.Parent=n
+    local t2=Instance.new("TextLabel"); t2.Size=UDim2.new(1,-16,0,18); t2.Position=UDim2.new(0,12,0,24)
+    t2.Text=msg; t2.Font=Enum.Font.Gotham; t2.TextSize=9
+    t2.TextColor3=T.text; t2.TextTransparency=0.35
+    t2.TextXAlignment=Enum.TextXAlignment.Left; t2.TextWrapped=true
+    t2.BackgroundTransparency=1; t2.Parent=n
+    TweenService:Create(n,tw(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),{Size=UDim2.new(0,260,0,50)}):Play()
+    task.delay(2.8,function()
+        TweenService:Create(n,tw(),{Size=UDim2.new(0,0,0,50),BackgroundTransparency=1}):Play()
+        task.wait(0.3); if n and n.Parent then n:Destroy() end
     end)
 end
 
 -- ══════════════════════════════════════════
---  AUTO PARRY LOOP
+--  MAIN WINDOW
 -- ══════════════════════════════════════════
+local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920,1080)
+local startX = math.floor(vp.X/2 - WIN_W/2)
+local startY = math.floor(vp.Y/2 - WIN_H/2)
 
-task.spawn(function()
-    RunService.PreRender:Connect(function()
-        if not getgenv().autoparry then return end
+local win = Instance.new("Frame")
+win.Name="Win"; win.Size=UDim2.new(0,WIN_W,0,WIN_H)
+win.Position=UDim2.new(0, startX, 0, startY)
+win.BackgroundColor3=T.bg; win.BorderSizePixel=0
+win.ClipsDescendants=true; win.ZIndex=1; win.Parent=sg
+Instance.new("UICorner",win).CornerRadius=UDim.new(0,14)
+local winStroke=Instance.new("UIStroke"); winStroke.Color=T.border; winStroke.Thickness=1; winStroke.Parent=win
+reg(win,"BackgroundColor3",LIGHT.bg,DARK.bg)
+reg(winStroke,"Color",LIGHT.border,DARK.border)
 
-        local par = parry_helper.FindTargetBall()
-        if not par then return end
+-- glow
+local winGlow=Instance.new("ImageLabel")
+winGlow.Size=UDim2.new(1,40,1,40); winGlow.Position=UDim2.new(0,-20,0,-20)
+winGlow.BackgroundTransparency=1; winGlow.Image="rbxassetid://1316045217"
+winGlow.ImageColor3=Color3.fromRGB(90,70,160); winGlow.ImageTransparency=0.88
+winGlow.ScaleType=Enum.ScaleType.Slice; winGlow.SliceCenter=Rect.new(10,10,118,118)
+winGlow.ZIndex=-1; winGlow.Parent=win
 
-        local hat = par.AssemblyLinearVelocity
-        if par:FindFirstChild("zoomies") then
-            hat = par.zoomies.VectorVelocity
-        end
+-- ══════════════════════════════════════════
+--  SIDEBAR
+-- ══════════════════════════════════════════
+local sidebar=Instance.new("Frame"); sidebar.Name="Sidebar"
+sidebar.Size=UDim2.new(0,SIDE_W,1,0); sidebar.BackgroundColor3=T.sidebar
+sidebar.BorderSizePixel=0; sidebar.ZIndex=3; sidebar.Parent=win
+Instance.new("UICorner",sidebar).CornerRadius=UDim.new(0,14)
+reg(sidebar,"BackgroundColor3",LIGHT.sidebar,DARK.sidebar)
 
-        local i = par.Position
-        local j = Player.Character and Player.Character.PrimaryPart
-        if not j then return end
-        j = j.Position
+local sbCover=Instance.new("Frame"); sbCover.Size=UDim2.new(0,14,1,0); sbCover.Position=UDim2.new(1,-14,0,0)
+sbCover.BackgroundColor3=T.sidebar; sbCover.BorderSizePixel=0; sbCover.ZIndex=3; sbCover.Parent=sidebar
+reg(sbCover,"BackgroundColor3",LIGHT.sidebar,DARK.sidebar)
 
-        local kil = (j - i).Unit
-        local l   = Player:DistanceFromCharacter(i)
-        local m   = kil:Dot(hat.Unit)
-        local n   = hat.Magnitude
+-- logo pill
+local logoPill=Instance.new("Frame"); logoPill.Size=UDim2.new(0,34,0,34)
+logoPill.Position=UDim2.new(0.5,-17,0,10); logoPill.BackgroundColor3=accent
+logoPill.BorderSizePixel=0; logoPill.ZIndex=5; logoPill.Parent=sidebar
+Instance.new("UICorner",logoPill).CornerRadius=UDim.new(0,9)
+local logoF=Instance.new("TextLabel"); logoF.Size=UDim2.new(1,0,1,0); logoF.Text="F"
+logoF.TextSize=18; logoF.Font=Enum.Font.GothamBold; logoF.TextColor3=Color3.new(1,1,1)
+logoF.BackgroundTransparency=1; logoF.ZIndex=6; logoF.Parent=logoPill
 
-        if m > 0 then
-            local o = l - 5
-            local p = o / n
+local sbTopSep=Instance.new("Frame"); sbTopSep.Size=UDim2.new(0.72,0,0,1); sbTopSep.Position=UDim2.new(0.14,0,0,52)
+sbTopSep.BackgroundColor3=T.sep; sbTopSep.BorderSizePixel=0; sbTopSep.ZIndex=4; sbTopSep.Parent=sidebar
+reg(sbTopSep,"BackgroundColor3",LIGHT.sep,DARK.sep)
 
-            if parry_helper.IsPlayerTarget(par) and p <= 0.55 and not ero then
-                VirtualManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                task.wait(0.01)
-                ero = true
+-- nav container
+local navCont=Instance.new("Frame"); navCont.Size=UDim2.new(1,0,1,-138); navCont.Position=UDim2.new(0,0,0,58)
+navCont.BackgroundTransparency=1; navCont.ZIndex=4; navCont.Parent=sidebar
+local navList=Instance.new("UIListLayout"); navList.SortOrder=Enum.SortOrder.LayoutOrder
+navList.VerticalAlignment=Enum.VerticalAlignment.Top
+navList.HorizontalAlignment=Enum.HorizontalAlignment.Center
+navList.Padding=UDim.new(0,3); navList.Parent=navCont
 
-                -- increment counter
-                parryCount = parryCount + 1
-                countLbl.Text = tostring(parryCount)
+local sbBotSep=Instance.new("Frame"); sbBotSep.Size=UDim2.new(0.72,0,0,1); sbBotSep.Position=UDim2.new(0.14,0,1,-78)
+sbBotSep.BackgroundColor3=T.sep; sbBotSep.BorderSizePixel=0; sbBotSep.ZIndex=4; sbBotSep.Parent=sidebar
+reg(sbBotSep,"BackgroundColor3",LIGHT.sep,DARK.sep)
 
-                -- flash accent on count label
-                TweenService:Create(countLbl, ti(0.1), {TextColor3 = C.success}):Play()
-                task.delay(0.4, function()
-                    TweenService:Create(countLbl, ti(), {TextColor3 = C.accent}):Play()
-                end)
-            end
-        else
-            ero = false
+local wmName=Instance.new("TextLabel"); wmName.Size=UDim2.new(1,0,0,14); wmName.Position=UDim2.new(0,0,1,-72)
+wmName.Text="feather blade"; wmName.Font=Enum.Font.GothamBold; wmName.TextSize=9
+wmName.TextColor3=accent; wmName.BackgroundTransparency=1
+wmName.TextXAlignment=Enum.TextXAlignment.Center; wmName.ZIndex=5; wmName.Parent=sidebar
+
+local wmVer=Instance.new("TextLabel"); wmVer.Size=UDim2.new(1,0,0,12); wmVer.Position=UDim2.new(0,0,1,-56)
+wmVer.Text="v2  •  blade ball"; wmVer.Font=Enum.Font.Gotham; wmVer.TextSize=7
+wmVer.TextColor3=T.muted; wmVer.BackgroundTransparency=1
+wmVer.TextXAlignment=Enum.TextXAlignment.Center; wmVer.ZIndex=5; wmVer.Parent=sidebar
+reg(wmVer,"TextColor3",LIGHT.muted,DARK.muted)
+
+-- theme toggle
+local thBtn=Instance.new("TextButton"); thBtn.Size=UDim2.new(1,-12,0,26); thBtn.Position=UDim2.new(0,6,1,-34)
+thBtn.BackgroundColor3=T.dim; thBtn.BorderSizePixel=0; thBtn.Text="☀  Light"
+thBtn.Font=Enum.Font.GothamBold; thBtn.TextSize=8; thBtn.TextColor3=T.muted
+thBtn.AutoButtonColor=false; thBtn.ZIndex=5; thBtn.Parent=sidebar
+Instance.new("UICorner",thBtn).CornerRadius=UDim.new(0,7)
+local thS=Instance.new("UIStroke"); thS.Color=T.border; thS.Thickness=1; thS.Parent=thBtn
+reg(thBtn,"BackgroundColor3",LIGHT.dim,DARK.dim)
+reg(thBtn,"TextColor3",LIGHT.muted,DARK.muted)
+reg(thS,"Color",LIGHT.border,DARK.border)
+
+-- ══════════════════════════════════════════
+--  HEADER
+-- ══════════════════════════════════════════
+local hdr=Instance.new("Frame"); hdr.Size=UDim2.new(1,-SIDE_W,0,HDR_H); hdr.Position=UDim2.new(0,SIDE_W,0,0)
+hdr.BackgroundColor3=T.header; hdr.BorderSizePixel=0; hdr.ZIndex=3; hdr.Parent=win
+Instance.new("UICorner",hdr).CornerRadius=UDim.new(0,14)
+reg(hdr,"BackgroundColor3",LIGHT.header,DARK.header)
+
+local hdrLC=Instance.new("Frame"); hdrLC.Size=UDim2.new(0,14,1,0); hdrLC.BackgroundColor3=T.header
+hdrLC.BorderSizePixel=0; hdrLC.ZIndex=3; hdrLC.Parent=hdr
+reg(hdrLC,"BackgroundColor3",LIGHT.header,DARK.header)
+local hdrBC=Instance.new("Frame"); hdrBC.Size=UDim2.new(0,14,0,14); hdrBC.Position=UDim2.new(1,-14,1,-14)
+hdrBC.BackgroundColor3=T.header; hdrBC.BorderSizePixel=0; hdrBC.ZIndex=3; hdrBC.Parent=hdr
+reg(hdrBC,"BackgroundColor3",LIGHT.header,DARK.header)
+
+local hdrLine=Instance.new("Frame"); hdrLine.Size=UDim2.new(1,-8,0,1); hdrLine.Position=UDim2.new(0,4,1,-1)
+hdrLine.BackgroundColor3=T.sep; hdrLine.BorderSizePixel=0; hdrLine.ZIndex=4; hdrLine.Parent=hdr
+reg(hdrLine,"BackgroundColor3",LIGHT.sep,DARK.sep)
+
+local hdrTitle=Instance.new("TextLabel"); hdrTitle.Size=UDim2.new(1,-100,1,0); hdrTitle.Position=UDim2.new(0,14,0,0)
+hdrTitle.Text="Feather Blade"; hdrTitle.Font=Enum.Font.GothamBold; hdrTitle.TextSize=isMobile and 13 or 12
+hdrTitle.TextColor3=T.text; hdrTitle.BackgroundTransparency=1
+hdrTitle.TextXAlignment=Enum.TextXAlignment.Left; hdrTitle.ZIndex=5; hdrTitle.Parent=hdr
+reg(hdrTitle,"TextColor3",LIGHT.text,DARK.text)
+
+-- minimize
+local minBtn=Instance.new("TextButton"); minBtn.Size=UDim2.new(0,26,0,26)
+minBtn.Position=UDim2.new(1,-62,0.5,-13); minBtn.Text="—"
+minBtn.Font=Enum.Font.GothamBold; minBtn.TextSize=14; minBtn.TextColor3=T.muted
+minBtn.BackgroundColor3=T.dim; minBtn.BorderSizePixel=0; minBtn.AutoButtonColor=false
+minBtn.ZIndex=5; minBtn.Parent=hdr
+Instance.new("UICorner",minBtn).CornerRadius=UDim.new(0,6)
+reg(minBtn,"BackgroundColor3",LIGHT.dim,DARK.dim); reg(minBtn,"TextColor3",LIGHT.muted,DARK.muted)
+minBtn.MouseEnter:Connect(function() TweenService:Create(minBtn,tw(),{BackgroundColor3=accent,TextColor3=Color3.new(1,1,1)}):Play() end)
+minBtn.MouseLeave:Connect(function() TweenService:Create(minBtn,tw(),{BackgroundColor3=T.dim,TextColor3=T.muted}):Play() end)
+
+-- close
+local closeBtn=Instance.new("TextButton"); closeBtn.Size=UDim2.new(0,26,0,26)
+closeBtn.Position=UDim2.new(1,-32,0.5,-13); closeBtn.Text="×"
+closeBtn.Font=Enum.Font.GothamBold; closeBtn.TextSize=18; closeBtn.TextColor3=T.muted
+closeBtn.BackgroundColor3=T.dim; closeBtn.BorderSizePixel=0; closeBtn.AutoButtonColor=false
+closeBtn.ZIndex=5; closeBtn.Parent=hdr
+Instance.new("UICorner",closeBtn).CornerRadius=UDim.new(0,6)
+reg(closeBtn,"BackgroundColor3",LIGHT.dim,DARK.dim); reg(closeBtn,"TextColor3",LIGHT.muted,DARK.muted)
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn,tw(),{BackgroundColor3=red,TextColor3=Color3.new(1,1,1)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn,tw(),{BackgroundColor3=T.dim,TextColor3=T.muted}):Play() end)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- ══════════════════════════════════════════
+--  MINIMIZE / RESTORE
+-- ══════════════════════════════════════════
+local isMinimized = false
+local content -- forward declare
+
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
+        sidebar.Visible = false; content.Visible = false
+        TweenService:Create(hdr, tw(0.3), {Size = UDim2.new(1,0,0,HDR_H), Position = UDim2.new(0,0,0,0)}):Play()
+        hdrLC.Visible=false; hdrBC.Visible=false; hdrLine.Visible=false
+        minBtn.Text = "+"
+    else
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+        TweenService:Create(hdr, tw(0.3), {Size = UDim2.new(1,-SIDE_W,0,HDR_H), Position = UDim2.new(0,SIDE_W,0,0)}):Play()
+        hdrLC.Visible=true; hdrBC.Visible=true; hdrLine.Visible=true
+        task.delay(0.1, function() sidebar.Visible=true; content.Visible=true end)
+        minBtn.Text = "—"
+    end
+end
+minBtn.MouseButton1Click:Connect(toggleMinimize)
+
+-- ══════════════════════════════════════════
+--  SMOOTH DRAG  (lerp delay like FeatherHub)
+-- ══════════════════════════════════════════
+do
+    local dragging, dragInput, dragStart, startPos
+    local targetPos = UDim2.new(0, startX, 0, startY)
+    local SMOOTH = 0.12
+
+    hdr.InputBegan:Connect(function(i)
+        local t=i.UserInputType
+        if t==Enum.UserInputType.MouseButton1 or t==Enum.UserInputType.Touch then
+            dragging=true; dragStart=i.Position; startPos=win.Position; targetPos=win.Position
         end
     end)
+    hdr.InputChanged:Connect(function(i)
+        local t=i.UserInputType
+        if t==Enum.UserInputType.MouseMovement or t==Enum.UserInputType.Touch then dragInput=i end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i==dragInput and dragging then
+            local d=i.Position-dragStart
+            local vp=workspace.CurrentCamera.ViewportSize
+            targetPos=UDim2.new(0,
+                math.clamp(startPos.X.Offset+d.X, 0, vp.X-win.AbsoluteSize.X), 0,
+                math.clamp(startPos.Y.Offset+d.Y, 0, vp.Y-win.AbsoluteSize.Y))
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        local t=i.UserInputType
+        if t==Enum.UserInputType.MouseButton1 or t==Enum.UserInputType.Touch then dragging=false end
+    end)
+
+    RunService.RenderStepped:Connect(function()
+        if win and win.Parent then
+            local cx, cy = win.Position.X.Offset, win.Position.Y.Offset
+            local tx, ty = targetPos.X.Offset, targetPos.Y.Offset
+            win.Position = UDim2.new(0, cx+(tx-cx)*SMOOTH, 0, cy+(ty-cy)*SMOOTH)
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════
+--  CONTENT AREA
+-- ══════════════════════════════════════════
+content=Instance.new("Frame")
+content.Size=UDim2.new(1,-SIDE_W,1,-HDR_H); content.Position=UDim2.new(0,SIDE_W,0,HDR_H)
+content.BackgroundTransparency=1; content.BorderSizePixel=0; content.ZIndex=2; content.Parent=win
+
+-- ══════════════════════════════════════════
+--  TABS
+-- ══════════════════════════════════════════
+local TABS = {
+    { id="home",     name="HOME"     },
+    { id="combat",   name="COMBAT"   },
+    { id="visuals",  name="VISUALS"  },
+    { id="settings", name="SETTINGS" },
+}
+
+local pages   = {}
+local navBtns = {}
+local activeTab = 1
+
+local function makePage()
+    local pg=Instance.new("ScrollingFrame"); pg.Size=UDim2.new(1,0,1,0)
+    pg.BackgroundTransparency=1; pg.BorderSizePixel=0; pg.ScrollBarThickness=3
+    pg.ScrollBarImageColor3=accent; pg.CanvasSize=UDim2.new(0,0,0,0)
+    pg.AutomaticCanvasSize=Enum.AutomaticSize.Y; pg.ScrollingDirection=Enum.ScrollingDirection.Y
+    pg.ElasticBehavior=Enum.ElasticBehavior.Never; pg.Visible=false; pg.ZIndex=2; pg.Parent=content
+    local l=Instance.new("UIListLayout"); l.SortOrder=Enum.SortOrder.LayoutOrder
+    l.HorizontalAlignment=Enum.HorizontalAlignment.Center; l.Padding=UDim.new(0,6); l.Parent=pg
+    local p=Instance.new("UIPadding"); p.PaddingTop=UDim.new(0,10); p.PaddingBottom=UDim.new(0,10)
+    p.PaddingLeft=UDim.new(0,10); p.PaddingRight=UDim.new(0,10); p.Parent=pg
+    return pg
+end
+
+for i in ipairs(TABS) do pages[i] = makePage() end
+
+local function setTab(idx)
+    if isMinimized then toggleMinimize() end
+    activeTab=idx
+    hdrTitle.Text = TABS[idx].name == "HOME" and "Feather Blade" or TABS[idx].name
+    for i,btn in ipairs(navBtns) do
+        local on=(i==idx)
+        TweenService:Create(btn.bg,tw(0.15),{
+            BackgroundColor3=on and accent or T.dim, BackgroundTransparency=on and 0.15 or 0}):Play()
+        TweenService:Create(btn.lbl,tw(0.15),{TextColor3=on and accent or T.muted}):Play()
+        btn.bar.BackgroundTransparency=on and 0 or 1
+        pages[i].Visible=on
+    end
+end
+
+-- build nav
+for i, def in ipairs(TABS) do
+    local row=Instance.new("Frame"); row.Size=UDim2.new(1,-6,0,isMobile and 36 or 32)
+    row.BackgroundTransparency=1; row.LayoutOrder=i; row.ZIndex=4; row.Parent=navCont
+
+    local bar=Instance.new("Frame"); bar.Size=UDim2.new(0,3,0.5,0); bar.Position=UDim2.new(0,0,0.25,0)
+    bar.BackgroundColor3=accent; bar.BackgroundTransparency=1
+    bar.BorderSizePixel=0; bar.ZIndex=5; bar.Parent=row
+    Instance.new("UICorner",bar).CornerRadius=UDim.new(1,0)
+
+    local bg=Instance.new("Frame"); bg.Size=UDim2.new(1,-4,1,-4); bg.Position=UDim2.new(0,4,0,2)
+    bg.BackgroundColor3=T.dim; bg.BackgroundTransparency=0
+    bg.BorderSizePixel=0; bg.ZIndex=4; bg.Parent=row
+    Instance.new("UICorner",bg).CornerRadius=UDim.new(0,7)
+
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,-12,1,0); lbl.Position=UDim2.new(0,10,0,0)
+    lbl.Text=def.name; lbl.Font=Enum.Font.GothamBold; lbl.TextSize=isMobile and 8 or 7
+    lbl.TextColor3=T.muted; lbl.BackgroundTransparency=1
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=5; lbl.Parent=row
+
+    local hit=Instance.new("TextButton"); hit.Size=UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency=1; hit.Text=""; hit.ZIndex=6; hit.Parent=row
+    local ci=i; hit.MouseButton1Click:Connect(function() setTab(ci) end)
+
+    navBtns[i]={bg=bg,lbl=lbl,bar=bar}
+    reg(bg,"BackgroundColor3",LIGHT.dim,DARK.dim)
+    reg(lbl,"TextColor3",LIGHT.muted,DARK.muted)
+end
+
+-- ══════════════════════════════════════════
+--  SHARED BUILDERS  (from FeatherHub)
+-- ══════════════════════════════════════════
+local function makeCard(parent, order)
+    local c=Instance.new("Frame"); c.Size=UDim2.new(1,0,0,0); c.AutomaticSize=Enum.AutomaticSize.Y
+    c.BackgroundColor3=T.card; c.BorderSizePixel=0; c.LayoutOrder=order; c.ZIndex=3; c.Parent=parent
+    Instance.new("UICorner",c).CornerRadius=UDim.new(0,10)
+    local s=Instance.new("UIStroke"); s.Color=T.border; s.Thickness=1; s.Parent=c
+    local l=Instance.new("UIListLayout"); l.SortOrder=Enum.SortOrder.LayoutOrder
+    l.HorizontalAlignment=Enum.HorizontalAlignment.Center; l.Padding=UDim.new(0,0); l.Parent=c
+    reg(c,"BackgroundColor3",LIGHT.card,DARK.card); reg(s,"Color",LIGHT.border,DARK.border)
+    return c
+end
+
+local function makeSection(parent, label, order)
+    local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,20); f.BackgroundTransparency=1
+    f.LayoutOrder=order; f.ZIndex=3; f.Parent=parent
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,0,1,0); lbl.Text=string.upper(label)
+    lbl.Font=Enum.Font.GothamBold; lbl.TextSize=8; lbl.TextColor3=accent
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.BackgroundTransparency=1; lbl.ZIndex=3; lbl.Parent=f
+    local line=Instance.new("Frame"); line.Size=UDim2.new(0,26,0,2); line.Position=UDim2.new(0,0,1,-2)
+    line.BackgroundColor3=accent; line.BorderSizePixel=0; line.ZIndex=3; line.Parent=f
+    Instance.new("UICorner",line).CornerRadius=UDim.new(1,0)
+end
+
+local function makeRow(card, order, isLast, h)
+    local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,h or 42)
+    row.BackgroundTransparency=1; row.BorderSizePixel=0; row.LayoutOrder=order; row.ZIndex=4; row.Parent=card
+    if not isLast then
+        local sep=Instance.new("Frame"); sep.Size=UDim2.new(1,-24,0,1); sep.Position=UDim2.new(0,12,1,-1)
+        sep.BackgroundColor3=T.sep; sep.BorderSizePixel=0; sep.ZIndex=4; sep.Parent=row
+        reg(sep,"BackgroundColor3",LIGHT.sep,DARK.sep)
+    end
+    return row
+end
+
+local function makeInfoRow(card, order, labelTxt, valueTxt, valueColor, isLast)
+    local row=makeRow(card,order,isLast,36)
+    local l=Instance.new("TextLabel"); l.Size=UDim2.new(0.55,0,1,0); l.Position=UDim2.new(0,14,0,0)
+    l.Text=labelTxt; l.Font=Enum.Font.GothamSemibold; l.TextSize=isMobile and 11 or 10
+    l.TextColor3=T.muted; l.TextXAlignment=Enum.TextXAlignment.Left; l.BackgroundTransparency=1; l.ZIndex=5; l.Parent=row
+    reg(l,"TextColor3",LIGHT.muted,DARK.muted)
+    local r=Instance.new("TextLabel"); r.Name="Val"; r.Size=UDim2.new(0.45,0,1,0); r.Position=UDim2.new(0.55,0,0,0)
+    r.Text=valueTxt; r.Font=Enum.Font.GothamBold; r.TextSize=isMobile and 11 or 10
+    r.TextColor3=valueColor or T.text; r.TextXAlignment=Enum.TextXAlignment.Right; r.BackgroundTransparency=1; r.ZIndex=5; r.Parent=row
+    Instance.new("UIPadding",r).PaddingRight=UDim.new(0,14)
+    return row, r
+end
+
+local function makeToggle(card, order, label, initVal, cb, isLast)
+    local row=makeRow(card,order,isLast,42)
+    local state=initVal
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,-80,1,0); lbl.Position=UDim2.new(0,14,0,0)
+    lbl.Text=label; lbl.Font=Enum.Font.GothamSemibold; lbl.TextSize=isMobile and 12 or 10
+    lbl.TextColor3=T.text; lbl.TextXAlignment=Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency=1; lbl.ZIndex=5; lbl.Parent=row
+    reg(lbl,"TextColor3",LIGHT.text,DARK.text)
+    local pill=Instance.new("Frame"); pill.Size=UDim2.new(0,44,0,22); pill.Position=UDim2.new(1,-54,0.5,-11)
+    pill.BackgroundColor3=state and accent or T.dim; pill.BorderSizePixel=0; pill.ZIndex=5; pill.Parent=row
+    Instance.new("UICorner",pill).CornerRadius=UDim.new(1,0)
+    local knob=Instance.new("Frame"); knob.Size=UDim2.new(0,16,0,16)
+    knob.Position=state and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
+    knob.BackgroundColor3=state and Color3.new(1,1,1) or T.muted
+    knob.BorderSizePixel=0; knob.ZIndex=6; knob.Parent=pill
+    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
+    local hit=Instance.new("TextButton"); hit.Size=UDim2.new(0,60,1,0); hit.Position=UDim2.new(1,-62,0,0)
+    hit.BackgroundTransparency=1; hit.Text=""; hit.ZIndex=7; hit.Parent=row
+    local function toggle()
+        state=not state
+        TweenService:Create(pill,tw(0.15),{BackgroundColor3=state and accent or T.dim}):Play()
+        TweenService:Create(knob,tw(0.15),{
+            Position=state and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8),
+            BackgroundColor3=state and Color3.new(1,1,1) or T.muted}):Play()
+        pcall(cb,state)
+        notify(label, state and "Enabled" or "Disabled", state and "success" or "error")
+    end
+    hit.MouseButton1Click:Connect(toggle); hit.TouchTap:Connect(toggle)
+    return row
+end
+
+local function makeSlider(card, order, label, min, max, default, cb, isLast)
+    local row=makeRow(card,order,isLast,48)
+    local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(0.5,0,0,16); lbl.Position=UDim2.new(0,14,0,4)
+    lbl.Text=label; lbl.Font=Enum.Font.GothamSemibold; lbl.TextSize=isMobile and 11 or 10
+    lbl.TextColor3=T.muted; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.BackgroundTransparency=1; lbl.ZIndex=5; lbl.Parent=row
+    reg(lbl,"TextColor3",LIGHT.muted,DARK.muted)
+
+    local valLbl=Instance.new("TextLabel"); valLbl.Size=UDim2.new(0.3,0,0,16); valLbl.Position=UDim2.new(0.7,-14,0,4)
+    valLbl.Text=tostring(default); valLbl.Font=Enum.Font.GothamBold; valLbl.TextSize=isMobile and 11 or 10
+    valLbl.TextColor3=accent; valLbl.TextXAlignment=Enum.TextXAlignment.Right; valLbl.BackgroundTransparency=1; valLbl.ZIndex=5; valLbl.Parent=row
+    Instance.new("UIPadding",valLbl).PaddingRight=UDim.new(0,14)
+
+    local track=Instance.new("Frame"); track.Size=UDim2.new(1,-28,0,5); track.Position=UDim2.new(0,14,0,28)
+    track.BackgroundColor3=T.dim; track.BorderSizePixel=0; track.ZIndex=5; track.Parent=row
+    Instance.new("UICorner",track).CornerRadius=UDim.new(1,0)
+    reg(track,"BackgroundColor3",LIGHT.dim,DARK.dim)
+
+    local fill=Instance.new("Frame"); fill.Size=UDim2.new((default-min)/(max-min),0,1,0)
+    fill.BackgroundColor3=accent; fill.BorderSizePixel=0; fill.ZIndex=6; fill.Parent=track
+    Instance.new("UICorner",fill).CornerRadius=UDim.new(1,0)
+
+    local knob=Instance.new("Frame"); knob.Size=UDim2.new(0,12,0,12)
+    knob.Position=UDim2.new((default-min)/(max-min),-6,0.5,-6)
+    knob.BackgroundColor3=Color3.new(1,1,1); knob.ZIndex=7; knob.Parent=track
+    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
+    local ks=Instance.new("UIStroke",knob); ks.Color=accent; ks.Thickness=2; ks.Transparency=0.4
+
+    local sdrag = false
+    local function updSlider(posX)
+        local tAbs = track.AbsolutePosition.X
+        local tSz  = track.AbsoluteSize.X
+        local rel  = math.clamp((posX - tAbs) / tSz, 0, 1)
+        local val  = math.floor(min + (max - min) * rel)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        knob.Position = UDim2.new(rel, -6, 0.5, -6)
+        valLbl.Text = tostring(val)
+        cb(val)
+    end
+    track.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            sdrag=true; updSlider(i.Position.X) end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if sdrag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+            updSlider(i.Position.X) end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sdrag=false end
+    end)
+    return row
+end
+
+-- ══════════════════════════════════════════
+--  PAGE 1: HOME  (status + live stats)
+-- ══════════════════════════════════════════
+local pg_home = pages[1]
+
+-- welcome card
+local wCard = makeCard(pg_home, 1)
+local wRow = makeRow(wCard, 1, true, isMobile and 56 or 50)
+local wIbg=Instance.new("Frame"); wIbg.Size=UDim2.new(0,32,0,32); wIbg.Position=UDim2.new(0,12,0.5,-16)
+wIbg.BackgroundColor3=accent; wIbg.BackgroundTransparency=0.82; wIbg.BorderSizePixel=0; wIbg.Parent=wRow
+Instance.new("UICorner",wIbg).CornerRadius=UDim.new(0,8)
+local wIco=Instance.new("TextLabel"); wIco.Size=UDim2.new(1,0,1,0); wIco.Text="⚔"
+wIco.TextSize=18; wIco.BackgroundTransparency=1; wIco.Parent=wIbg
+local wTitle=Instance.new("TextLabel"); wTitle.Size=UDim2.new(1,-56,0,16); wTitle.Position=UDim2.new(0,50,0,6)
+wTitle.Text="Welcome, "..DisplayName; wTitle.Font=Enum.Font.GothamBold; wTitle.TextSize=isMobile and 13 or 11
+wTitle.TextColor3=T.text; wTitle.TextXAlignment=Enum.TextXAlignment.Left; wTitle.BackgroundTransparency=1; wTitle.ZIndex=5; wTitle.Parent=wRow
+reg(wTitle,"TextColor3",LIGHT.text,DARK.text)
+local wSub=Instance.new("TextLabel"); wSub.Size=UDim2.new(1,-56,0,14); wSub.Position=UDim2.new(0,50,0,23)
+wSub.Text="Use the sidebar to configure your blade ball tools"
+wSub.Font=Enum.Font.Gotham; wSub.TextSize=isMobile and 9 or 8
+wSub.TextColor3=T.muted; wSub.TextXAlignment=Enum.TextXAlignment.Left; wSub.BackgroundTransparency=1; wSub.ZIndex=5; wSub.Parent=wRow
+reg(wSub,"TextColor3",LIGHT.muted,DARK.muted)
+
+-- live stats card
+makeSection(pg_home, "Live Stats", 2)
+local sCard = makeCard(pg_home, 3)
+local _, valParries = makeInfoRow(sCard,1,"Parries","0",green,false)
+local _, valDodges  = makeInfoRow(sCard,2,"Dodges","0",cyan,false)
+local _, valSpeed   = makeInfoRow(sCard,3,"Ball Speed","0",gold,false)
+local _, valPing    = makeInfoRow(sCard,4,"Ping","0ms",accent,true)
+
+-- info card
+makeSection(pg_home, "Build Info", 4)
+local bCard = makeCard(pg_home, 5)
+makeInfoRow(bCard,1,"Version","v2",accent,false)
+makeInfoRow(bCard,2,"Player",Username,T.text,false)
+makeInfoRow(bCard,3,"Keybind","] toggle",T.muted,true)
+
+-- ══════════════════════════════════════════
+--  PAGE 2: COMBAT
+-- ══════════════════════════════════════════
+local pg_combat = pages[2]
+
+makeSection(pg_combat, "Parry", 1)
+local pCard = makeCard(pg_combat, 2)
+makeToggle(pCard,1,"Auto Parry",false,function(v) S.autoParry=v end,false)
+makeToggle(pCard,2,"Spam Parry",false,function(v) S.spamParry=v end,true)
+
+makeSection(pg_combat, "Movement", 3)
+local mCard = makeCard(pg_combat, 4)
+makeToggle(mCard,1,"Auto Dodge",false,function(v) S.autoDodge=v end,false)
+makeToggle(mCard,2,"Auto Walk",false,function(v) S.autoWalk=v end,true)
+
+-- ══════════════════════════════════════════
+--  PAGE 3: VISUALS
+-- ══════════════════════════════════════════
+local pg_vis = pages[3]
+
+makeSection(pg_vis, "Range", 1)
+local vCard = makeCard(pg_vis, 2)
+makeToggle(vCard,1,"Range Visualizer",false,function(v)
+    S.rangeVis=v; if not v and visPart then visPart:Destroy() visPart=nil end
+end,true)
+
+makeSection(pg_vis, "Prediction", 3)
+local pCard2 = makeCard(pg_vis, 4)
+makeToggle(pCard2,1,"Ball Prediction",false,function(v)
+    S.ballPred=v; if not v then ClearPred() end
+end,false)
+makeToggle(pCard2,2,"Target Beam",false,function(v)
+    S.targetBeam=v; if not v then ClearBeam() end
+end,true)
+
+-- ══════════════════════════════════════════
+--  PAGE 4: SETTINGS
+-- ══════════════════════════════════════════
+local pg_set = pages[4]
+
+makeSection(pg_set, "Distances", 1)
+local dCard = makeCard(pg_set, 2)
+makeSlider(dCard,1,"Base Range",5,60,CFG.BASE_RANGE,function(v) S.range=v end,false)
+makeSlider(dCard,2,"Hitbox Pad",0,30,CFG.PAD,function(v) S.pad=v end,false)
+makeSlider(dCard,3,"Y-Axis Limit",5,40,CFG.Y_LIMIT,function(v) CFG.Y_LIMIT=v end,true)
+
+makeSection(pg_set, "Dodge", 3)
+local dCard2 = makeCard(pg_set, 4)
+makeSlider(dCard2,1,"Dodge Power",5,40,CFG.DODGE_PWR,function(v) CFG.DODGE_PWR=v end,true)
+
+-- ══════════════════════════════════════════
+--  THEME TOGGLE
+-- ══════════════════════════════════════════
+local function applyTheme()
+    T = isDark and DARK or LIGHT
+    applyReg()
+    thBtn.Text = isDark and "☀  Light" or "🌙  Dark"
+    winGlow.ImageColor3 = isDark and Color3.fromRGB(90,70,160) or Color3.fromRGB(180,170,220)
+    for i,btn in ipairs(navBtns) do
+        if i~=activeTab then btn.bg.BackgroundColor3=T.dim; btn.lbl.TextColor3=T.muted end
+    end
+end
+local function doTheme() isDark=not isDark; applyTheme() end
+thBtn.MouseButton1Click:Connect(doTheme)
+thBtn.MouseEnter:Connect(function() TweenService:Create(thBtn,tw(0.12),{BackgroundColor3=accent,TextColor3=Color3.new(1,1,1)}):Play() end)
+thBtn.MouseLeave:Connect(function() TweenService:Create(thBtn,tw(0.12),{BackgroundColor3=T.dim,TextColor3=T.muted}):Play() end)
+
+-- ══════════════════════════════════════════
+--  KEYBIND  ]
+-- ══════════════════════════════════════════
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.UserInputType==Enum.UserInputType.Keyboard and input.KeyCode==Enum.KeyCode.RightBracket then
+        sg.Enabled=not sg.Enabled
+    end
 end)
 
 -- ══════════════════════════════════════════
---  OPENING ANIMATION
+--  GLOW PULSE
 -- ══════════════════════════════════════════
+task.spawn(function()
+    while sg and sg.Parent do
+        TweenService:Create(winGlow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.82}):Play()
+        task.wait(2.4)
+        TweenService:Create(winGlow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.92}):Play()
+        task.wait(2.4)
+    end
+end)
 
-win.Size                = UDim2.new(0, 0, 0, 0)
-win.BackgroundTransparency = 1
+-- ══════════════════════════════════════════
+--  OPEN ANIMATION
+-- ══════════════════════════════════════════
+-- Temporarily use anchor point for center-scale open, then remove it so drag offsets work cleanly
+win.AnchorPoint = Vector2.new(0.5, 0.5)
+win.Position = UDim2.new(0, startX + math.floor(WIN_W/2), 0, startY + math.floor(WIN_H/2))
+win.Size = UDim2.new(0,0,0,0); win.BackgroundTransparency = 1
+local openTween = TweenService:Create(win, tw(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0,WIN_W,0,WIN_H), BackgroundTransparency = 0})
+openTween:Play()
+openTween.Completed:Connect(function()
+    -- Reset to top-left anchor so drag lerp works with raw offsets
+    win.AnchorPoint = Vector2.new(0, 0)
+    win.Position = UDim2.new(0, startX, 0, startY)
+end)
 
-TweenService:Create(win, ti(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size                   = UDim2.new(0, W, 0, H),
-    BackgroundTransparency = 0,
-}):Play()
+setTab(1)
+notify("Feather Blade","Loaded — press ] to hide","success")
 
-task.wait(0.5)
-notify("Feather Hub", "Auto Parry loaded — click to enable", "success")
+-- ══════════════════════════════════════════
+--  CHARACTER RESPAWN
+-- ══════════════════════════════════════════
+Player.CharacterAdded:Connect(function(newChar)
+    char = newChar; root = char:WaitForChild("HumanoidRootPart"); humanoid = char:WaitForChild("Humanoid")
+    S.parriedCurrent = false; ClearPred(); ClearBeam()
+    if visPart then visPart:Destroy() visPart = nil end
+end)
+
+-- ══════════════════════════════════════════
+--  MAIN GAME LOOP
+-- ══════════════════════════════════════════
+RunService.PreSimulation:Connect(function()
+    if not char or not char.Parent then
+        char = Player.Character
+        if char then root = char:FindFirstChild("HumanoidRootPart"); humanoid = char:FindFirstChild("Humanoid") end
+        return
+    end
+    if not root or not root.Parent then return end
+
+    S.ball = FindBall()
+
+    local isTargetingMe = false
+    local finalRange = S.range
+
+    if S.ball and S.ball.Parent then
+        local targetName = S.ball:GetAttribute("target")
+        isTargetingMe = (targetName == Player.Name)
+        S.speed = math.floor(S.ball.AssemblyLinearVelocity.Magnitude + 0.5)
+
+        if isTargetingMe then
+            local vel = S.ball.AssemblyLinearVelocity
+            local rel = S.ball.Position - root.Position
+            local spd = -rel.Unit:Dot(vel)
+            if CFG.DYN_SCALE and spd > 0 then
+                finalRange = S.range + math.clamp(spd / CFG.SCALE_F, 0, CFG.SCALE_CAP)
+            end
+        end
+    end
+
+    -- update stats labels
+    pcall(function()
+        valParries.Text = tostring(S.parries)
+        valDodges.Text  = tostring(S.dodges)
+        valSpeed.Text   = tostring(S.speed)
+        valPing.Text    = math.floor(GetPing()*1000).."ms"
+    end)
+
+    -- visuals
+    if S.rangeVis then UpdateVis(isTargetingMe, finalRange) end
+    if S.ballPred then UpdatePred() end
+    if S.targetBeam then UpdateBeam() end
+
+    if not S.ball or not S.ball.Parent then return end
+    if not isTargetingMe then S.parriedCurrent = false; ClearBeam() end
+
+    -- auto walk
+    if S.autoWalk and isTargetingMe and humanoid then
+        local d = Vector3.new((S.ball.Position-root.Position).X, 0, (S.ball.Position-root.Position).Z)
+        humanoid:Move(d.Magnitude > 5 and d.Unit or Vector3.zero)
+    end
+
+    -- combat
+    if isTargetingMe then
+        if not S.ball or not S.ball.Parent or not root or not root.Parent then return end
+        local vel = S.ball.AssemblyLinearVelocity
+        local relPos = S.ball.Position - root.Position
+        if math.abs(relPos.Y) > CFG.Y_LIMIT then return end
+
+        local spd = -relPos.Unit:Dot(vel)
+        local ping = GetPing()
+        local off = spd * ping
+        local rad = math.max(S.ball.Size.X, S.ball.Size.Z) / 2
+        local hDist = Vector3.new(relPos.X,0,relPos.Z).Magnitude
+        local eDist = (hDist - rad - S.pad) - off
+        local d3D = relPos.Magnitude
+
+        if S.autoParry and spd > 0 then
+            if d3D <= (CFG.PANIC * 1.2) then Parry(); S.parries=S.parries+1 end
+            if d3D <= (CFG.LAST_LAYER * 1.2) then Parry() end
+            if eDist <= finalRange and not S.parriedCurrent then
+                Parry(); S.parriedCurrent=true; S.parries=S.parries+1
+            end
+        end
+
+        if S.spamParry and d3D <= (CFG.PANIC * 1.5) and spd > 0 then Parry() end
+
+        if S.autoDodge then
+            local cd = spd > 0 and 0.2 or 0.4
+            local tti = eDist / math.max(1, spd)
+            if tti <= (CFG.REACT + 0.3) and eDist > 10 and tick() - S.lastDodge > cd then
+                Dodge(S.ball)
+            end
+        end
+    end
+end)
+
+print("[Feather Blade v2] Ready — ] to toggle")
