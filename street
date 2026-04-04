@@ -1,0 +1,585 @@
+--[[
+    ════════════════════════════════════════════════════
+     FEATHER FARM HUB v1.1
+     - Clean Farm + Box Farm in one UI
+     - Clean, card-based design (no accent strips)
+     - Draggable, minimizable, ] key toggle
+    ════════════════════════════════════════════════════
+--]]
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- CONFIG
+-- ═══════════════════════════════════════════════════════════════════════════════
+local CLEAN_Y = 52.37
+local CLEAN_TWEEN_SPEED = 50
+local CLEAN_HOLD = 0.5
+local CLEAN_WAIT = 0.3
+
+local BOX_TWEEN_SPEED = 20
+local BOX_HOLD = 0.5
+local BOX_PICKUP_WAIT = 1
+
+-- Box path
+local boxPath = {
+    CFrame.new(203.575394, 52.389938, 339.662048) * CFrame.Angles(math.rad(0.000004), math.rad(168.227409), math.rad(0.000004)),
+    CFrame.new(205.458679, 52.389931, 325.195282) * CFrame.Angles(math.rad(-0.000039), math.rad(0.145346), math.rad(0.000001)),
+    CFrame.new(205.372955, 52.389931, 314.262848) * CFrame.Angles(math.rad(0.000003), math.rad(0.019727), math.rad(0.000000)),
+    CFrame.new(205.632385, 52.389931, 301.200867) * CFrame.Angles(math.rad(-0.000008), math.rad(-1.574917), math.rad(0.000000)),
+    CFrame.new(201.668243, 52.406010, 291.022736) * CFrame.Angles(math.rad(-0.005214), math.rad(46.435581), math.rad(0.000387)),
+    CFrame.new(197.936737, 52.401249, 290.106873) * CFrame.Angles(math.rad(-0.000752), math.rad(76.055912), math.rad(0.000058)),
+    CFrame.new(190.366592, 53.042156, 287.973633) * CFrame.Angles(math.rad(-0.010085), math.rad(60.041072), math.rad(-0.000916)),
+    CFrame.new(189.580231, 53.021637, 281.416718) * CFrame.Angles(math.rad(-0.000113), math.rad(4.036363), math.rad(-0.000005)),
+    CFrame.new(188.415466, 53.036015, 273.746765) * CFrame.Angles(math.rad(-0.006453), math.rad(18.913152), math.rad(0.000422)),
+    CFrame.new(181.125366, 53.081318, 272.189850) * CFrame.Angles(math.rad(-0.000106), math.rad(87.053343), math.rad(0.000005)),
+    CFrame.new(176.992172, 53.042160, 272.151154) * CFrame.Angles(math.rad(-0.000007), math.rad(89.214135), math.rad(0.000000)),
+    CFrame.new(172.992233, 53.049419, 272.113464) * CFrame.Angles(math.rad(-0.000004), math.rad(89.432407), math.rad(-0.000000)),
+    CFrame.new(169.525620, 53.081329, 272.080933) * CFrame.Angles(math.rad(0.000005), math.rad(89.455445), math.rad(0.000000)),
+    CFrame.new(164.592361, 53.040596, 272.034637) * CFrame.Angles(math.rad(0.000005), math.rad(89.459174), math.rad(0.000000)),
+    CFrame.new(160.192429, 54.927418, 271.992615) * CFrame.Angles(math.rad(0.000003), math.rad(89.459407), math.rad(0.000000)),
+    CFrame.new(155.459167, 57.415451, 271.947174) * CFrame.Angles(math.rad(-0.000002), math.rad(89.459427), math.rad(-0.000000)),
+    CFrame.new(149.196457, 60.647556, 271.879730) * CFrame.Angles(math.rad(-0.000005), math.rad(89.297354), math.rad(0.000000)),
+    CFrame.new(144.064346, 63.166351, 271.760254) * CFrame.Angles(math.rad(-0.000006), math.rad(88.627114), math.rad(-0.000000)),
+    CFrame.new(138.341644, 66.247353, 271.579529) * CFrame.Angles(math.rad(-0.000048), math.rad(87.673599), math.rad(-0.000000)),
+    CFrame.new(133.430664, 66.790833, 269.430328) * CFrame.Angles(math.rad(-0.006910), math.rad(56.064109), math.rad(-0.000736)),
+    CFrame.new(133.051727, 66.790840, 263.970215) * CFrame.Angles(math.rad(-0.001091), math.rad(-0.775366), math.rad(-0.000103)),
+    CFrame.new(138.353027, 66.790848, 257.126801) * CFrame.Angles(math.rad(-0.002793), math.rad(-61.994376), math.rad(-0.000294)),
+    CFrame.new(142.657959, 66.790848, 256.227966) * CFrame.Angles(math.rad(-0.000135), math.rad(-77.582391), math.rad(-0.000004)),
+    CFrame.new(147.292740, 66.790848, 255.690353) * CFrame.Angles(math.rad(-0.000016), math.rad(-83.438909), math.rad(-0.000000)),
+    CFrame.new(155.099564, 66.986336, 254.768921) * CFrame.Angles(math.rad(-0.000565), math.rad(-81.073997), math.rad(0.000009)),
+}
+local boxPathReversed = {}
+for i = #boxPath, 1, -1 do boxPathReversed[#boxPathReversed + 1] = boxPath[i] end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- PALETTE (Feather Hub style)
+-- ═══════════════════════════════════════════════════════════════════════════════
+local C = {
+    bg      = Color3.fromRGB(14, 14, 16),
+    header  = Color3.fromRGB(18, 18, 22),
+    card    = Color3.fromRGB(26, 26, 30),
+    border  = Color3.fromRGB(44, 44, 52),
+    dim     = Color3.fromRGB(32, 32, 38),
+    sep     = Color3.fromRGB(36, 36, 44),
+    text    = Color3.fromRGB(240, 240, 244),
+    muted   = Color3.fromRGB(100, 100, 115),
+    accent  = Color3.fromRGB(90, 90, 210),
+    accentL = Color3.fromRGB(120, 110, 230),
+    green   = Color3.fromRGB(100, 200, 160),
+    red     = Color3.fromRGB(220, 80, 100),
+    gold    = Color3.fromRGB(200, 170, 80),
+}
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- STATE
+-- ═══════════════════════════════════════════════════════════════════════════════
+local cleanRunning = false
+local boxRunning = false
+local cleanCycles = 0
+local boxCycles = 0
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- GUI PROTECTION
+-- ═══════════════════════════════════════════════════════════════════════════════
+local owned = {}
+local function own(inst) owned[inst] = true; return inst end
+local function guard(parent)
+    parent.ChildAdded:Connect(function(child)
+        task.defer(function()
+            if not owned[child] then pcall(function() child:Destroy() end) end
+        end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- HELPERS
+-- ═══════════════════════════════════════════════════════════════════════════════
+local function tw(t, s, d)
+    return TweenInfo.new(t or 0.2, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out)
+end
+
+local function refreshChar()
+    character = player.Character or player.CharacterAdded:Wait()
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+end
+
+local function findPrompt(pos, range)
+    range = range or 15
+    local best, bestDist = nil, range + 1
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Parent and obj.Parent:IsA("BasePart") then
+            local d = (obj.Parent.Position - pos).Magnitude
+            if d < bestDist then bestDist = d; best = obj end
+        end
+    end
+    return best
+end
+
+local function holdPrompt(prompt, dur)
+    if not prompt then return end
+    prompt:InputHoldBegin()
+    task.wait(dur)
+    prompt:InputHoldEnd()
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- ROOT GUI
+-- ═══════════════════════════════════════════════════════════════════════════════
+local sg = own(Instance.new("ScreenGui"))
+sg.Name = "FeatherFarmHub_" .. math.random(100000, 999999)
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 999
+sg.IgnoreGuiInset = true
+if not pcall(function() sg.Parent = game:GetService("CoreGui") end) then
+    sg.Parent = player:WaitForChild("PlayerGui")
+end
+guard(sg)
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- NOTIFY (Feather style)
+-- ═══════════════════════════════════════════════════════════════════════════════
+local function notify(title, msg, nType)
+    local col = ({success = C.green, error = C.red, warning = C.gold})[nType] or C.accent
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0, 0, 0, 50)
+    n.Position = UDim2.new(1, -10, 1, -60)
+    n.AnchorPoint = Vector2.new(1, 1)
+    n.BackgroundColor3 = C.bg
+    n.BorderSizePixel = 0
+    n.ZIndex = 20
+    n.Parent = sg
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 8)
+    local ns = Instance.new("UIStroke"); ns.Color = C.border; ns.Thickness = 1; ns.Parent = n
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(0, 3, 0.6, 0); bar.Position = UDim2.new(0, 0, 0.2, 0)
+    bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; bar.ZIndex = 21; bar.Parent = n
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 4)
+    local t1 = Instance.new("TextLabel")
+    t1.Size = UDim2.new(1, -16, 0, 16); t1.Position = UDim2.new(0, 12, 0, 6)
+    t1.Text = title; t1.Font = Enum.Font.GothamBold; t1.TextSize = 10
+    t1.TextColor3 = C.text; t1.TextXAlignment = Enum.TextXAlignment.Left
+    t1.BackgroundTransparency = 1; t1.ZIndex = 21; t1.Parent = n
+    local t2 = Instance.new("TextLabel")
+    t2.Size = UDim2.new(1, -16, 0, 16); t2.Position = UDim2.new(0, 12, 0, 24)
+    t2.Text = msg; t2.Font = Enum.Font.Gotham; t2.TextSize = 8
+    t2.TextColor3 = C.muted; t2.TextXAlignment = Enum.TextXAlignment.Left
+    t2.BackgroundTransparency = 1; t2.TextWrapped = true; t2.ZIndex = 21; t2.Parent = n
+    TweenService:Create(n, tw(), {Size = UDim2.new(0, 240, 0, 50)}):Play()
+    task.delay(2.5, function()
+        TweenService:Create(n, tw(), {Size = UDim2.new(0, 0, 0, 50), BackgroundTransparency = 1}):Play()
+        task.wait(0.3); if n.Parent then n:Destroy() end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- MAIN WINDOW (wider, cleaner)
+-- ═══════════════════════════════════════════════════════════════════════════════
+local WIN_W, WIN_H = 340, 360
+local HDR_H = 38
+
+local win = own(Instance.new("Frame"))
+win.Name = "Win"
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W / 2, 0.5, -WIN_H / 2)
+win.BackgroundColor3 = C.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.Parent = sg
+guard(win)
+
+local winCorner = own(Instance.new("UICorner")); winCorner.CornerRadius = UDim.new(0, 12); winCorner.Parent = win
+local winStroke = own(Instance.new("UIStroke")); winStroke.Color = C.border; winStroke.Thickness = 1; winStroke.Parent = win
+
+-- Glow
+local glow = own(Instance.new("ImageLabel"))
+glow.Size = UDim2.new(1, 40, 1, 40); glow.Position = UDim2.new(0, -20, 0, -20)
+glow.BackgroundTransparency = 1; glow.Image = "rbxassetid://1316045217"
+glow.ImageColor3 = Color3.fromRGB(90, 70, 160); glow.ImageTransparency = 0.88
+glow.ScaleType = Enum.ScaleType.Slice; glow.SliceCenter = Rect.new(10, 10, 118, 118)
+glow.ZIndex = -1; glow.Parent = win
+
+-- Header
+local hdr = own(Instance.new("Frame"))
+hdr.Size = UDim2.new(1, 0, 0, HDR_H); hdr.BackgroundColor3 = C.header
+hdr.BorderSizePixel = 0; hdr.ZIndex = 10; hdr.Parent = win
+guard(hdr)
+local hdrCorner = own(Instance.new("UICorner")); hdrCorner.CornerRadius = UDim.new(0, 12); hdrCorner.Parent = hdr
+local hdrFix = own(Instance.new("Frame"))
+hdrFix.Size = UDim2.new(1, 0, 0, 12); hdrFix.Position = UDim2.new(0, 0, 1, -12)
+hdrFix.BackgroundColor3 = C.header; hdrFix.BorderSizePixel = 0; hdrFix.ZIndex = 10; hdrFix.Parent = hdr
+local hdrLine = own(Instance.new("Frame"))
+hdrLine.Size = UDim2.new(1, -8, 0, 1); hdrLine.Position = UDim2.new(0, 4, 1, -1)
+hdrLine.BackgroundColor3 = C.sep; hdrLine.BorderSizePixel = 0; hdrLine.ZIndex = 11; hdrLine.Parent = hdr
+
+-- Logo pill
+local logoPill = own(Instance.new("Frame"))
+logoPill.Size = UDim2.new(0, 26, 0, 26); logoPill.Position = UDim2.new(0, 8, 0.5, -13)
+logoPill.BackgroundColor3 = C.accent; logoPill.BorderSizePixel = 0; logoPill.ZIndex = 12; logoPill.Parent = hdr
+local lpCorner = own(Instance.new("UICorner")); lpCorner.CornerRadius = UDim.new(0, 7); lpCorner.Parent = logoPill
+local logoLbl = own(Instance.new("TextLabel"))
+logoLbl.Size = UDim2.new(1, 0, 1, 0); logoLbl.Text = "F"; logoLbl.Font = Enum.Font.GothamBold
+logoLbl.TextSize = 14; logoLbl.TextColor3 = Color3.new(1, 1, 1); logoLbl.BackgroundTransparency = 1
+logoLbl.ZIndex = 13; logoLbl.Parent = logoPill
+
+local titleLbl = own(Instance.new("TextLabel"))
+titleLbl.Size = UDim2.new(1, -100, 1, 0); titleLbl.Position = UDim2.new(0, 40, 0, 0)
+titleLbl.Text = "Feather Farm Hub"; titleLbl.Font = Enum.Font.GothamBold; titleLbl.TextSize = 12
+titleLbl.TextColor3 = C.text; titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+titleLbl.BackgroundTransparency = 1; titleLbl.ZIndex = 12; titleLbl.Parent = hdr
+
+-- Minimize
+local isMinimized = false
+local minBtn = own(Instance.new("TextButton"))
+minBtn.Size = UDim2.new(0, 24, 0, 24); minBtn.Position = UDim2.new(1, -56, 0.5, -12)
+minBtn.Text = "–"; minBtn.Font = Enum.Font.GothamBold; minBtn.TextSize = 14
+minBtn.TextColor3 = C.muted; minBtn.BackgroundColor3 = C.dim; minBtn.BorderSizePixel = 0
+minBtn.AutoButtonColor = false; minBtn.ZIndex = 12; minBtn.Parent = hdr
+guard(minBtn)
+local mbCorner = own(Instance.new("UICorner")); mbCorner.CornerRadius = UDim.new(0, 6); mbCorner.Parent = minBtn
+
+-- Close
+local closeBtn = own(Instance.new("TextButton"))
+closeBtn.Size = UDim2.new(0, 24, 0, 24); closeBtn.Position = UDim2.new(1, -28, 0.5, -12)
+closeBtn.Text = "×"; closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16
+closeBtn.TextColor3 = C.muted; closeBtn.BackgroundColor3 = C.dim; closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false; closeBtn.ZIndex = 12; closeBtn.Parent = hdr
+guard(closeBtn)
+local cbCorner = own(Instance.new("UICorner")); cbCorner.CornerRadius = UDim.new(0, 6); cbCorner.Parent = closeBtn
+
+minBtn.MouseEnter:Connect(function() TweenService:Create(minBtn, tw(), {BackgroundColor3 = C.accent, TextColor3 = Color3.new(1,1,1)}):Play() end)
+minBtn.MouseLeave:Connect(function() TweenService:Create(minBtn, tw(), {BackgroundColor3 = C.dim, TextColor3 = C.muted}):Play() end)
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3 = C.red, TextColor3 = Color3.new(1,1,1)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3 = C.dim, TextColor3 = C.muted}):Play() end)
+closeBtn.MouseButton1Click:Connect(function() cleanRunning = false; boxRunning = false; sg:Destroy() end)
+
+-- Content
+local content = own(Instance.new("ScrollingFrame"))
+content.Size = UDim2.new(1, 0, 1, -HDR_H); content.Position = UDim2.new(0, 0, 0, HDR_H)
+content.BackgroundTransparency = 1; content.BorderSizePixel = 0
+content.ScrollBarThickness = 3; content.ScrollBarImageColor3 = C.accent
+content.CanvasSize = UDim2.new(0, 0, 0, 0); content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+content.ZIndex = 2; content.Parent = win
+guard(content)
+
+local contentLayout = own(Instance.new("UIListLayout"))
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder; contentLayout.Padding = UDim.new(0, 8)
+contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; contentLayout.Parent = content
+local contentPad = own(Instance.new("UIPadding"))
+contentPad.PaddingTop = UDim.new(0, 10); contentPad.PaddingBottom = UDim.new(0, 10)
+contentPad.PaddingLeft = UDim.new(0, 10); contentPad.PaddingRight = UDim.new(0, 10)
+contentPad.Parent = content
+
+-- Minimize / Drag
+local function toggleMin()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
+        content.Visible = false; minBtn.Text = "+"
+    else
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+        task.delay(0.1, function() content.Visible = true end); minBtn.Text = "–"
+    end
+end
+minBtn.MouseButton1Click:Connect(toggleMin)
+
+local dragging, dragStart, startPos = false, nil, nil
+hdr.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = input.Position; startPos = win.Position
+        input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - dragStart
+        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+
+-- ] to toggle
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.RightBracket then
+        sg.Enabled = not sg.Enabled
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- UI BUILDER HELPERS (no accent strips)
+-- ═══════════════════════════════════════════════════════════════════════════════
+local function makeSection(text, order)
+    local f = own(Instance.new("Frame"))
+    f.Size = UDim2.new(1, 0, 0, 18); f.BackgroundTransparency = 1; f.LayoutOrder = order; f.Parent = content
+    local lbl = own(Instance.new("TextLabel"))
+    lbl.Size = UDim2.new(1, 0, 1, 0); lbl.Text = string.upper(text); lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8; lbl.TextColor3 = C.accent; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1; lbl.Parent = f
+    local line = own(Instance.new("Frame"))
+    line.Size = UDim2.new(0, 24, 0, 2); line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = C.accent; line.BorderSizePixel = 0; line.Parent = f
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return f
+end
+
+local function makeCard(order)
+    local c = own(Instance.new("Frame"))
+    c.Size = UDim2.new(1, 0, 0, 0); c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = C.card; c.BorderSizePixel = 0; c.LayoutOrder = order
+    c.ZIndex = 3; c.Parent = content
+    guard(c)
+    local cc = own(Instance.new("UICorner")); cc.CornerRadius = UDim.new(0, 10); cc.Parent = c
+    local cs = own(Instance.new("UIStroke")); cs.Color = C.border; cs.Thickness = 1; cs.Parent = c
+    local cl = own(Instance.new("UIListLayout")); cl.SortOrder = Enum.SortOrder.LayoutOrder
+    cl.HorizontalAlignment = Enum.HorizontalAlignment.Center; cl.Padding = UDim.new(0, 0); cl.Parent = c
+    return c
+end
+
+-- Card without the left accent strip
+local function makeFarmCard(order, title, desc, idleColor, activeColor, onToggle)
+    local card = makeCard(order)
+
+    -- Inner row
+    local row = own(Instance.new("Frame"))
+    row.Size = UDim2.new(1, 0, 0, 70); row.BackgroundTransparency = 1; row.LayoutOrder = 1
+    row.ZIndex = 4; row.Parent = card
+
+    local nameLbl = own(Instance.new("TextLabel"))
+    nameLbl.Size = UDim2.new(1, -90, 0, 16); nameLbl.Position = UDim2.new(0, 14, 0, 8)
+    nameLbl.Text = title; nameLbl.Font = Enum.Font.GothamBold; nameLbl.TextSize = 12
+    nameLbl.TextColor3 = C.text; nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.BackgroundTransparency = 1; nameLbl.ZIndex = 5; nameLbl.Parent = row
+
+    local descLbl = own(Instance.new("TextLabel"))
+    descLbl.Size = UDim2.new(1, -90, 0, 12); descLbl.Position = UDim2.new(0, 14, 0, 26)
+    descLbl.Text = desc; descLbl.Font = Enum.Font.Gotham; descLbl.TextSize = 8
+    descLbl.TextColor3 = C.muted; descLbl.TextXAlignment = Enum.TextXAlignment.Left
+    descLbl.BackgroundTransparency = 1; descLbl.ZIndex = 5; descLbl.Parent = row
+
+    local statusLbl = own(Instance.new("TextLabel"))
+    statusLbl.Size = UDim2.new(1, -14, 0, 12); statusLbl.Position = UDim2.new(0, 14, 0, 42)
+    statusLbl.Text = "Idle"; statusLbl.Font = Enum.Font.Gotham; statusLbl.TextSize = 8
+    statusLbl.TextColor3 = C.muted; statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+    statusLbl.BackgroundTransparency = 1; statusLbl.ZIndex = 5; statusLbl.Parent = row
+
+    local cycleLbl = own(Instance.new("TextLabel"))
+    cycleLbl.Size = UDim2.new(0, 40, 0, 12); cycleLbl.Position = UDim2.new(1, -54, 0, 42)
+    cycleLbl.Text = "x0"; cycleLbl.Font = Enum.Font.GothamBold; cycleLbl.TextSize = 8
+    cycleLbl.TextColor3 = C.muted; cycleLbl.TextXAlignment = Enum.TextXAlignment.Right
+    cycleLbl.BackgroundTransparency = 1; cycleLbl.ZIndex = 5; cycleLbl.Parent = row
+
+    local phaseLbl = own(Instance.new("TextLabel"))
+    phaseLbl.Size = UDim2.new(1, -14, 0, 10); phaseLbl.Position = UDim2.new(0, 14, 0, 56)
+    phaseLbl.Text = ""; phaseLbl.Font = Enum.Font.RobotoMono; phaseLbl.TextSize = 7
+    phaseLbl.TextColor3 = Color3.fromRGB(70, 70, 90); phaseLbl.TextXAlignment = Enum.TextXAlignment.Left
+    phaseLbl.BackgroundTransparency = 1; phaseLbl.ZIndex = 5; phaseLbl.Parent = row
+
+    -- Toggle button
+    local toggleBtn = own(Instance.new("TextButton"))
+    toggleBtn.Size = UDim2.new(0, 60, 0, 26); toggleBtn.Position = UDim2.new(1, -74, 0, 8)
+    toggleBtn.Text = "START"; toggleBtn.Font = Enum.Font.GothamBold; toggleBtn.TextSize = 9
+    toggleBtn.TextColor3 = Color3.new(1, 1, 1); toggleBtn.BackgroundColor3 = idleColor
+    toggleBtn.BorderSizePixel = 0; toggleBtn.AutoButtonColor = false; toggleBtn.ZIndex = 6; toggleBtn.Parent = row
+    guard(toggleBtn)
+    local tc = own(Instance.new("UICorner")); tc.CornerRadius = UDim.new(0, 6); tc.Parent = toggleBtn
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        onToggle(toggleBtn, statusLbl, cycleLbl, phaseLbl, idleColor, activeColor)
+    end)
+
+    return card, toggleBtn, statusLbl, cycleLbl, phaseLbl
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- CLEAN FARM LOGIC
+-- ═══════════════════════════════════════════════════════════════════════════════
+local function findCleanNPC()
+    local function search(folder)
+        for _, child in ipairs(folder:GetChildren()) do
+            if child.Name == "CleanNPC" then return child end
+            if child:IsA("Folder") or child:IsA("Model") then
+                local found = search(child); if found then return found end
+            end
+        end
+    end
+    return search(workspace)
+end
+
+local function cleanTweenTo(x, z)
+    refreshChar()
+    local dest = Vector3.new(x, CLEAN_Y, z)
+    local dist = (rootPart.Position - dest).Magnitude
+    if dist < 1 then return end
+    humanoid.PlatformStand = true; rootPart.Velocity = Vector3.zero
+    local tween = TweenService:Create(rootPart, TweenInfo.new(math.max(0.1, dist / CLEAN_TWEEN_SPEED), Enum.EasingStyle.Linear), {CFrame = CFrame.new(dest)})
+    tween:Play(); tween.Completed:Wait()
+    humanoid.PlatformStand = false
+end
+
+local function cleanLoop(statusLbl, cycleLbl, phaseLbl)
+    while cleanRunning do
+        statusLbl.Text = "Searching..."; statusLbl.TextColor3 = C.gold
+        local npc = findCleanNPC()
+        if not npc then statusLbl.Text = "CleanNPC not found!"; statusLbl.TextColor3 = C.red; task.wait(2); continue end
+        local folder = npc:FindFirstChild("Clean")
+        if not folder then statusLbl.Text = "Clean folder missing!"; statusLbl.TextColor3 = C.red; task.wait(2); continue end
+        local spots = {}
+        for i = 1, 8 do local s = folder:FindFirstChild(tostring(i)); if s and s:IsA("BasePart") then table.insert(spots, s) end end
+        if #spots == 0 then statusLbl.Text = "No spots"; statusLbl.TextColor3 = C.red; task.wait(2); continue end
+        statusLbl.Text = "Cleaning..."; statusLbl.TextColor3 = C.green
+        for idx, spot in ipairs(spots) do
+            if not cleanRunning then break end
+            phaseLbl.Text = "Spot " .. spot.Name .. " (" .. idx .. "/" .. #spots .. ")"
+            cleanTweenTo(spot.Position.X, spot.Position.Z)
+            if not cleanRunning then break end
+            task.wait(CLEAN_WAIT)
+            if not cleanRunning then break end
+            local prompt = spot:FindFirstChildWhichIsA("ProximityPrompt")
+            if prompt then holdPrompt(prompt, CLEAN_HOLD) end
+            task.wait(0.3)
+        end
+        if cleanRunning then
+            cleanCycles = cleanCycles + 1; cycleLbl.Text = "x" .. cleanCycles
+            statusLbl.Text = "Cycle " .. cleanCycles; phaseLbl.Text = ""; task.wait(1)
+        end
+    end
+    statusLbl.Text = "Idle"; statusLbl.TextColor3 = C.muted; phaseLbl.Text = ""
+    pcall(function() humanoid.PlatformStand = false end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- BOX FARM LOGIC
+-- ═══════════════════════════════════════════════════════════════════════════════
+local function boxTweenPath(cframes)
+    refreshChar(); humanoid.PlatformStand = true; rootPart.Velocity = Vector3.zero
+    for _, cf in ipairs(cframes) do
+        if not boxRunning then break end
+        local dist = (rootPart.Position - cf.Position).Magnitude
+        local tween = TweenService:Create(rootPart, TweenInfo.new(math.max(0.1, dist / BOX_TWEEN_SPEED), Enum.EasingStyle.Linear), {CFrame = cf})
+        tween:Play(); tween.Completed:Wait()
+    end
+    humanoid.PlatformStand = false
+end
+
+local function boxTweenTo(cf)
+    refreshChar()
+    local dist = (rootPart.Position - cf.Position).Magnitude
+    if dist < 1 then return end
+    humanoid.PlatformStand = true; rootPart.Velocity = Vector3.zero
+    local tween = TweenService:Create(rootPart, TweenInfo.new(math.max(0.1, dist / BOX_TWEEN_SPEED), Enum.EasingStyle.Linear), {CFrame = cf})
+    tween:Play(); tween.Completed:Wait()
+    humanoid.PlatformStand = false
+end
+
+local function boxLoop(statusLbl, cycleLbl, phaseLbl)
+    local pickupCF = boxPath[1]
+    local dropoffCF = boxPath[#boxPath]
+    while boxRunning do
+        -- Go to pickup
+        statusLbl.Text = "To pickup..."; statusLbl.TextColor3 = Color3.fromRGB(180, 160, 255)
+        phaseLbl.Text = "Travelling to box"
+        boxTweenTo(pickupCF)
+        if not boxRunning then break end
+        -- Wait + grab
+        statusLbl.Text = "Picking up..."; statusLbl.TextColor3 = C.gold
+        phaseLbl.Text = "Waiting at pickup"
+        task.wait(BOX_PICKUP_WAIT)
+        if not boxRunning then break end
+        phaseLbl.Text = "Grabbing box (hold E)"
+        holdPrompt(findPrompt(pickupCF.Position), BOX_HOLD)
+        if not boxRunning then break end
+        task.wait(0.3)
+        -- Deliver
+        statusLbl.Text = "Delivering..."; statusLbl.TextColor3 = C.green
+        phaseLbl.Text = "Carrying box"
+        boxTweenPath(boxPath)
+        if not boxRunning then break end
+        -- Drop
+        statusLbl.Text = "Dropping off..."; statusLbl.TextColor3 = C.gold
+        phaseLbl.Text = "Placing box (hold E)"
+        task.wait(0.3)
+        if not boxRunning then break end
+        holdPrompt(findPrompt(dropoffCF.Position), BOX_HOLD)
+        if not boxRunning then break end
+        task.wait(0.3)
+        -- Return
+        statusLbl.Text = "Returning..."; statusLbl.TextColor3 = Color3.fromRGB(180, 160, 255)
+        phaseLbl.Text = "Heading back"
+        boxTweenPath(boxPathReversed)
+        if not boxRunning then break end
+        -- Cycle
+        boxCycles = boxCycles + 1; cycleLbl.Text = "x" .. boxCycles
+        statusLbl.Text = "Cycle " .. boxCycles; phaseLbl.Text = ""; task.wait(0.5)
+    end
+    statusLbl.Text = "Idle"; statusLbl.TextColor3 = C.muted; phaseLbl.Text = ""
+    pcall(function() humanoid.PlatformStand = false end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- BUILD UI (no strips, cleaner)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- Clean Farm card
+makeSection("Clean Farm", 1)
+local _, cleanToggle, cleanStatus, cleanCycleLbl, cleanPhase = makeFarmCard(
+    2, "Clean Farm", "Auto-clean spots 1-8 at CleanNPC", C.green, C.red,
+    function(btn, sLbl, cLbl, pLbl, idleCol, activeCol)
+        cleanRunning = not cleanRunning
+        if cleanRunning then
+            btn.Text = "STOP"; btn.BackgroundColor3 = activeCol
+            cleanCycles = 0; cLbl.Text = "x0"
+            task.spawn(function() cleanLoop(sLbl, cLbl, pLbl) end)
+        else
+            btn.Text = "START"; btn.BackgroundColor3 = idleCol
+        end
+    end
+)
+
+-- Box Farm card
+makeSection("Box Farm", 3)
+local _, boxToggle, boxStatus, boxCycleLbl, boxPhase = makeFarmCard(
+    4, "Box Farm", "Crate delivery along recorded path", C.accent, C.red,
+    function(btn, sLbl, cLbl, pLbl, idleCol, activeCol)
+        boxRunning = not boxRunning
+        if boxRunning then
+            btn.Text = "STOP"; btn.BackgroundColor3 = activeCol
+            boxCycles = 0; cLbl.Text = "x0"
+            task.spawn(function() boxLoop(sLbl, cLbl, pLbl) end)
+        else
+            btn.Text = "START"; btn.BackgroundColor3 = idleCol
+        end
+    end
+)
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- OPEN ANIMATION
+-- ═══════════════════════════════════════════════════════════════════════════════
+win.Size = UDim2.new(0, 0, 0, 0); win.BackgroundTransparency = 1
+TweenService:Create(win, tw(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, WIN_W, 0, WIN_H), BackgroundTransparency = 0
+}):Play()
+
+-- Glow pulse
+task.spawn(function()
+    while sg and sg.Parent do
+        TweenService:Create(glow, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.82}):Play()
+        task.wait(2.4)
+        TweenService:Create(glow, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.92}):Play()
+        task.wait(2.4)
+    end
+end)
+
+-- Respawn handler
+player.CharacterAdded:Connect(function(char)
+    character = char; humanoid = char:WaitForChild("Humanoid"); rootPart = char:WaitForChild("HumanoidRootPart")
+end)
+
+notify("Feather Farm Hub", "Ready — press ] to hide", "success")
