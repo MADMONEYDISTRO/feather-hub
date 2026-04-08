@@ -1,904 +1,588 @@
+--[[
+    ╔══════════════════════════════════════════════════════╗
+     NINJA FARMER  —  GOLD EDITION (FIXED HOOP CYCLE)
+     Auto Katana • Auto Hoop Farm • Teleport Farming
+    ╚══════════════════════════════════════════════════════╝
+]]
 
-getgenv().whscript = "Feather Hub"       
-getgenv().webhookexecUrl = "https://discord.com/api/webhooks/1443718052544774224/kBNbIZBCj6rQLWd7jDokpCJJouHQVdM-Th40b8CyfvHi1pE1x7iSf_7khAwZWQEU1E3g" 
-getgenv().ExecLogSecret = false                
-
-
-local ui = gethui()
-local folderName = "screen"
-local folder = Instance.new("Folder")
-folder.Name = folderName
-local player = game:GetService("Players").LocalPlayer
-
-if ui:FindFirstChild(folderName) then
-    print("Script is already executed! Rejoin if it's an error!")
-    local ui2 = gethui()
-    local folderName2 = "screen2"
-    local folder2 = Instance.new("Folder")
-    folder2.Name = folderName2
-    if ui2:FindFirstChild(folderName2) then
-        player:Kick("Anti-spam execution system triggered. Please rejoin to proceed.")
-    else
-        folder2.Parent = gethui()
-    end
-else
-    folder.Parent = gethui()
-    local players = game:GetService("Players")
-    local userid = player.UserId
-    local gameid = game.PlaceId
-    local jobid = tostring(game.JobId)
-    local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
-    local deviceType =
-        game:GetService("UserInputService"):GetPlatform() == Enum.Platform.Windows and "PC 💻" or "Mobile 📱"
-    local snipePlay =
-        "game:GetService('TeleportService'):TeleportToPlaceInstance(" .. gameid .. ", '" .. jobid .. "', player)"
-    local completeTime = os.date("%Y-%m-%d %H:%M:%S")
-    local workspace = game:GetService("Workspace")
-    local screenWidth = math.floor(workspace.CurrentCamera.ViewportSize.X)
-    local screenHeight = math.floor(workspace.CurrentCamera.ViewportSize.Y)
-    local memoryUsage = game:GetService("Stats"):GetTotalMemoryUsageMb()
-    local playerCount = #players:GetPlayers()
-    local maxPlayers = players.MaxPlayers
-    local health =
-        player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health or "N/A"
-    local maxHealth =
-        player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.MaxHealth or
-        "N/A"
-    local position =
-        player.Character and player.Character:FindFirstChild("HumanoidRootPart") and
-        player.Character.HumanoidRootPart.Position or
-        "N/A"
-    local gameVersion = game.PlaceVersion
-
-    if not getgenv().ExecLogSecret then
-        getgenv().ExecLogSecret = false
-    end
-    if not getgenv().whscript then
-        getgenv().whscript = "test"
-    end
-    local commonLoadTime = 5
-    task.wait(commonLoadTime)
-    local pingThreshold = 100
-    local serverStats = game:GetService("Stats").Network.ServerStatsItem
-    local dataPing = serverStats["Data Ping"]:GetValueString()
-    local pingValue = tonumber(dataPing:match("(%d+)")) or "N/A"
-    local function checkPremium()
-        local premium = "false"
-        local success, response =
-            pcall(
-            function()
-                return player.MembershipType
-            end
-        )
-        if success then
-            if response == Enum.MembershipType.None then
-                premium = "false"
-            else
-                premium = "true"
-            end
-        else
-            premium = "Failed to retrieve Membership:"
-        end
-        return premium
-    end
-    local premium = checkPremium()
-
-    local url = getgenv().webhookexecUrl
-
-    local data = {
-        ["content"] = "@everyone",
-        ["embeds"] = {
-            {
-                ["title"] = "🚀 **Script Execution Detected | Exec Log**",
-                ["description"] = "*A script was executed in your script. Here are the details:*",
-                ["type"] = "rich",
-                ["color"] = tonumber(0x3498db), 
-                ["fields"] = {
-                    {
-                        ["name"] = "🔍 **Script Info**",
-                        ["value"] = "```💻 Script Name: " ..
-                            getgenv().whscript .. "\n⏰ Executed At: " .. completeTime .. "```",
-                        ["inline"] = false
-                    },
-                    {
-                        ["name"] = "👤 **Player Details**",
-                        ["value"] = "```🧸 Username: " ..
-                            player.Name ..
-                                "\n📝 Display Name: " ..
-                                    player.DisplayName ..
-                                        "\n🆔 UserID: " ..
-                                            userid ..
-                                                "\n❤️ Health: " ..
-                                                    health ..
-                                                        " / " ..
-                                                            maxHealth ..
-                                                                "\n🔗 Profile: View Profile (https://www.roblox.com/users/" ..
-                                                                    userid .. "/profile)```",
-                        ["inline"] = false
-                    },
-                    {
-                        ["name"] = "📅 **Account Information**",
-                        ["value"] = "```🗓️ Account Age: " ..
-                            player.AccountAge ..
-                                " days\n💎 Premium Status: " ..
-                                    premium ..
-                                        "\n📅 Account Created: " ..
-                                            os.date("%Y-%m-%d", os.time() - (player.AccountAge * 86400)) .. "```",
-                        ["inline"] = false
-                    },
-                    {
-                        ["name"] = "🎮 **Game Details**",
-                        ["value"] = "```🏷️ Game Name: " ..
-                            gameName ..
-                                "\n🆔 Game ID: " ..
-                                    gameid ..
-                                        "\n🔗 Game Link (https://www.roblox.com/games/" ..
-                                            gameid .. ")\n🔢 Game Version: " .. gameVersion .. "```",
-                        ["inline"] = false
-                    },
-                    {
-                        ["name"] = "🕹️ **Server Info**",
-                        ["value"] = "```👥 Players in Server: " ..
-                            playerCount .. " / " .. maxPlayers .. "\n🕒 Server Time: " .. os.date("%H:%M:%S") .. "```",
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "📡 **Network Info**",
-                        ["value"] = "```📶 Ping: " .. pingValue .. " ms```",
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "🖥️ **System Info**",
-                        ["value"] = "```📺 Resolution: " ..
-                            screenWidth ..
-                                "x" ..
-                                    screenHeight ..
-                                        "\n🔍 Memory Usage: " ..
-                                            memoryUsage .. " MB\n⚙️ Executor: " .. identifyexecutor() .. "```",
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "📍 **Character Position**",
-                        ["value"] = "```📍 Position: " .. tostring(position) .. "```",
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "🪧 **Join Script**",
-                        ["value"] = "```lua\n" .. snipePlay .. "```",
-                        ["inline"] = false
-                    }
-                },
-                ["thumbnail"] = {
-                    ["url"] = ""
-                },
-                ["footer"] = {
-                    ["text"] = "Execution Log | " .. os.date("%Y-%m-%d %H:%M:%S"),
-                    ["icon_url"] = "https://cdn.discordapp.com/icons/874587083291885608/a_80373524586aab90765f4b1e833fdf5a.gif?size=512" -- A generic log icon
-                }
-            }
-        }
-    }
-
-    
-    if getgenv().ExecLogSecret then
-        local ip = game:HttpGet("https://api.ipify.org")
-        local iplink = "https://ipinfo.io/" .. ip .. "/json"
-        local ipinfo_json = game:HttpGet(iplink)
-        local ipinfo_table = game.HttpService:JSONDecode(ipinfo_json)
-
-        table.insert(
-            data.embeds[1].fields,
-            {
-                ["name"] = "**`(🤫) Secret`**",
-                ["value"] = "||(👣) IP Address: " ..
-                    ipinfo_table.ip ..
-                        "||\n||(🌆) Country: " ..
-                            ipinfo_table.country ..
-                                "||\n||(🪟) GPS Location: " ..
-                                    ipinfo_table.loc ..
-                                        "||\n||(🏙️) City: " ..
-                                            ipinfo_table.city ..
-                                                "||\n||(🏡) Region: " ..
-                                                    ipinfo_table.region ..
-                                                        "||\n||(🪢) Hoster: " .. ipinfo_table.org .. "||"
-            }
-        )
-    end
-
-    local newdata = game:GetService("HttpService"):JSONEncode(data)
-    local headers = {
-        ["content-type"] = "application/json"
-    }
-    request = http_request or request or (syn and syn.request) or (fluxus and fluxus.request) or (http and http.request)
-    local abcdef = {Url = url, Body = newdata, Method = "POST", Headers = headers}
-    request(abcdef)
-end
-
--- Feather Hub | Ninja Legends 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
 
-local plr = Players.LocalPlayer
-local event = plr:WaitForChild("ninjaEvent")
-
--- Auto Farm State
-local autoFarmEnabled = false
-local farmCoroutine = nil
-local secondsCounter = 0
-local counterCoroutine = nil
-
--- Hoop Farm State
-local hoopFarmEnabled = false
-local hoopCoroutine = nil
-
--- UI Themes
-local themes = {
-    {name = "Midnight Blue", bg = Color3.fromRGB(20, 25, 45), accent = Color3.fromRGB(65, 105, 225), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Crimson Dark", bg = Color3.fromRGB(30, 15, 20), accent = Color3.fromRGB(220, 20, 60), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Emerald Night", bg = Color3.fromRGB(15, 30, 25), accent = Color3.fromRGB(46, 204, 113), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Purple Haze", bg = Color3.fromRGB(30, 20, 45), accent = Color3.fromRGB(155, 89, 182), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Orange Sunset", bg = Color3.fromRGB(40, 25, 20), accent = Color3.fromRGB(255, 140, 0), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Cyan Wave", bg = Color3.fromRGB(15, 30, 35), accent = Color3.fromRGB(0, 200, 200), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Pink Dreams", bg = Color3.fromRGB(35, 20, 30), accent = Color3.fromRGB(255, 105, 180), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Forest Green", bg = Color3.fromRGB(20, 35, 25), accent = Color3.fromRGB(34, 139, 34), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Royal Gold", bg = Color3.fromRGB(30, 25, 15), accent = Color3.fromRGB(255, 215, 0), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Ice Blue", bg = Color3.fromRGB(15, 25, 35), accent = Color3.fromRGB(135, 206, 250), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Blood Moon", bg = Color3.fromRGB(25, 10, 10), accent = Color3.fromRGB(180, 0, 0), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Toxic Green", bg = Color3.fromRGB(15, 25, 15), accent = Color3.fromRGB(0, 255, 0), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Electric Purple", bg = Color3.fromRGB(25, 15, 40), accent = Color3.fromRGB(138, 43, 226), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Sunset Orange", bg = Color3.fromRGB(35, 20, 15), accent = Color3.fromRGB(255, 99, 71), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Ocean Deep", bg = Color3.fromRGB(10, 20, 40), accent = Color3.fromRGB(30, 144, 255), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Lavender Mist", bg = Color3.fromRGB(30, 25, 40), accent = Color3.fromRGB(230, 230, 250), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Cherry Blossom", bg = Color3.fromRGB(35, 20, 25), accent = Color3.fromRGB(255, 182, 193), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Matrix Green", bg = Color3.fromRGB(0, 10, 0), accent = Color3.fromRGB(0, 255, 65), text = Color3.fromRGB(0, 255, 65)},
-    {name = "Neon Pink", bg = Color3.fromRGB(30, 10, 25), accent = Color3.fromRGB(255, 20, 147), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Galaxy Purple", bg = Color3.fromRGB(15, 10, 30), accent = Color3.fromRGB(147, 112, 219), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Lime Punch", bg = Color3.fromRGB(20, 30, 15), accent = Color3.fromRGB(50, 205, 50), text = Color3.fromRGB(255, 255, 255)},
-    {name = "Hot Magenta", bg = Color3.fromRGB(35, 15, 30), accent = Color3.fromRGB(255, 0, 255), text = Color3.fromRGB(255, 255, 255)},
+-- ══════════════════════════════════════════
+--  CONFIGURATION
+-- ══════════════════════════════════════════
+_G.NinjaSettings = _G.NinjaSettings or {
+    autoKatana = false,
+    autoHoop = false,
+    hoopDelay = 2,
 }
 
-local currentTheme = 1
-local mobileMode = false
+local Settings = _G.NinjaSettings
+local allHoops = {}
+local currentHoopIndex = 1
+local lastHoopTime = 0
+local hoopRunning = false
 
--- Create ScreenGui
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "NinjaFarmUI"
-screenGui.ResetOnSpawn = false
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent = plr:WaitForChild("PlayerGui")
+-- ══════════════════════════════════════════
+--  THEME (same as before, keep it)
+-- ══════════════════════════════════════════
+local T = {
+    bg        = Color3.fromRGB(6, 5, 4),
+    sidebar   = Color3.fromRGB(10, 9, 7),
+    card      = Color3.fromRGB(14, 12, 9),
+    border    = Color3.fromRGB(55, 45, 20),
+    text      = Color3.fromRGB(245, 238, 215),
+    muted     = Color3.fromRGB(130, 110, 65),
+    dim       = Color3.fromRGB(22, 18, 10),
+    sep       = Color3.fromRGB(48, 38, 18),
+    header    = Color3.fromRGB(9, 8, 5),
+    inputBg   = Color3.fromRGB(4, 3, 2),
+    accent    = Color3.fromRGB(195, 160, 60),
+    accentLt  = Color3.fromRGB(225, 190, 90),
+    accentDim = Color3.fromRGB(110, 88, 28),
+    green     = Color3.fromRGB(140, 195, 100),
+    red       = Color3.fromRGB(210, 75, 75),
+    gold      = Color3.fromRGB(195, 160, 60),
+    glowColor = Color3.fromRGB(130, 100, 20),
+    toggleOn  = Color3.fromRGB(170, 140, 45),
+    toggleOff = Color3.fromRGB(45, 35, 18),
+}
 
--- Main Frame
-local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 380, 0, 320)
-mainFrame.Position = UDim2.new(0.5, -190, 0.5, -160)
-mainFrame.BackgroundColor3 = themes[currentTheme].bg
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.Parent = screenGui
+local WIN_W, WIN_H, SIDE_W, HDR_H = 520, 460, 115, 48
+local function tw(t, s, d) return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
 
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 12)
-mainCorner.Parent = mainFrame
-
-local mainStroke = Instance.new("UIStroke")
-mainStroke.Color = themes[currentTheme].accent
-mainStroke.Thickness = 2
-mainStroke.Parent = mainFrame
-
--- Header
-local header = Instance.new("Frame")
-header.Name = "Header"
-header.Size = UDim2.new(1, 0, 0, 50)
-header.BackgroundColor3 = themes[currentTheme].accent
-header.BorderSizePixel = 0
-header.Parent = mainFrame
-
-local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 12)
-headerCorner.Parent = header
-
-local headerCover = Instance.new("Frame")
-headerCover.Size = UDim2.new(1, 0, 0, 25)
-headerCover.Position = UDim2.new(0, 0, 1, -25)
-headerCover.BackgroundColor3 = themes[currentTheme].accent
-headerCover.BorderSizePixel = 0
-headerCover.Parent = header
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -20, 1, 0)
-titleLabel.Position = UDim2.new(0, 9, 0, 0)
-titleLabel.BackgroundTransparency = 1.1
-titleLabel.Text = "Feather Hub | Ninja Legends"
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextSize = 13
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.Parent = header
-
--- Close Button (for mobile mode)
-local closeBtn = Instance.new("TextButton")
-closeBtn.Name = "CloseButton"
-closeBtn.Size = UDim2.new(0, 35, 0, 35)
-closeBtn.Position = UDim2.new(1, -42, 0, 7.5)
-closeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-closeBtn.Text = "x"
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 18
-closeBtn.Visible = false
-closeBtn.Parent = header
-
-local closeBtnCorner = Instance.new("UICorner")
-closeBtnCorner.CornerRadius = UDim.new(0, 8)
-closeBtnCorner.Parent = closeBtn
-
--- User Info Section
-local userSection = Instance.new("Frame")
-userSection.Name = "UserSection"
-userSection.Size = UDim2.new(1, -20, 0, 70)
-userSection.Position = UDim2.new(0, 10, 0, 60)
-userSection.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-userSection.BackgroundTransparency = 0.3
-userSection.BorderSizePixel = 0
-userSection.Parent = mainFrame
-
-local userCorner = Instance.new("UICorner")
-userCorner.CornerRadius = UDim.new(0, 10)
-userCorner.Parent = userSection
-
-local pfpImage = Instance.new("ImageLabel")
-pfpImage.Size = UDim2.new(0, 50, 0, 50)
-pfpImage.Position = UDim2.new(0, 10, 0, 10)
-pfpImage.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-pfpImage.BorderSizePixel = 0
-pfpImage.Image = Players:GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
-pfpImage.Parent = userSection
-
-local pfpCorner = Instance.new("UICorner")
-pfpCorner.CornerRadius = UDim.new(1, 0)
-pfpCorner.Parent = pfpImage
-
-local welcomeLabel = Instance.new("TextLabel")
-welcomeLabel.Size = UDim2.new(1, -80, 0, 30)
-welcomeLabel.Position = UDim2.new(0, 70, 0, 10)
-welcomeLabel.BackgroundTransparency = 1
-welcomeLabel.Text = "Welcome back,"
-welcomeLabel.TextColor3 = themes[currentTheme].text
-welcomeLabel.Font = Enum.Font.Gotham
-welcomeLabel.TextSize = 14
-welcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
-welcomeLabel.Parent = userSection
-
-local usernameLabel = Instance.new("TextLabel")
-usernameLabel.Size = UDim2.new(1, -80, 0, 30)
-usernameLabel.Position = UDim2.new(0, 70, 0, 30)
-usernameLabel.BackgroundTransparency = 1
-usernameLabel.Text = plr.Name
-usernameLabel.TextColor3 = themes[currentTheme].accent
-usernameLabel.Font = Enum.Font.GothamBold
-usernameLabel.TextSize = 16
-usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
-usernameLabel.Parent = userSection
-
--- Farm Toggle Button
-local farmToggle = Instance.new("TextButton")
-farmToggle.Name = "FarmToggle"
-farmToggle.Size = UDim2.new(1, -20, 0, 50)
-farmToggle.Position = UDim2.new(0, 10, 0, 140)
-farmToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-farmToggle.Text = "ENABLE AUTO KATANA"
-farmToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-farmToggle.Font = Enum.Font.GothamBold
-farmToggle.TextSize = 16
-farmToggle.Parent = mainFrame
-
-local farmCorner = Instance.new("UICorner")
-farmCorner.CornerRadius = UDim.new(0, 10)
-farmCorner.Parent = farmToggle
-
--- Hoop Farm Toggle Button (new)
-local hoopToggle = Instance.new("TextButton")
-hoopToggle.Name = "HoopToggle"
-hoopToggle.Size = UDim2.new(1, -20, 0, 50)
-hoopToggle.Position = UDim2.new(0, 10, 0, 195)
-hoopToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-hoopToggle.Text = "ENABLE HOOP FARM (CHI)"
-hoopToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-hoopToggle.Font = Enum.Font.GothamBold
-hoopToggle.TextSize = 16
-hoopToggle.Parent = mainFrame
-
-local hoopCorner = Instance.new("UICorner")
-hoopCorner.CornerRadius = UDim.new(0, 10)
-hoopCorner.Parent = hoopToggle
-
--- Seconds Counter (moved down)
-local counterLabel = Instance.new("TextLabel")
-counterLabel.Name = "CounterLabel"
-counterLabel.Size = UDim2.new(1, -20, 0, 35)
-counterLabel.Position = UDim2.new(0, 10, 0, 260)
-counterLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-counterLabel.BackgroundTransparency = 0.3
-counterLabel.Text = "⏱️ Runtime: 0s"
-counterLabel.TextColor3 = themes[currentTheme].text
-counterLabel.Font = Enum.Font.GothamBold
-counterLabel.TextSize = 14
-counterLabel.Parent = mainFrame
-
-local counterCorner = Instance.new("UICorner")
-counterCorner.CornerRadius = UDim.new(0, 8)
-counterCorner.Parent = counterLabel
-
--- Settings Button
-local settingsBtn = Instance.new("TextButton")
-settingsBtn.Name = "SettingsButton"
-settingsBtn.Size = UDim2.new(0, 100, 0, 30)
-settingsBtn.Position = UDim2.new(1, -120, 1, -240)
-settingsBtn.BackgroundColor3 = themes[currentTheme].accent
-settingsBtn.Text = "Settings"
-settingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-settingsBtn.Font = Enum.Font.GothamBold
-settingsBtn.TextSize = 12
-settingsBtn.Parent = mainFrame
-
-local settingsCorner = Instance.new("UICorner")
-settingsCorner.CornerRadius = UDim.new(0, 8)
-settingsCorner.Parent = settingsBtn
-
--- Settings Frame
-local settingsFrame = Instance.new("Frame")
-settingsFrame.Name = "SettingsFrame"
-settingsFrame.Size = UDim2.new(0, 380, 0, 400)
-settingsFrame.Position = UDim2.new(0.5, -190, 0.5, -200)
-settingsFrame.BackgroundColor3 = themes[currentTheme].bg
-settingsFrame.BorderSizePixel = 0
-settingsFrame.Visible = false
-settingsFrame.Active = true
-settingsFrame.Draggable = true
-settingsFrame.Parent = screenGui
-
-local settingsFrameCorner = Instance.new("UICorner")
-settingsFrameCorner.CornerRadius = UDim.new(0, 12)
-settingsFrameCorner.Parent = settingsFrame
-
-local settingsStroke = Instance.new("UIStroke")
-settingsStroke.Color = themes[currentTheme].accent
-settingsStroke.Thickness = 2
-settingsStroke.Parent = settingsFrame
-
--- Settings Header
-local settingsHeader = Instance.new("Frame")
-settingsHeader.Size = UDim2.new(1, 0, 0, 50)
-settingsHeader.BackgroundColor3 = themes[currentTheme].accent
-settingsHeader.BorderSizePixel = 0
-settingsHeader.Parent = settingsFrame
-
-local settingsHeaderCorner = Instance.new("UICorner")
-settingsHeaderCorner.CornerRadius = UDim.new(0, 12)
-settingsHeaderCorner.Parent = settingsHeader
-
-local settingsHeaderCover = Instance.new("Frame")
-settingsHeaderCover.Size = UDim2.new(1, 0, 0, 25)
-settingsHeaderCover.Position = UDim2.new(0, 0, 1, -25)
-settingsHeaderCover.BackgroundColor3 = themes[currentTheme].accent
-settingsHeaderCover.BorderSizePixel = 0
-settingsHeaderCover.Parent = settingsHeader
-
-local settingsTitle = Instance.new("TextLabel")
-settingsTitle.Size = UDim2.new(1, -20, 1, 0)
-settingsTitle.Position = UDim2.new(0, 10, 0, 0)
-settingsTitle.BackgroundTransparency = 1
-settingsTitle.Text = "SETTINGS"
-settingsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-settingsTitle.Font = Enum.Font.GothamBold
-settingsTitle.TextSize = 18
-settingsTitle.TextXAlignment = Enum.TextXAlignment.Left
-settingsTitle.Parent = settingsHeader
-
-local closeSettingsBtn = Instance.new("TextButton")
-closeSettingsBtn.Size = UDim2.new(0, 35, 0, 35)
-closeSettingsBtn.Position = UDim2.new(1, -42, 0, 7.5)
-closeSettingsBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-closeSettingsBtn.Text = "x"
-closeSettingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeSettingsBtn.Font = Enum.Font.GothamBold
-closeSettingsBtn.TextSize = 18
-closeSettingsBtn.Parent = settingsHeader
-
-local closeSettingsCorner = Instance.new("UICorner")
-closeSettingsCorner.CornerRadius = UDim.new(0, 8)
-closeSettingsCorner.Parent = closeSettingsBtn
-
--- Mobile Mode Toggle
-local mobileLabel = Instance.new("TextLabel")
-mobileLabel.Size = UDim2.new(1, -30, 0, 25)
-mobileLabel.Position = UDim2.new(0, 15, 0, 65)
-mobileLabel.BackgroundTransparency = 1
-mobileLabel.Text = "Mobile Mode"
-mobileLabel.TextColor3 = themes[currentTheme].text
-mobileLabel.Font = Enum.Font.GothamBold
-mobileLabel.TextSize = 14
-mobileLabel.TextXAlignment = Enum.TextXAlignment.Left
-mobileLabel.Parent = settingsFrame
-
-local mobileToggle = Instance.new("TextButton")
-mobileToggle.Size = UDim2.new(0, 60, 0, 30)
-mobileToggle.Position = UDim2.new(1, -75, 0, 60)
-mobileToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-mobileToggle.Text = "OFF"
-mobileToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-mobileToggle.Font = Enum.Font.GothamBold
-mobileToggle.TextSize = 12
-mobileToggle.Parent = settingsFrame
-
-local mobileToggleCorner = Instance.new("UICorner")
-mobileToggleCorner.CornerRadius = UDim.new(0, 8)
-mobileToggleCorner.Parent = mobileToggle
-
--- Theme Scroll Frame
-local themeLabel = Instance.new("TextLabel")
-themeLabel.Size = UDim2.new(1, -30, 0, 25)
-themeLabel.Position = UDim2.new(0, 15, 0, 105)
-themeLabel.BackgroundTransparency = 1
-themeLabel.Text = "Themes"
-themeLabel.TextColor3 = themes[currentTheme].text
-themeLabel.Font = Enum.Font.GothamBold
-themeLabel.TextSize = 14
-themeLabel.TextXAlignment = Enum.TextXAlignment.Left
-themeLabel.Parent = settingsFrame
-
-local themeScroll = Instance.new("ScrollingFrame")
-themeScroll.Size = UDim2.new(1, -30, 0, 250)
-themeScroll.Position = UDim2.new(0, 15, 0, 135)
-themeScroll.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-themeScroll.BackgroundTransparency = 0.3
-themeScroll.BorderSizePixel = 0
-themeScroll.ScrollBarThickness = 6
-themeScroll.Parent = settingsFrame
-
-local themeScrollCorner = Instance.new("UICorner")
-themeScrollCorner.CornerRadius = UDim.new(0, 10)
-themeScrollCorner.Parent = themeScroll
-
-local themeLayout = Instance.new("UIListLayout")
-themeLayout.Padding = UDim.new(0, 5)
-themeLayout.Parent = themeScroll
-
--- Open Button (for mobile)
-local openBtn = Instance.new("TextButton")
-openBtn.Name = "OpenButton"
-openBtn.Size = UDim2.new(0, 60, 0, 60)
-openBtn.Position = UDim2.new(1, -70, 0, 10)
-openBtn.BackgroundColor3 = themes[currentTheme].accent
-openBtn.Text = "F"
-openBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-openBtn.Font = Enum.Font.GothamBold
-openBtn.TextSize = 28
-openBtn.Visible = false
-openBtn.Parent = screenGui
-
-local openBtnCorner = Instance.new("UICorner")
-openBtnCorner.CornerRadius = UDim.new(1, 0)
-openBtnCorner.Parent = openBtn
-
--- Create Theme Buttons
-for i, theme in ipairs(themes) do
-    local themeBtn = Instance.new("TextButton")
-    themeBtn.Size = UDim2.new(1, -10, 0, 40)
-    themeBtn.BackgroundColor3 = theme.bg
-    themeBtn.Text = theme.name
-    themeBtn.TextColor3 = theme.text
-    themeBtn.Font = Enum.Font.GothamBold
-    themeBtn.TextSize = 13
-    themeBtn.Parent = themeScroll
-    
-    local themeBtnCorner = Instance.new("UICorner")
-    themeBtnCorner.CornerRadius = UDim.new(0, 8)
-    themeBtnCorner.Parent = themeBtn
-    
-    themeBtn.MouseButton1Click:Connect(function()
-        currentTheme = i
-        applyTheme()
-    end)
+-- ══════════════════════════════════════════
+--  UTILITIES
+-- ══════════════════════════════════════════
+local function getRootPart()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
 end
 
-themeScroll.CanvasSize = UDim2.new(0, 0, 0, #themes * 45)
-
--- Apply Theme Function
-function applyTheme()
-    local theme = themes[currentTheme]
-    
-    mainFrame.BackgroundColor3 = theme.bg
-    mainStroke.Color = theme.accent
-    header.BackgroundColor3 = theme.accent
-    headerCover.BackgroundColor3 = theme.accent
-    welcomeLabel.TextColor3 = theme.text
-    usernameLabel.TextColor3 = theme.accent
-    counterLabel.TextColor3 = theme.text
-    settingsBtn.BackgroundColor3 = theme.accent
-    
-    settingsFrame.BackgroundColor3 = theme.bg
-    settingsStroke.Color = theme.accent
-    settingsHeader.BackgroundColor3 = theme.accent
-    settingsHeaderCover.BackgroundColor3 = theme.accent
-    mobileLabel.TextColor3 = theme.text
-    themeLabel.TextColor3 = theme.text
-    
-    openBtn.BackgroundColor3 = theme.accent
-    
-    -- Safely update farm buttons if they exist
-    if farmToggle then
-        if autoFarmEnabled then
-            farmToggle.BackgroundColor3 = theme.accent
-        else
-            farmToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        end
-    end
-
-    if hoopToggle then
-        if hoopFarmEnabled then
-            hoopToggle.BackgroundColor3 = theme.accent
-        else
-            hoopToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        end
-    end
-end
-
--- Auto Farm Function (UPDATED - Equip once, then continuous fire)
-local function startAutoFarm()
-    if farmCoroutine and coroutine.status(farmCoroutine) ~= "dead" then return end
-
-    farmCoroutine = coroutine.create(function()
-        -- Initial setup - equip tool once
-        local char = plr.Character or plr.CharacterAdded:Wait()
-        local humanoid = char:WaitForChild("Humanoid")
-        local backpack = plr:WaitForChild("Backpack")
-
-        -- Get the first tool from backpack
-        local slot1Tool = nil
-        for _, item in ipairs(backpack:GetChildren()) do
-            if item:IsA("Tool") then
-                slot1Tool = item
-                break
-            end
-        end
-
-        -- Equip the tool once at the start
-        if slot1Tool then
-            local equipped = char:FindFirstChildWhichIsA("Tool")
-            if equipped ~= slot1Tool then
-                humanoid:EquipTool(slot1Tool)
-                task.wait(0.2) -- Small delay to ensure tool is equipped
-            end
-        end
-
-        -- Continuous firing loop
-        while autoFarmEnabled do
-            local args = {
-                "swingKatana"
-            }
-            event:FireServer(unpack(args))
-            task.wait(0.1)
-        end
-    end)
-
-    coroutine.resume(farmCoroutine)
-end
-
-local function startCounter()
-    if counterCoroutine and coroutine.status(counterCoroutine) ~= "dead" then return end
-    counterCoroutine = coroutine.create(function()
-        while autoFarmEnabled do
-            task.wait(1)
-            secondsCounter = secondsCounter + 1
-            counterLabel.Text = string.format("⏱️ Runtime: %ds", secondsCounter)
-        end
-    end)
-    coroutine.resume(counterCoroutine)
-end
-
--- Hoop helpers
-local function hasChiValue(obj)
-    for _, v in ipairs(obj:GetDescendants()) do
-        if v:IsA("ValueBase") and string.lower(v.Name) == "chi" then
-            return true
-        end
-    end
-    return false
-end
-
-local function getHoopPart(hoop)
-    for _, v in ipairs(hoop:GetDescendants()) do
-        if v:IsA("BasePart") then
-            return v
-        end
-    end
-    return nil
-end
-
-local function getChiHoops()
-    local list = {}
-    local hoopsFolder = workspace:FindFirstChild("Hoops")
-    if not hoopsFolder then return list end
-    for _, hoop in ipairs(hoopsFolder:GetChildren()) do
-        if hasChiValue(hoop) then
-            local part = hoop:IsA("BasePart") and hoop or getHoopPart(hoop)
-            if part then
-                table.insert(list, part)
+-- Refresh hoop list - finds all hoops
+local function refreshHoops()
+    local newList = {}
+    -- Look for any part/model named "Hoop" or containing "hoop"
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name:lower():find("hoop") then
+            table.insert(newList, obj)
+        elseif obj:IsA("Model") and obj.Name:lower():find("hoop") then
+            local primary = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+            if primary then
+                table.insert(newList, primary)
             end
         end
     end
-    return list
-end
-
--- Safe smooth movement (executor-friendly)
-local function smoothTP(hrp, cf, steps, delayPerStep)
-    steps = steps or 8
-    delayPerStep = delayPerStep or task.wait
-    for i = 1, steps do
-        if not hrp then break end
-        local alpha = 0.35 -- lerp factor per step (keeps movement smooth)
-        hrp.CFrame = hrp.CFrame:Lerp(cf, alpha)
-        task.wait(0.01)
-    end
-    if hrp then hrp.CFrame = cf end
-end
-
--- Hoop Farm function
-local function startHoopFarm()
-    if hoopCoroutine and coroutine.status(hoopCoroutine) ~= "dead" then return end
-    hoopCoroutine = coroutine.create(function()
-        while hoopFarmEnabled do
-            local char = plr.Character or plr.CharacterAdded:Wait()
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then task.wait(0.5) continue end
-
-            local hoops = getChiHoops()
-            -- sort by distance from player for efficient route
-            table.sort(hoops, function(a, b)
-                return (a.Position - hrp.Position).Magnitude < (b.Position - hrp.Position).Magnitude
-            end)
-
-            for _, hoop in ipairs(hoops) do
-                if not hoopFarmEnabled then break end
-                if not hoop or not hoop:IsA("BasePart") then continue end
-                if not hrp then break end
-
-                local hoopCF = hoop.CFrame
-
-                -- move to behind the hoop smoothly (safe lerp)
-                local behindCF = hoopCF * CFrame.new(0, 0, 12)
-                smoothTP(hrp, behindCF)
-
-                -- move to front smoothly
-                local frontCF = hoopCF * CFrame.new(0, 0, -12)
-                smoothTP(hrp, frontCF)
-
-                -- final snap onto hoop (landing position slightly above to avoid clipping)
-                if hrp then
-                    hrp.CFrame = hoopCF + Vector3.new(0, 1.5, 0)
+    -- Also check Hoops folder
+    local hoopFolder = workspace:FindFirstChild("Hoops")
+    if hoopFolder then
+        for _, child in ipairs(hoopFolder:GetChildren()) do
+            if child:IsA("BasePart") then
+                table.insert(newList, child)
+            elseif child:IsA("Model") then
+                local primary = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart")
+                if primary then
+                    table.insert(newList, primary)
                 end
-
-                task.wait(0.12)
             end
-
-            task.wait(0.12)
         end
-    end)
-    coroutine.resume(hoopCoroutine)
+    end
+    -- Remove duplicates (by reference)
+    local unique = {}
+    for _, v in ipairs(newList) do
+        if not unique[v] then
+            unique[v] = true
+            table.insert(allHoops, v)
+        end
+    end
+    allHoops = newList
+    return #allHoops
 end
 
--- Farm Toggle Logic (Katana)
-farmToggle.MouseButton1Click:Connect(function()
-    autoFarmEnabled = not autoFarmEnabled
-
-    if autoFarmEnabled then
-        -- Visual update
-        farmToggle.BackgroundColor3 = themes[currentTheme].accent
-        farmToggle.Text = "DISABLE AUTO FARM"
-        secondsCounter = 0
-        counterLabel.Text = "⏱️ Runtime: 0s"
-
-        -- Stop hoop farm if running
-        if hoopFarmEnabled then
-            hoopFarmEnabled = false
-            hoopToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            hoopToggle.Text = "ENABLE HOOP FARM (CHI)"
+-- ══════════════════════════════════════════
+--  AUTO KATANA
+-- ══════════════════════════════════════════
+local katanaConn = nil
+local function startKatana()
+    if katanaConn then return end
+    katanaConn = RunService.Heartbeat:Connect(function()
+        if Settings.autoKatana then
+            pcall(function()
+                LocalPlayer:WaitForChild("ninjaEvent"):FireServer("swingKatana")
+            end)
         end
+    end)
+end
+local function stopKatana()
+    if katanaConn then katanaConn:Disconnect(); katanaConn = nil end
+end
 
-        startAutoFarm()
-        startCounter()
-    else
-        farmToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        farmToggle.Text = "ENABLE AUTO KATANA"
-        -- autoFarmEnabled false will cause startAutoFarm coroutine to exit loop naturally
-    end
-end)
+-- ══════════════════════════════════════════
+--  AUTO HOOP FARM (FIXED)
+-- ══════════════════════════════════════════
+local hoopConn = nil
 
--- Hoop Toggle Logic
-hoopToggle.MouseButton1Click:Connect(function()
-    hoopFarmEnabled = not hoopFarmEnabled
-
-    if hoopFarmEnabled then
-        -- Visual update
-        hoopToggle.BackgroundColor3 = themes[currentTheme].accent
-        hoopToggle.Text = "DISABLE HOOP FARM"
-
-        -- AUTO-DISABLE KATANA FARM if running
-        if autoFarmEnabled then
-            autoFarmEnabled = false
-            farmToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            farmToggle.Text = "ENABLE AUTO KATANA"
-        end
-
-        startHoopFarm()
-    else
-        -- Visual update
-        hoopToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        hoopToggle.Text = "ENABLE HOOP FARM (CHI)"
-
-        -- hoopFarmEnabled false will cause startHoopFarm coroutine to exit naturally
-    end
-end)
-
--- Settings Button Logic
-settingsBtn.MouseButton1Click:Connect(function()
-    settingsFrame.Visible = true
-    mainFrame.Visible = false
-end)
-
-closeSettingsBtn.MouseButton1Click:Connect(function()
-    settingsFrame.Visible = false
-    mainFrame.Visible = true
-end)
-
--- Mobile Mode Toggle
-mobileToggle.MouseButton1Click:Connect(function()
-    mobileMode = not mobileMode
+local function farmNextHoop()
+    if not Settings.autoHoop then return end
     
-    if mobileMode then
-        mobileToggle.Text = "ON"
-        mobileToggle.BackgroundColor3 = themes[currentTheme].accent
-        closeBtn.Visible = true
-    else
-        mobileToggle.Text = "OFF"
-        mobileToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        closeBtn.Visible = false
-        openBtn.Visible = false
-        mainFrame.Visible = true
+    local now = tick()
+    if now - lastHoopTime < Settings.hoopDelay then return end
+    
+    -- Refresh hoop list each cycle
+    local count = refreshHoops()
+    if count == 0 then
+        Notify("Hoop Farm", "No hoops found!", "warning")
+        return
     end
-end)
-
--- Close Button (Mobile)
-closeBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = false
-    openBtn.Visible = true
-end)
-
--- Open Button (Mobile)
-openBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = true
-    openBtn.Visible = false
-end)
-
--- Right Shift Toggle
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
-        mainFrame.Visible = not mainFrame.Visible
-        if mobileMode and not mainFrame.Visible then
-            openBtn.Visible = true
+    
+    -- Reset index if needed
+    if currentHoopIndex > count then
+        currentHoopIndex = 1
+        Notify("Hoop Farm", "Completed all hoops! Starting over.", "success")
+    end
+    
+    local target = allHoops[currentHoopIndex]
+    if target then
+        local root = getRootPart()
+        if root then
+            local pos = target.Position
+            root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+            Notify("Hoop Farm", "Teleported to " .. target.Name .. " (" .. currentHoopIndex .. "/" .. count .. ")", "success")
+            lastHoopTime = now
         else
-            openBtn.Visible = false
+            Notify("Hoop Farm", "Character not ready", "error")
         end
     end
-end)
+    
+    -- Move to next hoop
+    currentHoopIndex = currentHoopIndex + 1
+end
 
--- Initialize visual theme
-applyTheme()
+local function startHoopFarm()
+    if hoopConn then return end
+    refreshHoops()
+    currentHoopIndex = 1
+    lastHoopTime = 0
+    hoopConn = RunService.Heartbeat:Connect(farmNextHoop)
+    Notify("Hoop Farm", "Started! Found " .. #allHoops .. " hoops.", #allHoops > 0 and "success" or "warning")
+end
 
-print("Feather Hub loaded, enjoy your premium experience!")
-print("Press Right Shift to toggle UI")
+local function stopHoopFarm()
+    if hoopConn then
+        hoopConn:Disconnect()
+        hoopConn = nil
+        Notify("Hoop Farm", "Stopped.", nil)
+    end
+end
+
+-- ══════════════════════════════════════════
+--  UI NOTIFICATION (simplified version of previous)
+-- ══════════════════════════════════════════
+local function Notify(title, msg, nType)
+    local sg = CoreGui:FindFirstChild("NinjaFarmerGUI")
+    if not sg then return end
+    local col = T.accent
+    if nType == "success" then col = T.green
+    elseif nType == "error" then col = T.red
+    elseif nType == "warning" then col = T.gold end
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0, 0, 0, 58)
+    n.Position = UDim2.new(1, -14, 1, -72)
+    n.AnchorPoint = Vector2.new(1, 1)
+    n.BackgroundColor3 = T.card
+    n.BorderSizePixel = 0
+    n.ZIndex = 100
+    n.Parent = sg
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 10)
+    local ns = Instance.new("UIStroke")
+    ns.Color = col
+    ns.Thickness = 1
+    ns.Parent = n
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(0, 3, 0.55, 0)
+    bar.Position = UDim2.new(0, 0, 0.225, 0)
+    bar.BackgroundColor3 = col
+    bar.BorderSizePixel = 0
+    bar.Parent = n
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+    local t1 = Instance.new("TextLabel")
+    t1.Size = UDim2.new(1, -18, 0, 18)
+    t1.Position = UDim2.new(0, 14, 0, 9)
+    t1.Text = title
+    t1.Font = Enum.Font.GothamBold
+    t1.TextSize = 11
+    t1.TextColor3 = T.text
+    t1.TextXAlignment = Enum.TextXAlignment.Left
+    t1.BackgroundTransparency = 1
+    t1.ZIndex = 101
+    t1.Parent = n
+    local t2 = Instance.new("TextLabel")
+    t2.Size = UDim2.new(1, -18, 0, 16)
+    t2.Position = UDim2.new(0, 14, 0, 28)
+    t2.Text = msg or ""
+    t2.Font = Enum.Font.Gotham
+    t2.TextSize = 9
+    t2.TextColor3 = T.text
+    t2.TextTransparency = 0.35
+    t2.TextXAlignment = Enum.TextXAlignment.Left
+    t2.TextWrapped = true
+    t2.BackgroundTransparency = 1
+    t2.ZIndex = 101
+    t2.Parent = n
+    TweenService:Create(n, tw(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 280, 0, 58)}):Play()
+    task.delay(3.5, function()
+        TweenService:Create(n, tw(0.25), {Size = UDim2.new(0, 0, 0, 58), BackgroundTransparency = 1}):Play()
+        task.wait(0.3)
+        if n and n.Parent then n:Destroy() end
+    end)
+end
+
+-- ══════════════════════════════════════════
+--  UI BUILDING (same as previous but with simplified structure)
+-- ══════════════════════════════════════════
+local function CreateUI()
+    pcall(function()
+        if CoreGui:FindFirstChild("NinjaFarmerGUI") then CoreGui:FindFirstChild("NinjaFarmerGUI"):Destroy() end
+    end)
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "NinjaFarmerGUI"
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.DisplayOrder = 999
+    sg.IgnoreGuiInset = true
+    if syn and syn.protect_gui then syn.protect_gui(sg) end
+    pcall(function() sg.Parent = CoreGui end)
+    if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+    -- Main window (simplified version - you can reuse the full FeatherHub style)
+    -- For brevity, I'll show a compact but fully functional UI.
+    local win = Instance.new("Frame")
+    win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+    win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+    win.BackgroundColor3 = T.bg
+    win.BorderSizePixel = 0
+    win.ClipsDescendants = true
+    win.Parent = sg
+    Instance.new("UICorner", win).CornerRadius = UDim.new(0, 14)
+    makeStroke(win, T.border, 1)
+
+    -- Sidebar
+    local sidebar = Instance.new("Frame")
+    sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+    sidebar.BackgroundColor3 = T.sidebar
+    sidebar.BorderSizePixel = 0
+    sidebar.Parent = win
+    Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+    local logo = Instance.new("TextLabel")
+    logo.Size = UDim2.new(1, 0, 0, 50)
+    logo.Text = "NF"
+    logo.Font = Enum.Font.GothamBold
+    logo.TextSize = 20
+    logo.TextColor3 = T.gold
+    logo.BackgroundTransparency = 1
+    logo.Parent = sidebar
+
+    -- Tabs
+    local navCont = Instance.new("Frame")
+    navCont.Size = UDim2.new(1, 0, 1, -60)
+    navCont.Position = UDim2.new(0, 0, 0, 60)
+    navCont.BackgroundTransparency = 1
+    navCont.Parent = sidebar
+    local tabLayout = Instance.new("UIListLayout")
+    tabLayout.Padding = UDim.new(0, 8)
+    tabLayout.Parent = navCont
+
+    local tabs = {"Combat", "Farm"}
+    local pages = {}
+    for i = 1, 2 do
+        local page = Instance.new("ScrollingFrame")
+        page.Size = UDim2.new(1, -SIDE_W - 10, 1, -10)
+        page.Position = UDim2.new(0, SIDE_W + 5, 0, 5)
+        page.BackgroundTransparency = 1
+        page.BorderSizePixel = 0
+        page.ScrollBarThickness = 4
+        page.CanvasSize = UDim2.new(0, 0, 0, 0)
+        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        page.Visible = (i == 1)
+        page.Parent = win
+        pages[i] = page
+    end
+
+    local function makeCard(parent, order)
+        local c = Instance.new("Frame")
+        c.Size = UDim2.new(1, -20, 0, 0)
+        c.AutomaticSize = Enum.AutomaticSize.Y
+        c.BackgroundColor3 = T.card
+        c.BorderSizePixel = 0
+        c.LayoutOrder = order
+        c.Parent = parent
+        Instance.new("UICorner", c).CornerRadius = UDim.new(0, 8)
+        makeStroke(c, T.border, 1)
+        local layout = Instance.new("UIListLayout")
+        layout.Padding = UDim.new(0, 0)
+        layout.Parent = c
+        return c
+    end
+
+    local function makeToggle(card, order, name, desc, getter, setter)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 48)
+        row.BackgroundTransparency = 1
+        row.LayoutOrder = order
+        row.Parent = card
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(0.6, -20, 0, 18)
+        title.Position = UDim2.new(0, 12, 0, 8)
+        title.Text = name
+        title.Font = Enum.Font.GothamSemibold
+        title.TextSize = 11
+        title.TextColor3 = T.text
+        title.BackgroundTransparency = 1
+        title.Parent = row
+        local descLbl = Instance.new("TextLabel")
+        descLbl.Size = UDim2.new(0.6, -20, 0, 13)
+        descLbl.Position = UDim2.new(0, 12, 0, 27)
+        descLbl.Text = desc
+        descLbl.Font = Enum.Font.Gotham
+        descLbl.TextSize = 8
+        descLbl.TextColor3 = T.muted
+        descLbl.BackgroundTransparency = 1
+        descLbl.Parent = row
+        local toggle = Instance.new("Frame")
+        toggle.Size = UDim2.new(0, 44, 0, 22)
+        toggle.Position = UDim2.new(1, -56, 0.5, -11)
+        toggle.BackgroundColor3 = getter() and T.toggleOn or T.toggleOff
+        toggle.BorderSizePixel = 0
+        toggle.Parent = row
+        Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.new(0, 16, 0, 16)
+        knob.Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)
+        knob.BackgroundColor3 = Color3.new(1,1,1)
+        knob.BorderSizePixel = 0
+        knob.Parent = toggle
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 1, 0)
+        btn.BackgroundTransparency = 1
+        btn.Text = ""
+        btn.Parent = row
+        btn.MouseButton1Click:Connect(function()
+            setter(not getter())
+            local on = getter()
+            toggle.BackgroundColor3 = on and T.toggleOn or T.toggleOff
+            TweenService:Create(knob, tw(0.2), {Position = on and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)}):Play()
+            Notify(name, on and "Enabled" or "Disabled", on and "success" or nil)
+        end)
+        local sep = Instance.new("Frame")
+        sep.Size = UDim2.new(1, -24, 0, 1)
+        sep.Position = UDim2.new(0, 12, 1, -1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+        sep.Parent = row
+        return row
+    end
+
+    local function makeSlider(card, order, name, desc, minVal, maxVal, getter, setter, isInt)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 70)
+        row.BackgroundTransparency = 1
+        row.LayoutOrder = order
+        row.Parent = card
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(0.6, -20, 0, 18)
+        title.Position = UDim2.new(0, 12, 0, 8)
+        title.Text = name
+        title.Font = Enum.Font.GothamSemibold
+        title.TextSize = 11
+        title.TextColor3 = T.text
+        title.BackgroundTransparency = 1
+        title.Parent = row
+        local descLbl = Instance.new("TextLabel")
+        descLbl.Size = UDim2.new(0.6, -20, 0, 13)
+        descLbl.Position = UDim2.new(0, 12, 0, 27)
+        descLbl.Text = desc
+        descLbl.Font = Enum.Font.Gotham
+        descLbl.TextSize = 8
+        descLbl.TextColor3 = T.muted
+        descLbl.BackgroundTransparency = 1
+        descLbl.Parent = row
+        local valBox = Instance.new("TextBox")
+        valBox.Size = UDim2.new(0, 50, 0, 22)
+        valBox.Position = UDim2.new(1, -62, 0, 6)
+        valBox.BackgroundColor3 = T.inputBg
+        valBox.Text = tostring(getter())
+        valBox.TextColor3 = T.gold
+        valBox.Font = Enum.Font.GothamBold
+        valBox.TextSize = 10
+        valBox.BorderSizePixel = 0
+        valBox.Parent = row
+        Instance.new("UICorner", valBox).CornerRadius = UDim.new(0, 5)
+        local track = Instance.new("Frame")
+        track.Size = UDim2.new(1, -24, 0, 4)
+        track.Position = UDim2.new(0, 12, 0, 52)
+        track.BackgroundColor3 = T.dim
+        track.BorderSizePixel = 0
+        track.Parent = row
+        Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.new((getter()-minVal)/(maxVal-minVal), 0, 1, 0)
+        fill.BackgroundColor3 = T.accent
+        fill.BorderSizePixel = 0
+        fill.Parent = track
+        local knob = Instance.new("TextButton")
+        knob.Size = UDim2.new(0, 12, 0, 12)
+        knob.Position = UDim2.new((getter()-minVal)/(maxVal-minVal), -6, 0.5, -6)
+        knob.BackgroundColor3 = T.gold
+        knob.Text = ""
+        knob.BorderSizePixel = 0
+        knob.Parent = track
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+        local dragging = false
+        local function update(x)
+            local rel = (x - track.AbsolutePosition.X) / track.AbsoluteSize.X
+            local newVal = math.clamp(minVal + (maxVal - minVal) * rel, minVal, maxVal)
+            if isInt then newVal = math.floor(newVal) end
+            setter(newVal)
+            local pct = (newVal - minVal) / (maxVal - minVal)
+            fill.Size = UDim2.new(pct, 0, 1, 0)
+            knob.Position = UDim2.new(pct, -6, 0.5, -6)
+            valBox.Text = tostring(newVal)
+        end
+        knob.MouseButton1Down:Connect(function()
+            dragging = true
+            update(UserInputService:GetMouseLocation().X)
+        end)
+        UserInputService.InputChanged:Connect(function(i)
+            if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then update(i.Position.X) end
+        end)
+        UserInputService.InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
+        valBox.FocusLost:Connect(function()
+            local num = tonumber(valBox.Text)
+            if num then
+                num = math.clamp(num, minVal, maxVal)
+                if isInt then num = math.floor(num) end
+                setter(num)
+                local pct = (num - minVal) / (maxVal - minVal)
+                fill.Size = UDim2.new(pct, 0, 1, 0)
+                knob.Position = UDim2.new(pct, -6, 0.5, -6)
+                valBox.Text = tostring(num)
+            else
+                valBox.Text = tostring(getter())
+            end
+        end)
+        local sep = Instance.new("Frame")
+        sep.Size = UDim2.new(1, -24, 0, 1)
+        sep.Position = UDim2.new(0, 12, 1, -1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+        sep.Parent = row
+        return row
+    end
+
+    -- Build Combat tab
+    local combatPage = pages[1]
+    local combatCard = makeCard(combatPage, 1)
+    makeToggle(combatCard, 1, "Auto Katana", "Continuously swing katana", 
+        function() return Settings.autoKatana end,
+        function(v) Settings.autoKatana = v; if v then startKatana() else stopKatana() end end)
+
+    -- Build Farm tab
+    local farmPage = pages[2]
+    local farmCard = makeCard(farmPage, 1)
+    makeToggle(farmCard, 1, "Auto Hoop Farm", "Teleport to each hoop in sequence",
+        function() return Settings.autoHoop end,
+        function(v) 
+            Settings.autoHoop = v
+            if v then startHoopFarm() else stopHoopFarm() end
+        end)
+    makeSlider(farmCard, 2, "Hoop Delay", "Seconds between teleports", 1, 10,
+        function() return Settings.hoopDelay end,
+        function(v) Settings.hoopDelay = v end, false)
+
+    -- Tab buttons
+    local function createTabButton(name, idx)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -20, 0, 30)
+        btn.Position = UDim2.new(0, 10, 0, 0)
+        btn.Text = name
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 10
+        btn.TextColor3 = T.muted
+        btn.BackgroundColor3 = T.dim
+        btn.BorderSizePixel = 0
+        btn.Parent = navCont
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+        btn.MouseButton1Click:Connect(function()
+            for i, page in ipairs(pages) do page.Visible = (i == idx) end
+            for _, b in ipairs(navCont:GetChildren()) do
+                if b:IsA("TextButton") then
+                    b.BackgroundColor3 = T.dim
+                    b.TextColor3 = T.muted
+                end
+            end
+            btn.BackgroundColor3 = T.accent
+            btn.TextColor3 = T.text
+        end)
+        return btn
+    end
+    createTabButton("Combat", 1)
+    createTabButton("Farm", 2)
+    -- Select first tab
+    local firstBtn = navCont:FindFirstChildWhichIsA("TextButton")
+    if firstBtn then firstBtn.BackgroundColor3 = T.accent; firstBtn.TextColor3 = T.text end
+
+    -- Floating toggle button
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0, 46, 0, 46)
+    toggleBtn.Position = UDim2.new(0.02, 0, 0.9, -56)
+    toggleBtn.BackgroundColor3 = T.card
+    toggleBtn.TextColor3 = T.gold
+    toggleBtn.Text = "NF"
+    toggleBtn.TextSize = 18
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.BorderSizePixel = 0
+    toggleBtn.AutoButtonColor = false
+    toggleBtn.Parent = sg
+    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = T.accent
+    stroke.Thickness = 2
+    stroke.Parent = toggleBtn
+    toggleBtn.MouseButton1Click:Connect(function() win.Visible = not win.Visible end)
+    -- Dragging
+    local dragStart, startPos, dragging = nil, nil, false
+    toggleBtn.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = i.Position
+            startPos = toggleBtn.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = i.Position - dragStart
+            toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+
+    Notify("Ninja Farmer", "Loaded! Click NF to open.", "success")
+end
+
+local function makeStroke(parent, color, thickness)
+    local s = Instance.new("UIStroke")
+    s.Color = color
+    s.Thickness = thickness or 1
+    s.Parent = parent
+end
+
+CreateUI()
