@@ -1,588 +1,1004 @@
---[[
-    ╔══════════════════════════════════════════════════════╗
-     NINJA FARMER  —  GOLD EDITION (FIXED HOOP CYCLE)
-     Auto Katana • Auto Hoop Farm • Teleport Farming
-    ╚══════════════════════════════════════════════════════╝
-]]
+-- FeatherHub v2 | Ninja Legends (Fixed)
+-- All-in-one script with custom UI (no external libraries)
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+-- ═══════════════════════════════════════════════════════════════
+-- SERVICES & GLOBALS
+-- ═══════════════════════════════════════════════════════════════
+local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
-local LocalPlayer = Players.LocalPlayer
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
--- ══════════════════════════════════════════
---  CONFIGURATION
--- ══════════════════════════════════════════
-_G.NinjaSettings = _G.NinjaSettings or {
-    autoKatana = false,
-    autoHoop = false,
-    hoopDelay = 2,
+local Player = Players.LocalPlayer
+local NinjaEvent = Player:WaitForChild("ninjaEvent")
+local REvents = ReplicatedStorage:WaitForChild("rEvents")
+
+-- ═══════════════════════════════════════════════════════════════
+-- THEME (FeatherHub style)
+-- ═══════════════════════════════════════════════════════════════
+local THEME = {
+    bg = Color3.fromRGB(13,13,18),
+    sidebar = Color3.fromRGB(18,18,25),
+    card = Color3.fromRGB(23,23,32),
+    border = Color3.fromRGB(42,42,58),
+    text = Color3.fromRGB(228,228,240),
+    muted = Color3.fromRGB(95,95,118),
+    dim = Color3.fromRGB(30,30,44),
+    sep = Color3.fromRGB(34,34,50),
+    header = Color3.fromRGB(16,16,22),
+    inputBg = Color3.fromRGB(9,9,15),
+    accent = Color3.fromRGB(110,95,210),
+    accentLt = Color3.fromRGB(135,115,235),
+    accentDim = Color3.fromRGB(65,55,130),
+    green = Color3.fromRGB(90,195,145),
+    red = Color3.fromRGB(210,75,95),
+    gold = Color3.fromRGB(185,150,60),
 }
+local T = THEME
 
-local Settings = _G.NinjaSettings
-local allHoops = {}
-local currentHoopIndex = 1
-local lastHoopTime = 0
-local hoopRunning = false
+local function tw(t) return TweenInfo.new(t or 0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out) end
+local WIN_W, WIN_H, SIDE_W, HDR_H = 480, 420, 108, 48
 
--- ══════════════════════════════════════════
---  THEME (same as before, keep it)
--- ══════════════════════════════════════════
-local T = {
-    bg        = Color3.fromRGB(6, 5, 4),
-    sidebar   = Color3.fromRGB(10, 9, 7),
-    card      = Color3.fromRGB(14, 12, 9),
-    border    = Color3.fromRGB(55, 45, 20),
-    text      = Color3.fromRGB(245, 238, 215),
-    muted     = Color3.fromRGB(130, 110, 65),
-    dim       = Color3.fromRGB(22, 18, 10),
-    sep       = Color3.fromRGB(48, 38, 18),
-    header    = Color3.fromRGB(9, 8, 5),
-    inputBg   = Color3.fromRGB(4, 3, 2),
-    accent    = Color3.fromRGB(195, 160, 60),
-    accentLt  = Color3.fromRGB(225, 190, 90),
-    accentDim = Color3.fromRGB(110, 88, 28),
-    green     = Color3.fromRGB(140, 195, 100),
-    red       = Color3.fromRGB(210, 75, 75),
-    gold      = Color3.fromRGB(195, 160, 60),
-    glowColor = Color3.fromRGB(130, 100, 20),
-    toggleOn  = Color3.fromRGB(170, 140, 45),
-    toggleOff = Color3.fromRGB(45, 35, 18),
-}
+-- ═══════════════════════════════════════════════════════════════
+-- UI CONSTRUCTION
+-- ═══════════════════════════════════════════════════════════════
+local sg = Instance.new("ScreenGui")
+sg.Name = "FeatherHubV2"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 999
+sg.IgnoreGuiInset = true
+pcall(function() sg.Parent = CoreGui end, function() sg.Parent = Player:WaitForChild("PlayerGui") end)
 
-local WIN_W, WIN_H, SIDE_W, HDR_H = 520, 460, 115, 48
-local function tw(t, s, d) return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
+local win = Instance.new("Frame")
+win.Name = "Win"
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.BackgroundColor3 = T.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 1
+win.Parent = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 16)
+local winStroke = Instance.new("UIStroke")
+winStroke.Color = T.border
+winStroke.Thickness = 1
+winStroke.Parent = win
 
--- ══════════════════════════════════════════
---  UTILITIES
--- ══════════════════════════════════════════
-local function getRootPart()
-    local char = LocalPlayer.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
+-- Sidebar
+local sidebar = Instance.new("Frame")
+sidebar.Name = "Sidebar"
+sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+sidebar.BackgroundColor3 = T.sidebar
+sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 3
+sidebar.Parent = win
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 16)
+
+local logoPill = Instance.new("Frame")
+logoPill.Size = UDim2.new(0, 40, 0, 40)
+logoPill.Position = UDim2.new(0.5, -20, 0, 12)
+logoPill.BackgroundColor3 = T.accent
+logoPill.BorderSizePixel = 0
+logoPill.Parent = sidebar
+Instance.new("UICorner", logoPill).CornerRadius = UDim.new(0, 11)
+local logoF = Instance.new("TextLabel")
+logoF.Size = UDim2.new(1, 0, 1, 0)
+logoF.Text = "F"
+logoF.TextSize = 20
+logoF.Font = Enum.Font.GothamBold
+logoF.TextColor3 = Color3.new(1,1,1)
+logoF.BackgroundTransparency = 1
+logoF.Parent = logoPill
+
+local navCont = Instance.new("Frame")
+navCont.Size = UDim2.new(1, 0, 1, -140)
+navCont.Position = UDim2.new(0, 0, 0, 68)
+navCont.BackgroundTransparency = 1
+navCont.Parent = sidebar
+local navList = Instance.new("UIListLayout")
+navList.SortOrder = Enum.SortOrder.LayoutOrder
+navList.VerticalAlignment = Enum.VerticalAlignment.Top
+navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+navList.Padding = UDim.new(0, 4)
+navList.Parent = navCont
+
+local wmVer = Instance.new("TextLabel")
+wmVer.Size = UDim2.new(1, 0, 0, 12)
+wmVer.Position = UDim2.new(0, 0, 1, -38)
+wmVer.Text = "v2.0  •  feather"
+wmVer.Font = Enum.Font.Gotham
+wmVer.TextSize = 7
+wmVer.TextColor3 = T.muted
+wmVer.BackgroundTransparency = 1
+wmVer.TextXAlignment = Enum.TextXAlignment.Center
+wmVer.Parent = sidebar
+
+-- Header (draggable)
+local hdr = Instance.new("Frame")
+hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
+hdr.BackgroundColor3 = T.header
+hdr.BorderSizePixel = 0
+hdr.Parent = win
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 16)
+
+local hdrTitle = Instance.new("TextLabel")
+hdrTitle.Size = UDim2.new(1, -140, 1, 0)
+hdrTitle.Position = UDim2.new(0, 16, 0, 0)
+hdrTitle.Text = "MAIN"
+hdrTitle.Font = Enum.Font.GothamBold
+hdrTitle.TextSize = 13
+hdrTitle.TextColor3 = T.text
+hdrTitle.BackgroundTransparency = 1
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+hdrTitle.Parent = hdr
+
+-- FREE badge moved left (from 260 to 220)
+local hdrBadge = Instance.new("Frame")
+hdrBadge.Size = UDim2.new(0, 52, 0, 20)
+hdrBadge.Position = UDim2.new(0, 220, 0.5, -10)   -- <-- CHANGED: moved left
+hdrBadge.BackgroundColor3 = T.accentDim
+hdrBadge.BorderSizePixel = 0
+hdrBadge.Parent = hdr
+Instance.new("UICorner", hdrBadge).CornerRadius = UDim.new(0, 6)
+local hdrBadgeLbl = Instance.new("TextLabel")
+hdrBadgeLbl.Size = UDim2.new(1, 0, 1, 0)
+hdrBadgeLbl.Text = "FREE"
+hdrBadgeLbl.Font = Enum.Font.GothamBold
+hdrBadgeLbl.TextSize = 7
+hdrBadgeLbl.TextColor3 = T.text
+hdrBadgeLbl.BackgroundTransparency = 1
+hdrBadgeLbl.Parent = hdrBadge
+
+local function makeHdrBtn(xPos, symbol)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 28, 0, 28)
+    b.Position = UDim2.new(1, xPos, 0.5, -14)
+    b.Text = symbol
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 16
+    b.TextColor3 = T.muted
+    b.BackgroundColor3 = T.dim
+    b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    b.Parent = hdr
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+    return b
 end
+local minBtn = makeHdrBtn(-66, "–")
+local closeBtn = makeHdrBtn(-34, "×")
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
 
--- Refresh hoop list - finds all hoops
-local function refreshHoops()
-    local newList = {}
-    -- Look for any part/model named "Hoop" or containing "hoop"
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Name:lower():find("hoop") then
-            table.insert(newList, obj)
-        elseif obj:IsA("Model") and obj.Name:lower():find("hoop") then
-            local primary = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-            if primary then
-                table.insert(newList, primary)
-            end
-        end
-    end
-    -- Also check Hoops folder
-    local hoopFolder = workspace:FindFirstChild("Hoops")
-    if hoopFolder then
-        for _, child in ipairs(hoopFolder:GetChildren()) do
-            if child:IsA("BasePart") then
-                table.insert(newList, child)
-            elseif child:IsA("Model") then
-                local primary = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart")
-                if primary then
-                    table.insert(newList, primary)
-                end
-            end
-        end
-    end
-    -- Remove duplicates (by reference)
-    local unique = {}
-    for _, v in ipairs(newList) do
-        if not unique[v] then
-            unique[v] = true
-            table.insert(allHoops, v)
-        end
-    end
-    allHoops = newList
-    return #allHoops
-end
-
--- ══════════════════════════════════════════
---  AUTO KATANA
--- ══════════════════════════════════════════
-local katanaConn = nil
-local function startKatana()
-    if katanaConn then return end
-    katanaConn = RunService.Heartbeat:Connect(function()
-        if Settings.autoKatana then
-            pcall(function()
-                LocalPlayer:WaitForChild("ninjaEvent"):FireServer("swingKatana")
-            end)
-        end
-    end)
-end
-local function stopKatana()
-    if katanaConn then katanaConn:Disconnect(); katanaConn = nil end
-end
-
--- ══════════════════════════════════════════
---  AUTO HOOP FARM (FIXED)
--- ══════════════════════════════════════════
-local hoopConn = nil
-
-local function farmNextHoop()
-    if not Settings.autoHoop then return end
-    
-    local now = tick()
-    if now - lastHoopTime < Settings.hoopDelay then return end
-    
-    -- Refresh hoop list each cycle
-    local count = refreshHoops()
-    if count == 0 then
-        Notify("Hoop Farm", "No hoops found!", "warning")
-        return
-    end
-    
-    -- Reset index if needed
-    if currentHoopIndex > count then
-        currentHoopIndex = 1
-        Notify("Hoop Farm", "Completed all hoops! Starting over.", "success")
-    end
-    
-    local target = allHoops[currentHoopIndex]
-    if target then
-        local root = getRootPart()
-        if root then
-            local pos = target.Position
-            root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
-            Notify("Hoop Farm", "Teleported to " .. target.Name .. " (" .. currentHoopIndex .. "/" .. count .. ")", "success")
-            lastHoopTime = now
-        else
-            Notify("Hoop Farm", "Character not ready", "error")
-        end
-    end
-    
-    -- Move to next hoop
-    currentHoopIndex = currentHoopIndex + 1
-end
-
-local function startHoopFarm()
-    if hoopConn then return end
-    refreshHoops()
-    currentHoopIndex = 1
-    lastHoopTime = 0
-    hoopConn = RunService.Heartbeat:Connect(farmNextHoop)
-    Notify("Hoop Farm", "Started! Found " .. #allHoops .. " hoops.", #allHoops > 0 and "success" or "warning")
-end
-
-local function stopHoopFarm()
-    if hoopConn then
-        hoopConn:Disconnect()
-        hoopConn = nil
-        Notify("Hoop Farm", "Stopped.", nil)
+-- Minimize functionality
+local isMinimized = false
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
+        sidebar.Visible = false
+        content.Visible = false
+        minBtn.Text = "+"
+    else
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+        sidebar.Visible = true
+        content.Visible = true
+        minBtn.Text = "–"
     end
 end
+minBtn.MouseButton1Click:Connect(toggleMinimize)
 
--- ══════════════════════════════════════════
---  UI NOTIFICATION (simplified version of previous)
--- ══════════════════════════════════════════
-local function Notify(title, msg, nType)
-    local sg = CoreGui:FindFirstChild("NinjaFarmerGUI")
-    if not sg then return end
-    local col = T.accent
-    if nType == "success" then col = T.green
-    elseif nType == "error" then col = T.red
-    elseif nType == "warning" then col = T.gold end
-    local n = Instance.new("Frame")
-    n.Size = UDim2.new(0, 0, 0, 58)
-    n.Position = UDim2.new(1, -14, 1, -72)
-    n.AnchorPoint = Vector2.new(1, 1)
-    n.BackgroundColor3 = T.card
-    n.BorderSizePixel = 0
-    n.ZIndex = 100
-    n.Parent = sg
-    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 10)
-    local ns = Instance.new("UIStroke")
-    ns.Color = col
-    ns.Thickness = 1
-    ns.Parent = n
+-- Drag logic for header
+local dragging = false
+local dragStart, startPos
+hdr.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        local vp = workspace.CurrentCamera.ViewportSize
+        win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + delta.X, 0, vp.X - WIN_W), 0, math.clamp(startPos.Y.Offset + delta.Y, 0, vp.Y - WIN_H))
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+content.BackgroundTransparency = 1
+content.ClipsDescendants = true
+content.Parent = win
+
+-- Pages (tabs)
+local pages = {}
+local tabNames = {"MAIN", "AUTO FARM", "TELEPORT", "CRYSTAL", "MISC"}
+local activeTab = 1
+
+local function makePage()
+    local pg = Instance.new("ScrollingFrame")
+    pg.Size = UDim2.new(1, 0, 1, 0)
+    pg.BackgroundTransparency = 1
+    pg.BorderSizePixel = 0
+    pg.ScrollBarThickness = 3
+    pg.ScrollBarImageColor3 = T.accent
+    pg.CanvasSize = UDim2.new(0, 0, 0, 0)
+    pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    pg.ScrollingDirection = Enum.ScrollingDirection.Y
+    pg.ElasticBehavior = Enum.ElasticBehavior.Never
+    pg.Visible = false
+    pg.Parent = content
+    local layout = Instance.new("UIListLayout", pg)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Padding = UDim.new(0, 7)
+    local pad = Instance.new("UIPadding", pg)
+    pad.PaddingTop = UDim.new(0, 12)
+    pad.PaddingBottom = UDim.new(0, 12)
+    pad.PaddingLeft = UDim.new(0, 12)
+    pad.PaddingRight = UDim.new(0, 12)
+    return pg
+end
+
+for i = 1, #tabNames do
+    pages[i] = makePage()
+end
+
+local function setTab(idx)
+    activeTab = idx
+    hdrTitle.Text = tabNames[idx]
+    for i, pg in ipairs(pages) do
+        pg.Visible = (i == idx)
+    end
+end
+
+-- Navigation buttons
+local navBtns = {}
+for i, name in ipairs(tabNames) do
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -8, 0, 38)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = i
+    row.Parent = navCont
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(0, 3, 0.55, 0)
-    bar.Position = UDim2.new(0, 0, 0.225, 0)
-    bar.BackgroundColor3 = col
+    bar.Size = UDim2.new(0, 3, 0.45, 0)
+    bar.Position = UDim2.new(0, 0, 0.275, 0)
+    bar.BackgroundColor3 = T.accent
+    bar.BackgroundTransparency = 1
     bar.BorderSizePixel = 0
-    bar.Parent = n
+    bar.Parent = row
     Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-    local t1 = Instance.new("TextLabel")
-    t1.Size = UDim2.new(1, -18, 0, 18)
-    t1.Position = UDim2.new(0, 14, 0, 9)
-    t1.Text = title
-    t1.Font = Enum.Font.GothamBold
-    t1.TextSize = 11
-    t1.TextColor3 = T.text
-    t1.TextXAlignment = Enum.TextXAlignment.Left
-    t1.BackgroundTransparency = 1
-    t1.ZIndex = 101
-    t1.Parent = n
-    local t2 = Instance.new("TextLabel")
-    t2.Size = UDim2.new(1, -18, 0, 16)
-    t2.Position = UDim2.new(0, 14, 0, 28)
-    t2.Text = msg or ""
-    t2.Font = Enum.Font.Gotham
-    t2.TextSize = 9
-    t2.TextColor3 = T.text
-    t2.TextTransparency = 0.35
-    t2.TextXAlignment = Enum.TextXAlignment.Left
-    t2.TextWrapped = true
-    t2.BackgroundTransparency = 1
-    t2.ZIndex = 101
-    t2.Parent = n
-    TweenService:Create(n, tw(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 280, 0, 58)}):Play()
-    task.delay(3.5, function()
-        TweenService:Create(n, tw(0.25), {Size = UDim2.new(0, 0, 0, 58), BackgroundTransparency = 1}):Play()
-        task.wait(0.3)
-        if n and n.Parent then n:Destroy() end
-    end)
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1, -5, 1, -6)
+    bg.Position = UDim2.new(0, 5, 0, 3)
+    bg.BackgroundColor3 = T.dim
+    bg.BackgroundTransparency = 0
+    bg.BorderSizePixel = 0
+    bg.Parent = row
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -14, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.Text = name
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 7
+    lbl.TextColor3 = T.text
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+    local hit = Instance.new("TextButton")
+    hit.Size = UDim2.new(1, 0, 1, 0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.Parent = row
+    hit.MouseButton1Click:Connect(function() setTab(i) end)
+    navBtns[i] = {bg = bg, lbl = lbl, bar = bar}
 end
 
--- ══════════════════════════════════════════
---  UI BUILDING (same as previous but with simplified structure)
--- ══════════════════════════════════════════
-local function CreateUI()
-    pcall(function()
-        if CoreGui:FindFirstChild("NinjaFarmerGUI") then CoreGui:FindFirstChild("NinjaFarmerGUI"):Destroy() end
-    end)
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "NinjaFarmerGUI"
-    sg.ResetOnSpawn = false
-    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    sg.DisplayOrder = 999
-    sg.IgnoreGuiInset = true
-    if syn and syn.protect_gui then syn.protect_gui(sg) end
-    pcall(function() sg.Parent = CoreGui end)
-    if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+-- Helper UI functions (same as before)
+local function makeCard(parent, order)
+    local c = Instance.new("Frame")
+    c.Size = UDim2.new(1, 0, 0, 0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.Parent = parent
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 11)
+    local s = Instance.new("UIStroke")
+    s.Color = T.border
+    s.Thickness = 1
+    s.Parent = c
+    local layout = Instance.new("UIListLayout", c)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
 
-    -- Main window (simplified version - you can reuse the full FeatherHub style)
-    -- For brevity, I'll show a compact but fully functional UI.
-    local win = Instance.new("Frame")
-    win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
-    win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
-    win.BackgroundColor3 = T.bg
-    win.BorderSizePixel = 0
-    win.ClipsDescendants = true
-    win.Parent = sg
-    Instance.new("UICorner", win).CornerRadius = UDim.new(0, 14)
-    makeStroke(win, T.border, 1)
-
-    -- Sidebar
-    local sidebar = Instance.new("Frame")
-    sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
-    sidebar.BackgroundColor3 = T.sidebar
-    sidebar.BorderSizePixel = 0
-    sidebar.Parent = win
-    Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
-    local logo = Instance.new("TextLabel")
-    logo.Size = UDim2.new(1, 0, 0, 50)
-    logo.Text = "NF"
-    logo.Font = Enum.Font.GothamBold
-    logo.TextSize = 20
-    logo.TextColor3 = T.gold
-    logo.BackgroundTransparency = 1
-    logo.Parent = sidebar
-
-    -- Tabs
-    local navCont = Instance.new("Frame")
-    navCont.Size = UDim2.new(1, 0, 1, -60)
-    navCont.Position = UDim2.new(0, 0, 0, 60)
-    navCont.BackgroundTransparency = 1
-    navCont.Parent = sidebar
-    local tabLayout = Instance.new("UIListLayout")
-    tabLayout.Padding = UDim.new(0, 8)
-    tabLayout.Parent = navCont
-
-    local tabs = {"Combat", "Farm"}
-    local pages = {}
-    for i = 1, 2 do
-        local page = Instance.new("ScrollingFrame")
-        page.Size = UDim2.new(1, -SIDE_W - 10, 1, -10)
-        page.Position = UDim2.new(0, SIDE_W + 5, 0, 5)
-        page.BackgroundTransparency = 1
-        page.BorderSizePixel = 0
-        page.ScrollBarThickness = 4
-        page.CanvasSize = UDim2.new(0, 0, 0, 0)
-        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        page.Visible = (i == 1)
-        page.Parent = win
-        pages[i] = page
-    end
-
-    local function makeCard(parent, order)
-        local c = Instance.new("Frame")
-        c.Size = UDim2.new(1, -20, 0, 0)
-        c.AutomaticSize = Enum.AutomaticSize.Y
-        c.BackgroundColor3 = T.card
-        c.BorderSizePixel = 0
-        c.LayoutOrder = order
-        c.Parent = parent
-        Instance.new("UICorner", c).CornerRadius = UDim.new(0, 8)
-        makeStroke(c, T.border, 1)
-        local layout = Instance.new("UIListLayout")
-        layout.Padding = UDim.new(0, 0)
-        layout.Parent = c
-        return c
-    end
-
-    local function makeToggle(card, order, name, desc, getter, setter)
-        local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 48)
-        row.BackgroundTransparency = 1
-        row.LayoutOrder = order
-        row.Parent = card
-        local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(0.6, -20, 0, 18)
-        title.Position = UDim2.new(0, 12, 0, 8)
-        title.Text = name
-        title.Font = Enum.Font.GothamSemibold
-        title.TextSize = 11
-        title.TextColor3 = T.text
-        title.BackgroundTransparency = 1
-        title.Parent = row
-        local descLbl = Instance.new("TextLabel")
-        descLbl.Size = UDim2.new(0.6, -20, 0, 13)
-        descLbl.Position = UDim2.new(0, 12, 0, 27)
-        descLbl.Text = desc
-        descLbl.Font = Enum.Font.Gotham
-        descLbl.TextSize = 8
-        descLbl.TextColor3 = T.muted
-        descLbl.BackgroundTransparency = 1
-        descLbl.Parent = row
-        local toggle = Instance.new("Frame")
-        toggle.Size = UDim2.new(0, 44, 0, 22)
-        toggle.Position = UDim2.new(1, -56, 0.5, -11)
-        toggle.BackgroundColor3 = getter() and T.toggleOn or T.toggleOff
-        toggle.BorderSizePixel = 0
-        toggle.Parent = row
-        Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
-        local knob = Instance.new("Frame")
-        knob.Size = UDim2.new(0, 16, 0, 16)
-        knob.Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)
-        knob.BackgroundColor3 = Color3.new(1,1,1)
-        knob.BorderSizePixel = 0
-        knob.Parent = toggle
-        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 1, 0)
-        btn.BackgroundTransparency = 1
-        btn.Text = ""
-        btn.Parent = row
-        btn.MouseButton1Click:Connect(function()
-            setter(not getter())
-            local on = getter()
-            toggle.BackgroundColor3 = on and T.toggleOn or T.toggleOff
-            TweenService:Create(knob, tw(0.2), {Position = on and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)}):Play()
-            Notify(name, on and "Enabled" or "Disabled", on and "success" or nil)
-        end)
+local function makeRow(card, order, isLast, height)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, height or 46)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = order
+    row.Parent = card
+    if not isLast then
         local sep = Instance.new("Frame")
-        sep.Size = UDim2.new(1, -24, 0, 1)
-        sep.Position = UDim2.new(0, 12, 1, -1)
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
         sep.BackgroundColor3 = T.sep
         sep.BorderSizePixel = 0
         sep.Parent = row
-        return row
     end
+    return row
+end
 
-    local function makeSlider(card, order, name, desc, minVal, maxVal, getter, setter, isInt)
-        local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, 0, 0, 70)
-        row.BackgroundTransparency = 1
-        row.LayoutOrder = order
-        row.Parent = card
-        local title = Instance.new("TextLabel")
-        title.Size = UDim2.new(0.6, -20, 0, 18)
-        title.Position = UDim2.new(0, 12, 0, 8)
-        title.Text = name
-        title.Font = Enum.Font.GothamSemibold
-        title.TextSize = 11
-        title.TextColor3 = T.text
-        title.BackgroundTransparency = 1
-        title.Parent = row
-        local descLbl = Instance.new("TextLabel")
-        descLbl.Size = UDim2.new(0.6, -20, 0, 13)
-        descLbl.Position = UDim2.new(0, 12, 0, 27)
-        descLbl.Text = desc
-        descLbl.Font = Enum.Font.Gotham
-        descLbl.TextSize = 8
-        descLbl.TextColor3 = T.muted
-        descLbl.BackgroundTransparency = 1
-        descLbl.Parent = row
-        local valBox = Instance.new("TextBox")
-        valBox.Size = UDim2.new(0, 50, 0, 22)
-        valBox.Position = UDim2.new(1, -62, 0, 6)
-        valBox.BackgroundColor3 = T.inputBg
-        valBox.Text = tostring(getter())
-        valBox.TextColor3 = T.gold
-        valBox.Font = Enum.Font.GothamBold
-        valBox.TextSize = 10
-        valBox.BorderSizePixel = 0
-        valBox.Parent = row
-        Instance.new("UICorner", valBox).CornerRadius = UDim.new(0, 5)
-        local track = Instance.new("Frame")
-        track.Size = UDim2.new(1, -24, 0, 4)
-        track.Position = UDim2.new(0, 12, 0, 52)
-        track.BackgroundColor3 = T.dim
-        track.BorderSizePixel = 0
-        track.Parent = row
-        Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-        local fill = Instance.new("Frame")
-        fill.Size = UDim2.new((getter()-minVal)/(maxVal-minVal), 0, 1, 0)
-        fill.BackgroundColor3 = T.accent
-        fill.BorderSizePixel = 0
-        fill.Parent = track
-        local knob = Instance.new("TextButton")
-        knob.Size = UDim2.new(0, 12, 0, 12)
-        knob.Position = UDim2.new((getter()-minVal)/(maxVal-minVal), -6, 0.5, -6)
-        knob.BackgroundColor3 = T.gold
-        knob.Text = ""
-        knob.BorderSizePixel = 0
-        knob.Parent = track
-        Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-        local dragging = false
-        local function update(x)
-            local rel = (x - track.AbsolutePosition.X) / track.AbsoluteSize.X
-            local newVal = math.clamp(minVal + (maxVal - minVal) * rel, minVal, maxVal)
-            if isInt then newVal = math.floor(newVal) end
-            setter(newVal)
-            local pct = (newVal - minVal) / (maxVal - minVal)
-            fill.Size = UDim2.new(pct, 0, 1, 0)
-            knob.Position = UDim2.new(pct, -6, 0.5, -6)
-            valBox.Text = tostring(newVal)
-        end
-        knob.MouseButton1Down:Connect(function()
-            dragging = true
-            update(UserInputService:GetMouseLocation().X)
-        end)
-        UserInputService.InputChanged:Connect(function(i)
-            if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then update(i.Position.X) end
-        end)
-        UserInputService.InputEnded:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-        end)
-        valBox.FocusLost:Connect(function()
-            local num = tonumber(valBox.Text)
-            if num then
-                num = math.clamp(num, minVal, maxVal)
-                if isInt then num = math.floor(num) end
-                setter(num)
-                local pct = (num - minVal) / (maxVal - minVal)
-                fill.Size = UDim2.new(pct, 0, 1, 0)
-                knob.Position = UDim2.new(pct, -6, 0.5, -6)
-                valBox.Text = tostring(num)
-            else
-                valBox.Text = tostring(getter())
-            end
-        end)
-        local sep = Instance.new("Frame")
-        sep.Size = UDim2.new(1, -24, 0, 1)
-        sep.Position = UDim2.new(0, 12, 1, -1)
-        sep.BackgroundColor3 = T.sep
-        sep.BorderSizePixel = 0
-        sep.Parent = row
-        return row
+local function makeLabel(parent, order, text, color)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 28)
+    lbl.Text = text
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 9
+    lbl.TextColor3 = color or T.muted
+    lbl.BackgroundTransparency = 1
+    lbl.LayoutOrder = order
+    lbl.Parent = parent
+    return lbl
+end
+
+local function makeButton(card, order, text, callback, small)
+    local row = makeRow(card, order, true, small and 40 or 48)
+    local btn = Instance.new("TextButton")
+    if small then
+        btn.Size = UDim2.new(0, 120, 0, 32)
+        btn.Position = UDim2.new(0.5, -60, 0.5, -16)
+    else
+        btn.Size = UDim2.new(1, -28, 0, 36)
+        btn.Position = UDim2.new(0, 14, 0.5, -18)
     end
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = small and 10 or 11
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.Parent = row
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accentLt}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accent}):Play() end)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
 
-    -- Build Combat tab
-    local combatPage = pages[1]
-    local combatCard = makeCard(combatPage, 1)
-    makeToggle(combatCard, 1, "Auto Katana", "Continuously swing katana", 
-        function() return Settings.autoKatana end,
-        function(v) Settings.autoKatana = v; if v then startKatana() else stopKatana() end end)
+local function makeTwoButtons(card, order, text1, callback1, text2, callback2)
+    local row = makeRow(card, order, true, 48)
+    local btn1 = Instance.new("TextButton")
+    btn1.Size = UDim2.new(0, 130, 0, 32)
+    btn1.Position = UDim2.new(0.5, -140, 0.5, -16)
+    btn1.Text = text1
+    btn1.Font = Enum.Font.GothamBold
+    btn1.TextSize = 10
+    btn1.TextColor3 = Color3.new(1,1,1)
+    btn1.BackgroundColor3 = T.accent
+    btn1.BorderSizePixel = 0
+    btn1.AutoButtonColor = false
+    btn1.Parent = row
+    Instance.new("UICorner", btn1).CornerRadius = UDim.new(0, 8)
+    btn1.MouseEnter:Connect(function() TweenService:Create(btn1, tw(), {BackgroundColor3 = T.accentLt}):Play() end)
+    btn1.MouseLeave:Connect(function() TweenService:Create(btn1, tw(), {BackgroundColor3 = T.accent}):Play() end)
+    btn1.MouseButton1Click:Connect(callback1)
 
-    -- Build Farm tab
-    local farmPage = pages[2]
-    local farmCard = makeCard(farmPage, 1)
-    makeToggle(farmCard, 1, "Auto Hoop Farm", "Teleport to each hoop in sequence",
-        function() return Settings.autoHoop end,
-        function(v) 
-            Settings.autoHoop = v
-            if v then startHoopFarm() else stopHoopFarm() end
-        end)
-    makeSlider(farmCard, 2, "Hoop Delay", "Seconds between teleports", 1, 10,
-        function() return Settings.hoopDelay end,
-        function(v) Settings.hoopDelay = v end, false)
+    local btn2 = Instance.new("TextButton")
+    btn2.Size = UDim2.new(0, 130, 0, 32)
+    btn2.Position = UDim2.new(0.5, 10, 0.5, -16)
+    btn2.Text = text2
+    btn2.Font = Enum.Font.GothamBold
+    btn2.TextSize = 10
+    btn2.TextColor3 = Color3.new(1,1,1)
+    btn2.BackgroundColor3 = T.accentDim
+    btn2.BorderSizePixel = 0
+    btn2.AutoButtonColor = false
+    btn2.Parent = row
+    Instance.new("UICorner", btn2).CornerRadius = UDim.new(0, 8)
+    btn2.MouseEnter:Connect(function() TweenService:Create(btn2, tw(), {BackgroundColor3 = T.accent}):Play() end)
+    btn2.MouseLeave:Connect(function() TweenService:Create(btn2, tw(), {BackgroundColor3 = T.accentDim}):Play() end)
+    btn2.MouseButton1Click:Connect(callback2)
+    return row
+end
 
-    -- Tab buttons
-    local function createTabButton(name, idx)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, -20, 0, 30)
-        btn.Position = UDim2.new(0, 10, 0, 0)
-        btn.Text = name
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 10
-        btn.TextColor3 = T.muted
-        btn.BackgroundColor3 = T.dim
-        btn.BorderSizePixel = 0
-        btn.Parent = navCont
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-        btn.MouseButton1Click:Connect(function()
-            for i, page in ipairs(pages) do page.Visible = (i == idx) end
-            for _, b in ipairs(navCont:GetChildren()) do
-                if b:IsA("TextButton") then
-                    b.BackgroundColor3 = T.dim
-                    b.TextColor3 = T.muted
-                end
-            end
-            btn.BackgroundColor3 = T.accent
-            btn.TextColor3 = T.text
-        end)
-        return btn
-    end
-    createTabButton("Combat", 1)
-    createTabButton("Farm", 2)
-    -- Select first tab
-    local firstBtn = navCont:FindFirstChildWhichIsA("TextButton")
-    if firstBtn then firstBtn.BackgroundColor3 = T.accent; firstBtn.TextColor3 = T.text end
-
-    -- Floating toggle button
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0, 46, 0, 46)
-    toggleBtn.Position = UDim2.new(0.02, 0, 0.9, -56)
-    toggleBtn.BackgroundColor3 = T.card
-    toggleBtn.TextColor3 = T.gold
-    toggleBtn.Text = "NF"
-    toggleBtn.TextSize = 18
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.BorderSizePixel = 0
-    toggleBtn.AutoButtonColor = false
-    toggleBtn.Parent = sg
-    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = T.accent
-    stroke.Thickness = 2
-    stroke.Parent = toggleBtn
-    toggleBtn.MouseButton1Click:Connect(function() win.Visible = not win.Visible end)
-    -- Dragging
-    local dragStart, startPos, dragging = nil, nil, false
-    toggleBtn.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = i.Position
-            startPos = toggleBtn.Position
-        end
+local function makeToggle(card, order, text, initialState, onToggle)
+    local row = makeRow(card, order, false, 44)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.65, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 16, 0, 0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Parent = row
+    local track = Instance.new("TextButton")
+    track.Size = UDim2.new(0, 38, 0, 20)
+    track.Position = UDim2.new(1, -52, 0.5, -10)
+    track.BackgroundColor3 = initialState and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ""
+    track.Parent = row
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = initialState and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.BorderSizePixel = 0
+    knob.Parent = track
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    local state = initialState
+    track.MouseButton1Click:Connect(function()
+        state = not state
+        TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
+        onToggle(state)
     end)
-    UserInputService.InputChanged:Connect(function(i)
-        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = i.Position - dragStart
-            toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
+    return row
+end
+
+local function makeSlider(card, order, text, min, max, default, callback)
+    local row = makeRow(card, order, true, 70)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.5, 0, 0, 20)
+    lbl.Position = UDim2.new(0, 16, 0, 8)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Parent = row
+    local valLbl = Instance.new("TextLabel")
+    valLbl.Size = UDim2.new(0.4, 0, 0, 20)
+    valLbl.Position = UDim2.new(0.6, 0, 0, 8)
+    valLbl.Text = tostring(default)
+    valLbl.Font = Enum.Font.GothamBold
+    valLbl.TextSize = 9
+    valLbl.TextColor3 = T.accent
+    valLbl.TextXAlignment = Enum.TextXAlignment.Right
+    valLbl.BackgroundTransparency = 1
+    valLbl.Parent = row
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(1, -32, 0, 6)
+    track.Position = UDim2.new(0, 16, 0, 44)
+    track.BackgroundColor3 = T.dim
+    track.BorderSizePixel = 0
+    track.Parent = row
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((default-min)/(max-min), 0, 1, 0)
+    fill.BackgroundColor3 = T.accent
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    local knob = Instance.new("TextButton")
+    knob.Size = UDim2.new(0, 14, 0, 14)
+    knob.Position = UDim2.new((default-min)/(max-min), -7, 0.5, -7)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.BorderSizePixel = 0
+    knob.AutoButtonColor = false
+    knob.Text = ""
+    knob.Parent = track
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    local dragging = false
+    knob.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
     end)
     UserInputService.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
     end)
-
-    Notify("Ninja Farmer", "Loaded! Click NF to open.", "success")
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement) then
+            local ap = track.AbsolutePosition
+            local az = track.AbsoluteSize
+            local r = math.clamp((i.Position.X - ap.X) / az.X, 0, 1)
+            local val = min + r * (max - min)
+            val = math.floor(val)
+            fill.Size = UDim2.new(r, 0, 1, 0)
+            knob.Position = UDim2.new(r, -7, 0.5, -7)
+            valLbl.Text = tostring(val)
+            callback(val)
+        end
+    end)
+    return row
 end
 
-local function makeStroke(parent, color, thickness)
-    local s = Instance.new("UIStroke")
-    s.Color = color
-    s.Thickness = thickness or 1
-    s.Parent = parent
+-- Dropdown that appears on top (parented to screen gui)
+local function makeDropdown(card, order, text, options, default, callback)
+    local row = makeRow(card, order, false, 54)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.5, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 16, 0, 0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Parent = row
+
+    local dropdownBtn = Instance.new("TextButton")
+    dropdownBtn.Size = UDim2.new(0, 130, 0, 28)
+    dropdownBtn.Position = UDim2.new(1, -142, 0.5, -14)
+    dropdownBtn.Text = default
+    dropdownBtn.Font = Enum.Font.GothamMedium
+    dropdownBtn.TextSize = 9
+    dropdownBtn.TextColor3 = T.text
+    dropdownBtn.BackgroundColor3 = T.inputBg
+    dropdownBtn.BorderSizePixel = 0
+    dropdownBtn.AutoButtonColor = false
+    dropdownBtn.Parent = row
+    Instance.new("UICorner", dropdownBtn).CornerRadius = UDim.new(0, 7)
+
+    -- Menu placed in screen gui (topmost)
+    local menu = Instance.new("Frame")
+    menu.Size = UDim2.new(0, 130, 0, 0)
+    menu.BackgroundColor3 = T.card
+    menu.BorderSizePixel = 0
+    menu.Visible = false
+    menu.ZIndex = 50
+    menu.Parent = sg
+    Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 7)
+    local menuLayout = Instance.new("UIListLayout", menu)
+    menuLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    menuLayout.Padding = UDim.new(0, 2)
+
+    local function updateMenu()
+        for _, child in pairs(menu:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+        for _, opt in ipairs(options) do
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1, 0, 0, 24)
+            btn.Text = opt
+            btn.Font = Enum.Font.GothamMedium
+            btn.TextSize = 8
+            btn.TextColor3 = T.text
+            btn.BackgroundColor3 = T.dim
+            btn.BorderSizePixel = 0
+            btn.AutoButtonColor = false
+            btn.Parent = menu
+            btn.MouseButton1Click:Connect(function()
+                dropdownBtn.Text = opt
+                menu.Visible = false
+                callback(opt)
+            end)
+        end
+        menu.Size = UDim2.new(0, 130, 0, #options * 26)
+        -- Position menu below the button
+        local absPos = dropdownBtn.AbsolutePosition
+        menu.Position = UDim2.new(0, absPos.X, 0, absPos.Y + 28)
+    end
+
+    dropdownBtn.MouseButton1Click:Connect(function()
+        if menu.Visible then
+            menu.Visible = false
+        else
+            updateMenu()
+            menu.Visible = true
+        end
+    end)
+
+    -- Hide menu when clicking outside
+    UserInputService.InputBegan:Connect(function(input)
+        if menu.Visible then
+            task.wait(0.05)
+            local mousePos = UserInputService:GetMouseLocation()
+            local menuAbs = menu.AbsolutePosition
+            local menuSize = menu.AbsoluteSize
+            if not (mousePos.X >= menuAbs.X and mousePos.X <= menuAbs.X + menuSize.X and
+                    mousePos.Y >= menuAbs.Y and mousePos.Y <= menuAbs.Y + menuSize.Y) then
+                menu.Visible = false
+            end
+        end
+    end)
+
+    return row
 end
 
-CreateUI()
+-- ═══════════════════════════════════════════════════════════════
+-- NOTIFICATION SYSTEM
+-- ═══════════════════════════════════════════════════════════════
+local function notify(title, msg, nType)
+    local col = nType == "success" and T.green or nType == "error" and T.red or T.accent
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0, 0, 0, 62)
+    n.Position = UDim2.new(1, -12, 1, -76)
+    n.AnchorPoint = Vector2.new(1, 1)
+    n.BackgroundColor3 = T.card
+    n.BorderSizePixel = 0
+    n.Parent = sg
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 10)
+    local ns = Instance.new("UIStroke", n); ns.Color = col; ns.Thickness = 1
+    local bar = Instance.new("Frame", n); bar.Size = UDim2.new(0, 3, 0.65, 0); bar.Position = UDim2.new(0, 0, 0.175, 0); bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+    local t1 = Instance.new("TextLabel", n); t1.Size = UDim2.new(1, -18, 0, 20); t1.Position = UDim2.new(0, 14, 0, 9); t1.Text = title; t1.Font = Enum.Font.GothamBold; t1.TextSize = 11; t1.TextColor3 = T.text; t1.TextXAlignment = Enum.TextXAlignment.Left; t1.BackgroundTransparency = 1
+    local t2 = Instance.new("TextLabel", n); t2.Size = UDim2.new(1, -18, 0, 20); t2.Position = UDim2.new(0, 14, 0, 29); t2.Text = msg; t2.Font = Enum.Font.Gotham; t2.TextSize = 9; t2.TextColor3 = T.text; t2.TextTransparency = 0.35; t2.TextXAlignment = Enum.TextXAlignment.Left; t2.TextWrapped = true; t2.BackgroundTransparency = 1
+    TweenService:Create(n, tw(0.25), {Size = UDim2.new(0, 210, 0, 62)}):Play()
+    task.delay(3.5, function() if n and n.Parent then TweenService:Create(n, tw(0.25), {Position = UDim2.new(1, 12, 1, -76)}):Play(); task.delay(0.3, function() n:Destroy() end) end end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- FEATURE GLOBALS
+-- ═══════════════════════════════════════════════════════════════
+_G.autoSwing = false
+_G.autoSell = false
+_G.autoSellFull = false
+_G.autoBuySwords = false
+_G.autoBuyBelts = false
+_G.autoBuySkills = false
+_G.autoBuyRanks = false
+_G.autoBuyShurikens = false
+_G.autoFarmChi = false
+_G.autoFarmCoin = false
+_G.autoHoops = false
+_G.autoOpenCrystal = false
+_G.autoEvolvePet = false
+_G.infDoubleJump = false
+_G.invisibility = false
+_G.infJump = false
+_G.disablePopups = false
+
+local selectedCrystal = ""
+local selectedPlayer = ""
+
+-- ═══════════════════════════════════════════════════════════════
+-- MAIN PAGE (Stats, Player Teleport, Speed/Jump)
+-- ═══════════════════════════════════════════════════════════════
+local pg_main = pages[1]
+
+-- Time/Ping/FPS labels
+local timeLabel = makeLabel(pg_main, 1, "Game Time: --", T.muted)
+local fpsLabel = makeLabel(pg_main, 2, "FPS: --", T.muted)
+local pingLabel = makeLabel(pg_main, 3, "Ping: --", T.muted)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        local gameTime = math.floor(workspace.DistributedGameTime + 0.5)
+        local hour = math.floor(gameTime / 3600) % 24
+        local minute = math.floor(gameTime / 60) % 60
+        local second = gameTime % 60
+        timeLabel.Text = string.format("Game Time: %02d:%02d:%02d", hour, minute, second)
+        local fps = workspace:GetRealPhysicsFPS()
+        fpsLabel.Text = "FPS: " .. math.floor(fps)
+        local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValueString()
+        pingLabel.Text = "Ping: " .. ping
+    end
+end)
+
+-- Trading buttons side by side
+makeTwoButtons(pg_main, 4, "Disable Trading", function()
+    REvents.tradingEvent:FireServer("disableTrading")
+    notify("Trading", "Disabled", "success")
+end, "Enable Trading", function()
+    REvents.tradingEvent:FireServer("enableTrading")
+    notify("Trading", "Enabled", "success")
+end)
+
+-- Player dropdown
+local playerList = {}
+local function updatePlayerList()
+    playerList = {}
+    for _, v in pairs(Players:GetPlayers()) do
+        table.insert(playerList, v.DisplayName)
+    end
+end
+updatePlayerList()
+Players.PlayerAdded:Connect(updatePlayerList)
+Players.PlayerRemoving:Connect(updatePlayerList)
+
+makeDropdown(pg_main, 5, "Select Player", playerList, playerList[1] or "", function(val)
+    selectedPlayer = val
+end)
+makeButton(pg_main, 6, "Teleport To Player", function()
+    local target = Players:FindFirstChild(selectedPlayer)
+    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+        Player.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 20, 1)
+    end
+end, true)
+
+-- Speed & Jump sliders
+makeSlider(pg_main, 7, "Walk Speed", 0, 1000, 16, function(v)
+    Player.Character.Humanoid.WalkSpeed = v
+end)
+makeSlider(pg_main, 8, "Jump Power", 0, 1000, 50, function(v)
+    Player.Character.Humanoid.JumpPower = v
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- AUTO FARM PAGE
+-- ═══════════════════════════════════════════════════════════════
+local pg_farm = pages[2]
+
+makeToggle(pg_farm, 1, "Auto Swing", false, function(state)
+    _G.autoSwing = state
+    task.spawn(function()
+        while _G.autoSwing do
+            NinjaEvent:FireServer("swingKatana")
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 2, "Auto Sell", false, function(state)
+    _G.autoSell = state
+    task.spawn(function()
+        while _G.autoSell do
+            local circle = workspace.sellAreaCircles["sellAreaCircle15"]
+            if circle then
+                circle.circleInner.CFrame = Player.Character.HumanoidRootPart.CFrame
+                task.wait(0.1)
+                circle.circleInner.CFrame = workspace.Part.CFrame
+            end
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 3, "Auto Sell When Full", false, function(state)
+    _G.autoSellFull = state
+    task.spawn(function()
+        while _G.autoSellFull do
+            if Player.PlayerGui.gameGui.maxNinjitsuMenu.Visible then
+                local circle = workspace.sellAreaCircles["sellAreaCircle15"]
+                if circle then
+                    circle.circleInner.CFrame = Player.Character.HumanoidRootPart.CFrame
+                    task.wait(0.1)
+                    circle.circleInner.CFrame = workspace.Part.CFrame
+                end
+            end
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 4, "Auto Buy Swords", false, function(state)
+    _G.autoBuySwords = state
+    task.spawn(function()
+        while _G.autoBuySwords do
+            NinjaEvent:FireServer("buyAllSwords", "Blazing Vortex Island")
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 5, "Auto Buy Belts", false, function(state)
+    _G.autoBuyBelts = state
+    task.spawn(function()
+        while _G.autoBuyBelts do
+            NinjaEvent:FireServer("buyAllBelts", "Blazing Vortex Island")
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 6, "Auto Buy Skills", false, function(state)
+    _G.autoBuySkills = state
+    task.spawn(function()
+        while _G.autoBuySkills do
+            NinjaEvent:FireServer("buyAllSkills", "Blazing Vortex Island")
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 7, "Auto Buy Ranks", false, function(state)
+    _G.autoBuyRanks = state
+    task.spawn(function()
+        while _G.autoBuyRanks do
+            for _, rank in pairs(ReplicatedStorage.Ranks.Ground:GetChildren()) do
+                NinjaEvent:FireServer("buyRank", rank.Name)
+                task.wait(0.2)
+            end
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 8, "Auto Buy Shurikens", false, function(state)
+    _G.autoBuyShurikens = state
+    task.spawn(function()
+        while _G.autoBuyShurikens do
+            NinjaEvent:FireServer("buyAllShurikens", "Blazing Vortex Island")
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 9, "Auto Farm Chi", false, function(state)
+    _G.autoFarmChi = state
+    task.spawn(function()
+        while _G.autoFarmChi do
+            for _, v in pairs(workspace.spawnedCoins.Valley:GetChildren()) do
+                if v.Name == "Blue Chi Crate" then
+                    Player.Character.HumanoidRootPart.CFrame = CFrame.new(v.Position)
+                    task.wait(0.3)
+                end
+            end
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 10, "Auto Farm Coin", false, function(state)
+    _G.autoFarmCoin = state
+    task.spawn(function()
+        while _G.autoFarmCoin do
+            for _, v in pairs(workspace.spawnedCoins.Valley:GetChildren()) do
+                if v.Name == "Purple Coin Crate" then
+                    Player.Character.HumanoidRootPart.CFrame = CFrame.new(v.Position)
+                    task.wait(0.3)
+                end
+            end
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_farm, 11, "Auto Hoops", false, function(state)
+    _G.autoHoops = state
+    task.spawn(function()
+        while _G.autoHoops do
+            for _, v in pairs(workspace.Hoops:GetDescendants()) do
+                if v:IsA("MeshPart") and v:FindFirstChild("touchPart") then
+                    v.touchPart.CFrame = Player.Character.HumanoidRootPart.CFrame
+                end
+            end
+            task.wait()
+        end
+    end)
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- TELEPORT PAGE
+-- ═══════════════════════════════════════════════════════════════
+local pg_tp = pages[3]
+
+local islandNames = {}
+for _, v in pairs(workspace.islandUnlockParts:GetChildren()) do
+    table.insert(islandNames, v.Name)
+end
+makeDropdown(pg_tp, 1, "Teleport to Island", islandNames, islandNames[1] or "", function(island)
+    local part = workspace.islandUnlockParts[island]
+    if part and part.islandSignPart then
+        Player.Character.HumanoidRootPart.CFrame = part.islandSignPart.CFrame
+    end
+end)
+
+makeButton(pg_tp, 2, "Unlock All Islands", function()
+    for _, v in pairs(workspace.islandUnlockParts:GetChildren()) do
+        if v.islandSignPart then
+            Player.Character.HumanoidRootPart.CFrame = v.islandSignPart.CFrame
+            task.wait(0.2)
+        end
+    end
+    notify("Islands", "All islands unlocked", "success")
+end, true)
+
+-- ═══════════════════════════════════════════════════════════════
+-- CRYSTAL PAGE
+-- ═══════════════════════════════════════════════════════════════
+local pg_crystal = pages[4]
+
+local crystalNames = {}
+for _, v in pairs(workspace.mapCrystalsFolder:GetChildren()) do
+    table.insert(crystalNames, v.Name)
+end
+makeDropdown(pg_crystal, 1, "Select Crystal", crystalNames, crystalNames[1] or "", function(val)
+    selectedCrystal = val
+end)
+
+makeToggle(pg_crystal, 2, "Auto Open Crystal", false, function(state)
+    _G.autoOpenCrystal = state
+    task.spawn(function()
+        while _G.autoOpenCrystal and selectedCrystal ~= "" do
+            REvents.openCrystalRemote:InvokeServer("openCrystal", selectedCrystal)
+            task.wait()
+        end
+    end)
+end)
+
+makeToggle(pg_crystal, 3, "Auto Evolve All Pets", false, function(state)
+    _G.autoEvolvePet = state
+    task.spawn(function()
+        while _G.autoEvolvePet do
+            for _, pet in pairs(Player.petsFolder:GetChildren()) do
+                for _, data in pairs(pet:GetChildren()) do
+                    REvents.petEvolveEvent:FireServer("evolvePet", data.Name)
+                    task.wait(0.2)
+                end
+            end
+            task.wait()
+        end
+    end)
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- MISC PAGE
+-- ═══════════════════════════════════════════════════════════════
+local pg_misc = pages[5]
+
+makeToggle(pg_misc, 1, "Infinite Double Jump", false, function(state)
+    _G.infDoubleJump = state
+    if state then
+        Player.multiJumpCount.Value = "99999999999999999"
+    else
+        Player.multiJumpCount.Value = 0
+    end
+end)
+
+makeButton(pg_misc, 2, "Get All Elements", function()
+    local elements = {"Frost", "Inferno", "Lightning", "Electral Chaos", "Masterful Wrath", "Shadow Charge", "Shadowfire", "Eternity Storm", "Blazing Entity"}
+    for _, elem in ipairs(elements) do
+        REvents.elementMasteryEvent:FireServer(elem)
+        task.wait(0.1)
+    end
+    notify("Elements", "All elements unlocked", "success")
+end, true)
+
+makeToggle(pg_misc, 3, "Disable Popups (Coin/Chi/Hoop)", false, function(state)
+    _G.disablePopups = state
+    Player.PlayerGui.statEffectsGui.Enabled = not state
+    Player.PlayerGui.hoopGui.Enabled = not state
+end)
+
+makeToggle(pg_misc, 4, "Invisibility", false, function(state)
+    _G.invisibility = state
+    task.spawn(function()
+        while _G.invisibility do
+            NinjaEvent:FireServer("goInvisible")
+            task.wait(0.5)
+        end
+    end)
+end)
+
+makeToggle(pg_misc, 5, "Infinite Jump", false, function(state)
+    _G.infJump = state
+    if state then
+        UserInputService.JumpRequest:Connect(function()
+            if _G.infJump then
+                Player.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+            end
+        end)
+    end
+end)
+
+makeButton(pg_misc, 6, "Rejoin Server", function()
+    game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
+end, true)
+
+-- ═══════════════════════════════════════════════════════════════
+-- FINALIZE UI
+-- ═══════════════════════════════════════════════════════════════
+local vp = workspace.CurrentCamera.ViewportSize
+win.Position = UDim2.new(0, (vp.X - WIN_W)/2, 0, (vp.Y - WIN_H)/2)
+win.Visible = true
+win.Size = UDim2.new(0, 0, 0, 0)
+win.BackgroundTransparency = 1
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+task.delay(0.45, function() win.BackgroundTransparency = 0 end)
+
+setTab(1)
+notify("FeatherHub v2", "Loaded for Ninja Legends", "success")
+
+-- Hide/show with RightBracket
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.RightBracket then
+        sg.Enabled = not sg.Enabled
+    end
+end)
