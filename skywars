@@ -1,0 +1,1577 @@
+-- FeatherHub Skywars | v3.0
+-- LMB = toggle module | RMB = open/close settings (inline, expands panel)
+-- Settings > Keybind > click [...] then press key to rebind
+-- RightAlt = hide/show UI
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local LocalPlayer      = Players.LocalPlayer
+
+if LocalPlayer.PlayerGui:FindFirstChild("FeatherHubSW") then return end
+
+-- ============================================================
+-- TEAM CHECK HELPER
+-- Returns true if 'plr' is on the same team as local player
+-- ============================================================
+local function sameTeam(plr)
+    if plr == LocalPlayer then return true end
+    local lt = LocalPlayer.Team
+    local pt = plr.Team
+    if lt and pt and lt == pt then return true end
+    return false
+end
+
+local function isValidTarget(plr)
+    if plr == LocalPlayer then return false end
+    if sameTeam(plr) then return false end
+    if not plr.Character then return false end
+    local hum = plr.Character:FindFirstChild("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    return true
+end
+
+-- ============================================================
+-- SIMULATE LEFT CLICK (fires a real VirtualInput mouse click)
+-- ============================================================
+local function fireLeftClick()
+    -- Method 1: VirtualInputManager (most reliable in exploit context)
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true,  game, 1)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end)
+    -- Method 2: Tool activate as fallback
+    pcall(function()
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if tool then tool:Activate() end
+    end)
+end
+
+-- ============================================================
+-- MODULE DEFINITIONS
+-- ============================================================
+local Modules = {
+    {
+        category = "Combat",
+        mods = {
+            {
+                name = "KillAura", enabled = false, keybind = Enum.KeyCode.K, settingsOpen = false,
+                settings = {
+                    { key="Range",      type="number", value=10,  min=4,   max=25  },
+                    { key="CPS",        type="number", value=12,  min=1,   max=30  },
+                    { key="TeamCheck",  type="bool",   value=true },
+                }
+            },
+            {
+                name = "AutoClicker", enabled = false, keybind = Enum.KeyCode.Z, settingsOpen = false,
+                settings = {
+                    { key="CPS",  type="number", value=16, min=1, max=30 },
+                }
+            },
+            {
+                name = "Hitbox", enabled = false, keybind = Enum.KeyCode.H, settingsOpen = false,
+                settings = {
+                    { key="Size",  type="number", value=7,   min=3,   max=20  },
+                }
+            },
+            {
+                name = "TPAura", enabled = false, keybind = Enum.KeyCode.T, settingsOpen = false,
+                settings = {
+                    { key="Radius",      type="number", value=8,   min=2,   max=20  },
+                    { key="CPS",         type="number", value=10,  min=1,   max=20  },
+                    { key="TeamCheck",   type="bool",   value=true },
+                    { key="AttackOnTP",  type="bool",   value=true },
+                }
+            },
+            {
+                name = "InfAura", enabled = false, keybind = Enum.KeyCode.I, settingsOpen = false,
+                settings = {
+                    { key="Range",       type="number", value=15,  min=5,   max=30  },
+                    { key="CPS",         type="number", value=15,  min=1,   max=30  },
+                    { key="TeamCheck",   type="bool",   value=true },
+                    { key="Rotations",   type="number", value=1,   min=1,   max=10  },
+                    { key="ReturnSpeed", type="number", value=1.0, min=0.1, max=3.0 },
+                }
+            },
+            {
+                name = "BelowAura", enabled = false, keybind = Enum.KeyCode.B, settingsOpen = false,
+                settings = {
+                    { key="Radius",      type="number", value=8,   min=2,   max=20  },
+                    { key="CPS",         type="number", value=12,  min=1,   max=30  },
+                    { key="TeamCheck",   type="bool",   value=true },
+                    { key="OrbitSpeed",  type="number", value=2.0, min=0.5, max=8.0 },
+                    { key="Height",      type="number", value=-3,  min=-8,  max=-1  },
+                    { key="Attack",      type="bool",   value=true },
+                }
+            },
+        }
+    },
+    {
+        category = "Movement",
+        mods = {
+            {
+                name = "Fly", enabled = false, keybind = Enum.KeyCode.F, settingsOpen = false,
+                settings = {
+                    { key="Speed",  type="number", value=32,    min=5,   max=150 },
+                    { key="Method", type="select", value="Part", options={"Part","Noclip","Gravity","Glide"} },
+                }
+            },
+            {
+                name = "Speed", enabled = false, keybind = Enum.KeyCode.G, settingsOpen = false,
+                settings = {
+                    { key="Multiplier", type="number", value=0.35, min=0.05, max=3.0 },
+                    { key="Mode",       type="select", value="CFrame", options={"CFrame","WalkSpeed"} },
+                }
+            },
+            {
+                name = "Fast Fall", enabled = false, keybind = Enum.KeyCode.V, settingsOpen = false,
+                settings = {
+                    { key="Strength", type="number", value=0.5, min=0.1, max=5.0 },
+                }
+            },
+            {
+                name = "NoClip", enabled = false, keybind = Enum.KeyCode.X, settingsOpen = false,
+                settings = {}
+            },
+            {
+                name = "HighJump", enabled = false, keybind = Enum.KeyCode.J, settingsOpen = false,
+                settings = {
+                    { key="Power", type="number", value=100, min=50, max=250 },
+                }
+            },
+            {
+                name = "InfJump", enabled = false, keybind = Enum.KeyCode.U, settingsOpen = false,
+                settings = {
+                    { key="MaxJumps", type="number", value=3, min=2, max=20 },
+                }
+            },
+            {
+                name = "NoFall", enabled = false, keybind = Enum.KeyCode.M, settingsOpen = false,
+                settings = {}
+            },
+        }
+    },
+    {
+        category = "Visual",
+        mods = {
+            {
+                name = "ESP", enabled = false, keybind = Enum.KeyCode.E, settingsOpen = false,
+                settings = {
+                    { key="ShowHP",   type="bool", value=true  },
+                    { key="ShowName", type="bool", value=true  },
+                    { key="ShowDist", type="bool", value=true  },
+                    { key="Enemies",  type="bool", value=true  },
+                    { key="Allies",   type="bool", value=false },
+                }
+            },
+            {
+                name = "Chams", enabled = false, keybind = Enum.KeyCode.C, settingsOpen = false,
+                settings = {
+                    { key="FillAlpha", type="number", value=0.3, min=0.0, max=0.9 },
+                }
+            },
+            {
+                name = "FOV", enabled = false, keybind = Enum.KeyCode.O, settingsOpen = false,
+                settings = {
+                    { key="Amount", type="number", value=120, min=70, max=170 },
+                }
+            },
+            {
+                name = "NoRender", enabled = false, keybind = Enum.KeyCode.N, settingsOpen = false,
+                settings = {
+                    { key="HideShop",   type="bool", value=true  },
+                    { key="HidePromo",  type="bool", value=true  },
+                    { key="HideSky",    type="bool", value=false },
+                    { key="HideFX",     type="bool", value=false },
+                    { key="LowDetail",  type="bool", value=false },
+                }
+            },
+            {
+                name = "Tracers", enabled = false, keybind = Enum.KeyCode.R, settingsOpen = false,
+                settings = {
+                    { key="ColorEnemy", type="select", value="Red",   options={"Red","Green","Blue","Yellow","White"} },
+                    { key="ColorAlly",  type="select", value="Blue",  options={"Red","Green","Blue","Yellow","White"} },
+                    { key="Thickness",  type="number", value=1,       min=1, max=5 },
+                }
+            },
+        }
+    },
+}
+
+-- Flat lookup
+local ModByName = {}
+for _, cat in ipairs(Modules) do
+    for _, mod in ipairs(cat.mods) do ModByName[mod.name] = mod end
+end
+
+local function getSetting(modName, key)
+    local mod = ModByName[modName]; if not mod then return nil end
+    for _, s in ipairs(mod.settings) do if s.key == key then return s.value end end
+    return nil
+end
+
+-- ============================================================
+-- STATE
+-- ============================================================
+local State = {
+    -- Fly
+    flyEnabled=false, flySpeed=32, flyMethod="Part",
+    flyPart=nil, flyConn=nil, flyNoclipConn=nil,
+    flyKeys={W=false,A=false,S=false,D=false,Space=false,LeftShift=false},
+    -- Speed
+    speedEnabled=false, speedMult=0.35, speedMode="CFrame", isAlive=true,
+    -- Hitbox
+    hitboxEnabled=false, hitboxSize=7, hitboxSaved={},
+    -- KillAura
+    killauraEnabled=false, killauraRunning=false,
+    -- AutoClicker
+    acEnabled=false, acRunning=false,
+    -- TPAura
+    tpauraEnabled=false, tpauraRunning=false,
+    -- Visual
+    espEnabled=false, chamsEnabled=false,
+    fovEnabled=false, fovAmount=120,
+    norenderEnabled=false,
+    -- New
+    infAuraEnabled = false,
+    infAuraRunning = false,
+    belowAuraEnabled = false,
+    belowAuraRunning = false,
+    noclipEnabled = false,
+    highJumpEnabled = false,
+    highJumpPower = 100,
+    infJumpEnabled = false,
+    infJumpMax = 3,
+    infJumpCount = 0,
+    infJumpConnection = nil,
+    noFallEnabled = false,
+    tracersEnabled = false,
+    tracersLines = {},
+}
+
+-- ============================================================
+-- HELPERS
+-- ============================================================
+local function getRoot()
+    local c=LocalPlayer.Character; return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function getHum()
+    local c=LocalPlayer.Character; return c and c:FindFirstChild("Humanoid")
+end
+local function keyName(kc)
+    local s=tostring(kc); return s:match("Enum%.KeyCode%.(.+)") or s
+end
+local function getNearestEnemy(range)
+    local root=getRoot(); if not root then return nil end
+    local best, bd = nil, range
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if isValidTarget(plr) then
+            local ph = plr.Character:FindFirstChild("HumanoidRootPart")
+            if ph then
+                local d = (root.Position - ph.Position).Magnitude
+                if d < bd then best=plr; bd=d end
+            end
+        end
+    end
+    return best
+end
+local function facePlayer(target)
+    local root=getRoot()
+    if not (root and target and target.Character) then return end
+    local ph = target.Character:FindFirstChild("HumanoidRootPart")
+    if ph then
+        local dir = Vector3.new(ph.Position.X-root.Position.X, 0, ph.Position.Z-root.Position.Z)
+        if dir.Magnitude > 0 then
+            root.CFrame = CFrame.new(root.Position, root.Position + dir.Unit)
+        end
+    end
+end
+
+-- ============================================================
+-- FLY INPUT KEYS
+-- ============================================================
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    local k = inp.KeyCode
+    if k==Enum.KeyCode.W     then State.flyKeys.W=true end
+    if k==Enum.KeyCode.S     then State.flyKeys.S=true end
+    if k==Enum.KeyCode.A     then State.flyKeys.A=true end
+    if k==Enum.KeyCode.D     then State.flyKeys.D=true end
+    if k==Enum.KeyCode.Space     then State.flyKeys.Space=true     end
+    if k==Enum.KeyCode.LeftShift then State.flyKeys.LeftShift=true end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    local k = inp.KeyCode
+    if k==Enum.KeyCode.W     then State.flyKeys.W=false end
+    if k==Enum.KeyCode.S     then State.flyKeys.S=false end
+    if k==Enum.KeyCode.A     then State.flyKeys.A=false end
+    if k==Enum.KeyCode.D     then State.flyKeys.D=false end
+    if k==Enum.KeyCode.Space     then State.flyKeys.Space=false     end
+    if k==Enum.KeyCode.LeftShift then State.flyKeys.LeftShift=false end
+end)
+
+local function flyDirVec()
+    local v=Vector3.zero
+    if State.flyKeys.W then v=v+Vector3.new(0,0,-1) end
+    if State.flyKeys.S then v=v+Vector3.new(0,0,1)  end
+    if State.flyKeys.A then v=v+Vector3.new(-1,0,0) end
+    if State.flyKeys.D then v=v+Vector3.new(1,0,0)  end
+    if State.flyKeys.Space     then v=v+Vector3.new(0,1,0)  end
+    if State.flyKeys.LeftShift then v=v+Vector3.new(0,-1,0) end
+    return v
+end
+
+-- ============================================================
+-- FLY METHODS
+-- ============================================================
+local function stopFly()
+    State.flyEnabled = false
+    if State.flyConn      then State.flyConn:Disconnect();      State.flyConn=nil      end
+    if State.flyNoclipConn then State.flyNoclipConn:Disconnect(); State.flyNoclipConn=nil end
+    if State.flyPart      then State.flyPart:Destroy();         State.flyPart=nil       end
+    -- restore gravity if gravity method
+    workspace.Gravity = 196.2
+    -- restore collision if noclip
+    local char = LocalPlayer.Character
+    if char then
+        for _,d in ipairs(char:GetDescendants()) do
+            if d:IsA("BasePart") then pcall(function() d.CanCollide=true end) end
+        end
+    end
+    -- restore walkspeed
+    local hum = getHum()
+    if hum then hum.WalkSpeed = 16 end
+end
+
+local function startFly()
+    stopFly()
+    State.flyEnabled = true
+    local method = getSetting("Fly","Method") or "Part"
+    State.flyMethod = method
+
+    if method == "Part" then
+        -- Classic: invisible platform under feet
+        local p = Instance.new("Part")
+        p.Size=Vector3.new(5,1,5); p.Anchored=true; p.CanCollide=true
+        p.Transparency=1; p.Parent=workspace
+        State.flyPart = p
+        State.flyConn = RunService.RenderStepped:Connect(function(dt)
+            local root=getRoot()
+            if not (State.flyEnabled and root) then return end
+            local dir=flyDirVec()
+            if dir.Magnitude>0 then
+                local cam=workspace.CurrentCamera.CFrame
+                local world=(cam:VectorToWorldSpace(dir)).Unit
+                root.CFrame = root.CFrame + world*State.flySpeed*dt
+            end
+            p.Position = root.Position - Vector3.new(0, 3.2, 0)
+        end)
+
+    elseif method == "Noclip" then
+        -- No gravity, move camera-relative, pass through walls
+        workspace.Gravity = 0
+        local char = LocalPlayer.Character
+        if char then
+            for _,d in ipairs(char:GetDescendants()) do
+                if d:IsA("BasePart") then pcall(function() d.CanCollide=false end) end
+            end
+        end
+        State.flyNoclipConn = RunService.RenderStepped:Connect(function()
+            local c=LocalPlayer.Character
+            if c then
+                for _,d in ipairs(c:GetDescendants()) do
+                    if d:IsA("BasePart") then pcall(function() d.CanCollide=false end) end
+                end
+            end
+        end)
+        State.flyConn = RunService.RenderStepped:Connect(function(dt)
+            local root=getRoot()
+            if not (State.flyEnabled and root) then return end
+            local dir=flyDirVec()
+            if dir.Magnitude>0 then
+                local world=workspace.CurrentCamera.CFrame:VectorToWorldSpace(dir).Unit
+                root.CFrame=root.CFrame+world*State.flySpeed*dt
+            end
+        end)
+
+    elseif method == "Gravity" then
+        -- Set very low gravity, player floats and can boost upward
+        workspace.Gravity = 5
+        local hum = getHum()
+        if hum then hum.WalkSpeed = State.flySpeed * 0.8 end
+        State.flyConn = RunService.RenderStepped:Connect(function(dt)
+            local root=getRoot()
+            if not (State.flyEnabled and root) then return end
+            if State.flyKeys.Space then
+                root.CFrame = root.CFrame + Vector3.new(0, State.flySpeed * dt, 0)
+            end
+            if State.flyKeys.LeftShift then
+                root.CFrame = root.CFrame - Vector3.new(0, State.flySpeed * dt, 0)
+            end
+        end)
+
+    elseif method == "Glide" then
+        -- Slow fall + horizontal speed, like gliding
+        State.flyConn = RunService.RenderStepped:Connect(function(dt)
+            local root=getRoot()
+            if not (State.flyEnabled and root) then return end
+            local dir=flyDirVec()
+            -- Horizontal movement
+            if dir.Magnitude>0 then
+                local cam=workspace.CurrentCamera.CFrame
+                local world=cam:VectorToWorldSpace(dir).Unit
+                root.CFrame=root.CFrame+Vector3.new(world.X,0,world.Z)*State.flySpeed*dt
+            end
+            -- Slow the fall
+            local vel=root.AssemblyLinearVelocity
+            if vel.Y < -5 then
+                root.AssemblyLinearVelocity=Vector3.new(vel.X, -5, vel.Z)
+            end
+            -- Up/down
+            if State.flyKeys.Space then
+                root.CFrame=root.CFrame+Vector3.new(0,State.flySpeed*0.5*dt,0)
+            end
+            if State.flyKeys.LeftShift then
+                root.CFrame=root.CFrame-Vector3.new(0,State.flySpeed*0.5*dt,0)
+            end
+        end)
+    end
+end
+
+-- ============================================================
+-- SPEED
+-- ============================================================
+local function doSpeed()
+    if not (State.speedEnabled and State.isAlive) then return end
+    local root=getRoot(); if not root then return end
+    if State.speedMode=="WalkSpeed" then
+        local hum=getHum(); if hum then hum.WalkSpeed=State.speedMult*100 end
+        return
+    end
+    -- CFrame mode
+    local zero=Vector3.zero
+    local look=root.CFrame.LookVector; local right=root.CFrame.RightVector
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then zero=zero+look*State.speedMult  end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then zero=zero-look*State.speedMult  end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then zero=zero-right*State.speedMult end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then zero=zero+right*State.speedMult end
+    if zero.Magnitude>0 then root.CFrame=root.CFrame+zero end
+end
+
+-- ============================================================
+-- HITBOX
+-- ============================================================
+local function applyHitbox()
+    local sz=Vector3.new(State.hitboxSize,5,State.hitboxSize)
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr~=LocalPlayer and plr.Character then
+            local hrp=plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if not State.hitboxSaved[plr] then
+                    State.hitboxSaved[plr]={Size=hrp.Size,Transparency=hrp.Transparency,Color=hrp.Color}
+                end
+                hrp.Size=sz; hrp.Transparency=0.5; hrp.Color=Color3.new(1,0,0)
+            end
+        end
+    end
+end
+local function removeHitbox()
+    for plr,saved in pairs(State.hitboxSaved) do
+        if plr.Character then
+            local hrp=plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.Size=saved.Size; hrp.Transparency=saved.Transparency; hrp.Color=saved.Color end
+        end
+    end
+    State.hitboxSaved={}
+end
+
+-- ============================================================
+-- KILLAURA — fires real left clicks + tool activate
+-- ============================================================
+local function killauraLoop()
+    State.killauraRunning=true
+    while State.killauraEnabled do
+        local teamCheck = getSetting("KillAura","TeamCheck")
+        local range     = getSetting("KillAura","Range") or 10
+        local cps       = getSetting("KillAura","CPS")   or 12
+
+        local root=getRoot()
+        if root then
+            local best, bd = nil, range
+            for _,plr in ipairs(Players:GetPlayers()) do
+                local skip = (plr==LocalPlayer) or (teamCheck and sameTeam(plr))
+                if not skip and plr.Character then
+                    local ph=plr.Character:FindFirstChild("HumanoidRootPart")
+                    local pu=plr.Character:FindFirstChild("Humanoid")
+                    if ph and pu and pu.Health>0 then
+                        local d=(root.Position-ph.Position).Magnitude
+                        if d<bd then best=plr; bd=d end
+                    end
+                end
+            end
+            if best then
+                facePlayer(best)
+                fireLeftClick()
+            end
+        end
+        wait(1/math.max(cps,1))
+    end
+    State.killauraRunning=false
+end
+
+-- ============================================================
+-- AUTOCLICKER — pure left click spam
+-- ============================================================
+local function autoClickerLoop()
+    State.acRunning=true
+    while State.acEnabled do
+        local cps = getSetting("AutoClicker","CPS") or 16
+        fireLeftClick()
+        wait(1/math.max(cps,1))
+    end
+    State.acRunning=false
+end
+
+-- ============================================================
+-- TPAURA — teleport around enemy + fire clicks
+-- Works by finding nearest enemy and repeatedly teleporting
+-- just behind them, then firing a left click attack
+-- ============================================================
+local function tpauraLoop()
+    State.tpauraRunning=true
+    while State.tpauraEnabled do
+        local teamCheck  = getSetting("TPAura","TeamCheck")
+        local radius     = getSetting("TPAura","Radius") or 8
+        local cps        = getSetting("TPAura","CPS") or 10
+        local doAttack   = getSetting("TPAura","AttackOnTP")
+
+        local root=getRoot()
+        if root then
+            local best, bd = nil, radius
+            for _,plr in ipairs(Players:GetPlayers()) do
+                local skip = (plr==LocalPlayer) or (teamCheck and sameTeam(plr))
+                if not skip and plr.Character then
+                    local ph=plr.Character:FindFirstChild("HumanoidRootPart")
+                    local pu=plr.Character:FindFirstChild("Humanoid")
+                    if ph and pu and pu.Health>0 then
+                        local d=(root.Position-ph.Position).Magnitude
+                        if d<bd then best=plr; bd=d end
+                    end
+                end
+            end
+
+            -- If no enemy in range, find nearest regardless and close in
+            if not best then
+                for _,plr in ipairs(Players:GetPlayers()) do
+                    local skip = (plr==LocalPlayer) or (teamCheck and sameTeam(plr))
+                    if not skip and plr.Character then
+                        local ph=plr.Character:FindFirstChild("HumanoidRootPart")
+                        local pu=plr.Character:FindFirstChild("Humanoid")
+                        if ph and pu and pu.Health>0 then
+                            local d=(root.Position-ph.Position).Magnitude
+                            if not best or d < bd then best=plr; bd=d end
+                        end
+                    end
+                end
+            end
+
+            if best and best.Character then
+                local ph=best.Character:FindFirstChild("HumanoidRootPart")
+                if ph then
+                    -- Teleport to just behind the target (relative to their look direction)
+                    local targetCF = ph.CFrame
+                    -- Place ourselves slightly behind and to the side of target
+                    local offset = targetCF.LookVector * -2 + Vector3.new(0, 0, 0)
+                    local newPos = ph.Position + offset
+
+                    -- Disable our collisions briefly so we don't get stuck
+                    local char=LocalPlayer.Character
+                    if char then
+                        for _,d in ipairs(char:GetDescendants()) do
+                            if d:IsA("BasePart") then pcall(function() d.CanCollide=false end) end
+                        end
+                    end
+
+                    root.CFrame = CFrame.new(newPos, ph.Position)
+
+                    -- Fire attack if setting is on
+                    if doAttack then
+                        facePlayer(best)
+                        fireLeftClick()
+                    end
+                end
+            end
+        end
+        wait(1/math.max(cps,1))
+    end
+    State.tpauraRunning=false
+end
+
+-- ============================================================
+-- INF AURA (teleport around target, attack multiple times, return)
+-- ============================================================
+local function infAuraLoop()
+    State.infAuraRunning = true
+    while State.infAuraEnabled do
+        local teamCheck = getSetting("InfAura","TeamCheck")
+        local range     = getSetting("InfAura","Range") or 15
+        local cps       = getSetting("InfAura","CPS") or 15
+        local rotations = getSetting("InfAura","Rotations") or 1
+        local returnSpeed = getSetting("InfAura","ReturnSpeed") or 1.0
+
+        local root = getRoot()
+        if root then
+            local best, bd = nil, range
+            for _,plr in ipairs(Players:GetPlayers()) do
+                local skip = (plr==LocalPlayer) or (teamCheck and sameTeam(plr))
+                if not skip and plr.Character then
+                    local ph = plr.Character:FindFirstChild("HumanoidRootPart")
+                    local pu = plr.Character:FindFirstChild("Humanoid")
+                    if ph and pu and pu.Health>0 then
+                        local d = (root.Position - ph.Position).Magnitude
+                        if d < bd then best = plr; bd = d end
+                    end
+                end
+            end
+
+            if best and best.Character then
+                local targetRoot = best.Character:FindFirstChild("HumanoidRootPart")
+                if targetRoot then
+                    local startPos = root.Position
+                    local targetPos = targetRoot.Position
+                    -- Disable collisions
+                    local char = LocalPlayer.Character
+                    if char then
+                        for _,v in ipairs(char:GetDescendants()) do
+                            if v:IsA("BasePart") then pcall(function() v.CanCollide = false end) end
+                        end
+                    end
+                    for i = 1, rotations do
+                        local angle = (i / rotations) * math.pi * 2
+                        local offset = Vector3.new(math.cos(angle) * 3, 0, math.sin(angle) * 3)
+                        local tpPos = targetPos + offset
+                        root.CFrame = CFrame.new(tpPos, targetPos)
+                        facePlayer(best)
+                        fireLeftClick()
+                        wait(0.05)
+                    end
+                    -- Return to start
+                    root.CFrame = CFrame.new(startPos)
+                end
+            end
+        end
+        wait(1 / math.max(cps, 1))
+    end
+    State.infAuraRunning = false
+end
+
+-- ============================================================
+-- BELOW AURA (orbit below target, attack upward)
+-- ============================================================
+local function belowAuraLoop()
+    State.belowAuraRunning = true
+    local angle = 0
+    while State.belowAuraEnabled do
+        local teamCheck = getSetting("BelowAura","TeamCheck")
+        local radius    = getSetting("BelowAura","Radius") or 8
+        local cps       = getSetting("BelowAura","CPS") or 12
+        local orbitSpeed = getSetting("BelowAura","OrbitSpeed") or 2.0
+        local heightOffset = getSetting("BelowAura","Height") or -3
+        local doAttack  = getSetting("BelowAura","Attack")
+
+        local root = getRoot()
+        if root then
+            local best, bd = nil, radius
+            for _,plr in ipairs(Players:GetPlayers()) do
+                local skip = (plr==LocalPlayer) or (teamCheck and sameTeam(plr))
+                if not skip and plr.Character then
+                    local ph = plr.Character:FindFirstChild("HumanoidRootPart")
+                    local pu = plr.Character:FindFirstChild("Humanoid")
+                    if ph and pu and pu.Health>0 then
+                        local d = (root.Position - ph.Position).Magnitude
+                        if d < bd then best = plr; bd = d end
+                    end
+                end
+            end
+
+            if best and best.Character then
+                local targetRoot = best.Character:FindFirstChild("HumanoidRootPart")
+                if targetRoot then
+                    angle = angle + orbitSpeed * 0.1
+                    local offset = Vector3.new(math.cos(angle) * radius, heightOffset, math.sin(angle) * radius)
+                    local tpPos = targetRoot.Position + offset
+
+                    local char = LocalPlayer.Character
+                    if char then
+                        for _,v in ipairs(char:GetDescendants()) do
+                            if v:IsA("BasePart") then pcall(function() v.CanCollide = false end) end
+                        end
+                    end
+                    root.CFrame = CFrame.new(tpPos, targetRoot.Position)
+
+                    if doAttack then
+                        facePlayer(best)
+                        fireLeftClick()
+                    end
+                end
+            end
+        end
+        wait(1 / math.max(cps, 1))
+    end
+    State.belowAuraRunning = false
+end
+
+-- ============================================================
+-- FAST FALL
+-- ============================================================
+local ffHum,ffRoot
+local function initFF(char)
+    ffHum=char:WaitForChild("Humanoid"); ffRoot=char:WaitForChild("HumanoidRootPart")
+end
+LocalPlayer.CharacterAdded:Connect(initFF)
+if LocalPlayer.Character then initFF(LocalPlayer.Character) end
+RunService.RenderStepped:Connect(function()
+    if State.fastfallEnabled and ffHum and ffRoot then
+        if ffHum:GetState()==Enum.HumanoidStateType.Freefall and ffRoot.Velocity.Y<0 then
+            ffRoot.CFrame=ffRoot.CFrame+Vector3.new(0,-State.fastfallStr,0)
+        end
+    end
+end)
+
+-- ============================================================
+-- MODERN ESP — clean nametag BillboardGuis
+-- ============================================================
+local ESPTags = {}  -- [player] = BillboardGui
+
+local function makeESPTag(plr)
+    if not plr.Character then return end
+    local head=plr.Character:FindFirstChild("Head"); if not head then return end
+    if head:FindFirstChild("FH_ESP3") then return end
+
+    local bb=Instance.new("BillboardGui")
+    bb.Name="FH_ESP3"; bb.AlwaysOnTop=true
+    bb.Size=UDim2.new(0,160,0,54)
+    bb.StudsOffset=Vector3.new(0,3.2,0)
+    bb.Parent=head
+
+    -- Background card
+    local bg=Instance.new("Frame",bb)
+    bg.Size=UDim2.new(1,0,1,0)
+    bg.BackgroundColor3=Color3.fromRGB(10,10,18)
+    bg.BackgroundTransparency=0.25
+    bg.BorderSizePixel=0
+    local bgc=Instance.new("UICorner",bg); bgc.CornerRadius=UDim.new(0,7)
+    local bgs=Instance.new("UIStroke",bg)
+    bgs.Thickness=1.5
+
+    -- Color the stroke based on team
+    if sameTeam(plr) then
+        bgs.Color=Color3.fromRGB(60,200,255)
+    else
+        bgs.Color=Color3.fromRGB(255,60,80)
+    end
+
+    -- Top accent line
+    local accent=Instance.new("Frame",bg)
+    accent.Size=UDim2.new(1,0,0,3)
+    accent.BackgroundColor3=sameTeam(plr) and Color3.fromRGB(60,200,255) or Color3.fromRGB(255,60,80)
+    accent.BorderSizePixel=0
+    local ac=Instance.new("UICorner",accent); ac.CornerRadius=UDim.new(0,7)
+
+    -- Player name
+    local nameL=Instance.new("TextLabel",bg)
+    nameL.Size=UDim2.new(1,-10,0,18)
+    nameL.Position=UDim2.new(0,5,0,4)
+    nameL.Text=plr.Name
+    nameL.Font=Enum.Font.GothamBold; nameL.TextSize=13
+    nameL.TextColor3=Color3.fromRGB(240,240,255)
+    nameL.BackgroundTransparency=1
+    nameL.TextXAlignment=Enum.TextXAlignment.Left
+
+    -- HP bar background
+    local hpBG=Instance.new("Frame",bg)
+    hpBG.Size=UDim2.new(1,-10,0,5)
+    hpBG.Position=UDim2.new(0,5,0,25)
+    hpBG.BackgroundColor3=Color3.fromRGB(40,40,40)
+    hpBG.BorderSizePixel=0
+    local hbc=Instance.new("UICorner",hpBG); hbc.CornerRadius=UDim.new(1,0)
+
+    -- HP bar fill
+    local hpFill=Instance.new("Frame",hpBG)
+    hpFill.Size=UDim2.new(1,0,1,0)
+    hpFill.BackgroundColor3=Color3.fromRGB(80,255,100)
+    hpFill.BorderSizePixel=0
+    local hfc=Instance.new("UICorner",hpFill); hfc.CornerRadius=UDim.new(1,0)
+
+    -- HP text + distance
+    local infoL=Instance.new("TextLabel",bg)
+    infoL.Size=UDim2.new(1,-10,0,14)
+    infoL.Position=UDim2.new(0,5,0,33)
+    infoL.Text="100 HP  •  0m"
+    infoL.Font=Enum.Font.Gotham; infoL.TextSize=10
+    infoL.TextColor3=Color3.fromRGB(160,160,180)
+    infoL.BackgroundTransparency=1
+    infoL.TextXAlignment=Enum.TextXAlignment.Left
+
+    ESPTags[plr] = bb
+
+    -- Update loop
+    spawn(function()
+        while bb.Parent and plr.Parent do
+            local show = getSetting("ESP","ShowHP") or getSetting("ESP","ShowName")
+            bb.Enabled = State.espEnabled and show ~= nil
+
+            local hum=plr.Character and plr.Character:FindFirstChild("Humanoid")
+            local maxHP = hum and hum.MaxHealth or 100
+            local curHP = hum and hum.Health or 0
+            local ratio = math.clamp(curHP/(maxHP>0 and maxHP or 1), 0, 1)
+
+            hpFill.Size=UDim2.new(ratio,0,1,0)
+            -- Color: green->yellow->red
+            if ratio>0.5 then
+                hpFill.BackgroundColor3=Color3.fromRGB(
+                    math.floor(255*(1-ratio)*2),255,80)
+            else
+                hpFill.BackgroundColor3=Color3.fromRGB(
+                    255,math.floor(255*ratio*2),80)
+            end
+
+            -- distance
+            local root=getRoot()
+            local ph=plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+            local dist=0
+            if root and ph then dist=math.floor((root.Position-ph.Position).Magnitude) end
+
+            local parts={}
+            if getSetting("ESP","ShowHP")   then table.insert(parts, math.floor(curHP).." HP") end
+            if getSetting("ESP","ShowDist") then table.insert(parts, dist.."m")               end
+            infoL.Text=table.concat(parts,"  •  ")
+
+            -- Name visibility
+            nameL.Visible = getSetting("ESP","ShowName") == true
+            hpBG.Visible  = getSetting("ESP","ShowHP")   == true
+
+            wait(0.1)
+        end
+        bb:Destroy()
+        ESPTags[plr]=nil
+    end)
+end
+
+local function removeESPTag(plr)
+    local tag=ESPTags[plr]
+    if tag then tag:Destroy(); ESPTags[plr]=nil end
+end
+
+local function refreshESP()
+    if State.espEnabled then
+        for _,plr in ipairs(Players:GetPlayers()) do
+            if plr~=LocalPlayer then
+                local showEnemies = getSetting("ESP","Enemies")
+                local showAllies  = getSetting("ESP","Allies")
+                local isAlly = sameTeam(plr)
+                if (isAlly and showAllies) or (not isAlly and showEnemies) then
+                    makeESPTag(plr)
+                end
+            end
+        end
+    else
+        for plr,_ in pairs(ESPTags) do removeESPTag(plr) end
+    end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function()
+        wait(1)
+        if State.espEnabled   then makeESPTag(plr)   end
+        if State.chamsEnabled then applyChamsTo(plr) end
+        if State.tracersEnabled then updateTracers() end
+    end)
+end)
+Players.PlayerRemoving:Connect(function(plr)
+    removeESPTag(plr)
+    if State.tracersEnabled then updateTracers() end
+end)
+
+-- ============================================================
+-- CHAMS
+-- ============================================================
+local function applyChamsTo(plr)
+    if plr==LocalPlayer then return end
+    local char=plr.Character; if not char then return end
+    if char:FindFirstChild("FH_Chams") then return end
+    local alpha = getSetting("Chams","FillAlpha") or 0.3
+    local hl=Instance.new("Highlight"); hl.Name="FH_Chams"
+    local isAlly=sameTeam(plr)
+    hl.FillColor=isAlly and Color3.fromRGB(60,200,255) or Color3.fromRGB(255,60,80)
+    hl.OutlineColor=Color3.fromRGB(255,255,255)
+    hl.FillTransparency=alpha; hl.OutlineTransparency=0
+    hl.Adornee=char; hl.Parent=char
+end
+local function removeChamsFrom(plr)
+    local char=plr.Character
+    if char then local hl=char:FindFirstChild("FH_Chams"); if hl then hl:Destroy() end end
+end
+local function refreshChams()
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if State.chamsEnabled then applyChamsTo(plr) else removeChamsFrom(plr) end
+    end
+end
+
+-- ============================================================
+-- NORENDER
+-- ============================================================
+local function doNoRender()
+    if getSetting("NoRender","HideShop") then
+        local pg=LocalPlayer:FindFirstChild("PlayerGui"); if not pg then return end
+        for _,sg in ipairs(pg:GetChildren()) do
+            if sg:IsA("ScreenGui") or sg:IsA("Frame") then
+                if sg:FindFirstChild("ShopGuiButtons") then sg.ShopGuiButtons:Destroy() end
+                if sg:FindFirstChild("PromoFrame")     then sg.PromoFrame:Destroy()     end
+            end
+        end
+    end
+    if getSetting("NoRender","HideSky") then
+        workspace.Terrain.SkyboxBk=""
+        workspace.Terrain.SkyboxDn=""
+        workspace.Terrain.SkyboxFt=""
+        workspace.Terrain.SkyboxLf=""
+        workspace.Terrain.SkyboxRt=""
+        workspace.Terrain.SkyboxUp=""
+    end
+    if getSetting("NoRender","LowDetail") then
+        for _,v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("ParticleEmitter") or v:IsA("Beam") or v:IsA("Trail") then
+                pcall(function() v.Enabled=false end)
+            end
+        end
+    end
+    if getSetting("NoRender","HideFX") then
+        for _,v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("SpecialMesh") or v:IsA("SelectionBox") then
+                pcall(function() v.Visible=false end)
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- TRACERS (lines to players)
+-- ============================================================
+local function updateTracers()
+    -- Remove old lines
+    for _, line in pairs(State.tracersLines) do
+        if line then pcall(function() line:Destroy() end) end
+    end
+    State.tracersLines = {}
+    if not State.tracersEnabled then return end
+
+    local colorMap = {
+        Red = Color3.new(1,0,0),
+        Green = Color3.new(0,1,0),
+        Blue = Color3.new(0,0,1),
+        Yellow = Color3.new(1,1,0),
+        White = Color3.new(1,1,1),
+    }
+    local enemyColor = colorMap[getSetting("Tracers","ColorEnemy")] or Color3.new(1,0,0)
+    local allyColor  = colorMap[getSetting("Tracers","ColorAlly")] or Color3.new(0,0,1)
+    local thickness  = getSetting("Tracers","Thickness") or 1
+
+    local myRoot = getRoot()
+    if not myRoot then return end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local targetRoot = plr.Character:FindFirstChild("HumanoidRootPart")
+            if targetRoot then
+                local isAlly = sameTeam(plr)
+                local color = isAlly and allyColor or enemyColor
+                local line = Instance.new("Part")
+                line.Name = "TracerLine"
+                line.Anchored = true
+                line.CanCollide = false
+                line.Size = Vector3.new(thickness/10, thickness/10, 1)
+                line.Color = color
+                line.Material = Enum.Material.Neon
+                line.Parent = workspace
+                table.insert(State.tracersLines, line)
+                
+                spawn(function()
+                    while line and line.Parent and State.tracersEnabled and myRoot and targetRoot and targetRoot.Parent do
+                        local startPos = myRoot.Position
+                        local endPos = targetRoot.Position
+                        local distance = (startPos - endPos).Magnitude
+                        line.Size = Vector3.new(thickness/10, thickness/10, distance)
+                        line.CFrame = CFrame.new(startPos, endPos) * CFrame.new(0, 0, -distance/2)
+                        wait()
+                    end
+                    pcall(function() line:Destroy() end)
+                end)
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- NOFALL HANDLER
+-- ============================================================
+local function noFallHandler(state)
+    if state == Enum.HumanoidStateType.Landed and State.noFallEnabled then
+        local hum = getHum()
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        end
+    end
+end
+
+-- ============================================================
+-- INFJUMP SETUP
+-- ============================================================
+local function setupInfJump()
+    if State.infJumpConnection then State.infJumpConnection:Disconnect() end
+    State.infJumpConnection = UserInputService.JumpRequest:Connect(function()
+        if not State.infJumpEnabled then return end
+        local hum = getHum()
+        if not hum then return end
+        if hum:GetState() == Enum.HumanoidStateType.Jumping or hum:GetState() == Enum.HumanoidStateType.Freefall then
+            if State.infJumpCount < State.infJumpMax then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                State.infJumpCount = State.infJumpCount + 1
+            end
+        else
+            State.infJumpCount = 0
+        end
+    end)
+end
+
+-- ============================================================
+-- RENDERSTEP LOOP
+-- ============================================================
+RunService.RenderStepped:Connect(function()
+    if State.speedEnabled  then doSpeed()     end
+    if State.hitboxEnabled then applyHitbox() end
+    if State.norenderEnabled then doNoRender() end
+end)
+
+local function trackAlive(char)
+    State.isAlive=true
+    char:WaitForChild("Humanoid").Died:Connect(function()
+        State.isAlive=false
+        if State.speedMode=="WalkSpeed" then
+            local hum=getHum(); if hum then hum.WalkSpeed=16 end
+        end
+    end)
+end
+LocalPlayer.CharacterAdded:Connect(function(char)
+    trackAlive(char)
+    wait(1)
+    if State.espEnabled   then refreshESP()   end
+    if State.chamsEnabled then refreshChams() end
+    if State.noclipEnabled then
+        wait(0.1)
+        for _,v in ipairs(char:GetDescendants()) do
+            if v:IsA("BasePart") then pcall(function() v.CanCollide = false end) end
+        end
+    end
+    if State.highJumpEnabled then
+        char:WaitForChild("Humanoid").JumpPower = State.highJumpPower
+    end
+    if State.noFallEnabled then
+        char:WaitForChild("Humanoid").StateChanged:Connect(noFallHandler)
+    end
+    if State.infJumpEnabled then
+        setupInfJump()
+    end
+end)
+if LocalPlayer.Character then trackAlive(LocalPlayer.Character) end
+
+-- ============================================================
+-- APPLY TOGGLE
+-- ============================================================
+local PanelRefs = {}
+local rebuildPanel  -- forward declare
+
+local function applyToggle(mod)
+    local n=mod.name; local on=mod.enabled
+
+    if n=="Fly" then
+        if on then startFly() else stopFly() end
+        State.flyEnabled=on
+
+    elseif n=="Speed" then
+        State.speedEnabled=on
+        if not on and State.speedMode=="WalkSpeed" then
+            local hum=getHum(); if hum then hum.WalkSpeed=16 end
+        end
+
+    elseif n=="Fast Fall" then
+        State.fastfallEnabled=on
+
+    elseif n=="Hitbox" then
+        State.hitboxEnabled=on
+        if not on then removeHitbox() end
+
+    elseif n=="KillAura" then
+        State.killauraEnabled=on
+        if on and not State.killauraRunning then coroutine.wrap(killauraLoop)() end
+
+    elseif n=="AutoClicker" then
+        State.acEnabled=on
+        if on and not State.acRunning then coroutine.wrap(autoClickerLoop)() end
+
+    elseif n=="TPAura" then
+        State.tpauraEnabled=on
+        if on and not State.tpauraRunning then coroutine.wrap(tpauraLoop)() end
+
+    elseif n=="InfAura" then
+        State.infAuraEnabled = on
+        if on and not State.infAuraRunning then coroutine.wrap(infAuraLoop)() end
+
+    elseif n=="BelowAura" then
+        State.belowAuraEnabled = on
+        if on and not State.belowAuraRunning then coroutine.wrap(belowAuraLoop)() end
+
+    elseif n=="NoClip" then
+        State.noclipEnabled = on
+        local char = LocalPlayer.Character
+        if char then
+            for _,v in ipairs(char:GetDescendants()) do
+                if v:IsA("BasePart") then pcall(function() v.CanCollide = not on end) end
+            end
+        end
+
+    elseif n=="HighJump" then
+        State.highJumpEnabled = on
+        local hum = getHum()
+        if hum then
+            hum.JumpPower = on and State.highJumpPower or 50
+        end
+
+    elseif n=="InfJump" then
+        State.infJumpEnabled = on
+        State.infJumpCount = 0
+        setupInfJump()
+
+    elseif n=="NoFall" then
+        State.noFallEnabled = on
+        local hum = getHum()
+        if hum and on then
+            hum.StateChanged:Connect(noFallHandler)
+        end
+
+    elseif n=="ESP" then
+        State.espEnabled=on; refreshESP()
+
+    elseif n=="Chams" then
+        State.chamsEnabled=on; refreshChams()
+
+    elseif n=="FOV" then
+        State.fovEnabled=on
+        workspace.CurrentCamera.FieldOfView=on and State.fovAmount or 70
+
+    elseif n=="NoRender" then
+        State.norenderEnabled=on
+
+    elseif n=="Tracers" then
+        State.tracersEnabled = on
+        if on then
+            updateTracers()
+        else
+            for _, line in pairs(State.tracersLines) do
+                pcall(function() line:Destroy() end)
+            end
+            State.tracersLines = {}
+        end
+    end
+end
+
+-- ============================================================
+-- propagate setting value → State
+-- ============================================================
+local function propagate(mod, setting)
+    local n,k,v=mod.name,setting.key,setting.value
+    if n=="Fly" then
+        if k=="Speed"  then State.flySpeed=v end
+        if k=="Method" then
+            State.flyMethod=v
+            if State.flyEnabled then startFly() end -- restart with new method
+        end
+    end
+    if n=="Speed" then
+        if k=="Multiplier" then State.speedMult=v end
+        if k=="Mode"       then
+            State.speedMode=v
+            if not mod.enabled then
+                local hum=getHum(); if hum then hum.WalkSpeed=16 end
+            end
+        end
+    end
+    if n=="Fast Fall" and k=="Strength" then State.fastfallStr=v end
+    if n=="Hitbox"    and k=="Size"     then State.hitboxSize=v  end
+    if n=="FOV"       and k=="Amount"   then
+        State.fovAmount=v
+        if State.fovEnabled then workspace.CurrentCamera.FieldOfView=v end
+    end
+    if n=="Chams" and k=="FillAlpha" then refreshChams() end
+    if n=="ESP" then refreshESP() end
+    if n=="HighJump" and k=="Power" then
+        State.highJumpPower = v
+        if State.highJumpEnabled then
+            local hum = getHum()
+            if hum then hum.JumpPower = v end
+        end
+    end
+    if n=="InfJump" and k=="MaxJumps" then
+        State.infJumpMax = v
+    end
+    if n=="Tracers" then
+        if State.tracersEnabled then updateTracers() end
+    end
+end
+
+-- ============================================================
+-- BUILD UI
+-- ============================================================
+local PANEL_W  = 155
+local BTN_H    = 25
+local ROW_H    = 22
+local ROW_GAP  = 2
+local PAD      = 5
+local HEADER_H = 21
+local BTN_GAP  = 2
+
+local ScreenGui=Instance.new("ScreenGui")
+ScreenGui.Name="FeatherHubSW"; ScreenGui.ResetOnSpawn=false
+ScreenGui.IgnoreGuiInset=true; ScreenGui.Parent=LocalPlayer:WaitForChild("PlayerGui")
+
+local rebindTarget = nil
+
+-- ---- Setting row ----
+local function makeSettingRow(parent, mod, setting, zo)
+    local f=Instance.new("Frame",parent)
+    f.BackgroundColor3=Color3.fromRGB(17,17,28)
+    f.BorderSizePixel=0; f.ZIndex=zo
+    f.Size=UDim2.new(1,0,0,ROW_H)
+    local fc=Instance.new("UICorner",f); fc.CornerRadius=UDim.new(0,3)
+
+    local nl=Instance.new("TextLabel",f)
+    nl.Size=UDim2.new(0.45,0,1,0); nl.Position=UDim2.new(0,5,0,0)
+    nl.Text=setting.key; nl.TextColor3=Color3.fromRGB(165,165,195)
+    nl.BackgroundTransparency=1; nl.Font=Enum.Font.Gotham; nl.TextSize=10
+    nl.TextXAlignment=Enum.TextXAlignment.Left; nl.ZIndex=zo+1
+
+    if setting.type=="number" then
+        local vl=Instance.new("TextLabel",f)
+        vl.Size=UDim2.new(0,24,1,0); vl.Position=UDim2.new(0.45,0,0,0)
+        vl.Text=tostring(setting.value)
+        vl.TextColor3=Color3.fromRGB(90,215,125)
+        vl.BackgroundTransparency=1; vl.Font=Enum.Font.GothamBold; vl.TextSize=10
+        vl.TextXAlignment=Enum.TextXAlignment.Center; vl.ZIndex=zo+1
+
+        local function mkBtn(parent2, txt, col, bgCol, xOff)
+            local b=Instance.new("TextButton",parent2)
+            b.Size=UDim2.new(0,15,0,15); b.Position=UDim2.new(0.72,xOff,0.5,-7)
+            b.Text=txt; b.Font=Enum.Font.GothamBold; b.TextSize=14
+            b.TextColor3=col; b.BackgroundColor3=bgCol; b.BorderSizePixel=0; b.ZIndex=zo+2
+            local c=Instance.new("UICorner",b); c.CornerRadius=UDim.new(0,3)
+            return b
+        end
+        local mn=mkBtn(f,"-",Color3.fromRGB(255,80,80),Color3.fromRGB(40,12,12),0)
+        local pl=mkBtn(f,"+",Color3.fromRGB(80,255,80),Color3.fromRGB(12,40,12),18)
+
+        local rng=(setting.max or 10)-(setting.min or 0)
+        local step=math.max(0.01,rng/20)
+        local function upd(d)
+            setting.value=math.clamp(
+                math.floor((setting.value+d)*1000+0.5)/1000,
+                setting.min or -1e9, setting.max or 1e9)
+            vl.Text=tostring(math.floor(setting.value*100+0.5)/100)
+            propagate(mod,setting)
+        end
+        mn.MouseButton1Click:Connect(function() upd(-step) end)
+        pl.MouseButton1Click:Connect(function()  upd( step) end)
+
+    elseif setting.type=="bool" then
+        local tb=Instance.new("TextButton",f)
+        tb.Size=UDim2.new(0,34,0,14); tb.Position=UDim2.new(0.5,2,0.5,-7)
+        tb.Text=setting.value and "ON" or "OFF"
+        tb.TextColor3=setting.value and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80)
+        tb.BackgroundColor3=Color3.fromRGB(24,24,40); tb.BorderSizePixel=0
+        tb.Font=Enum.Font.GothamBold; tb.TextSize=10; tb.ZIndex=zo+2
+        local tc=Instance.new("UICorner",tb); tc.CornerRadius=UDim.new(0,3)
+        tb.MouseButton1Click:Connect(function()
+            setting.value=not setting.value
+            tb.Text=setting.value and "ON" or "OFF"
+            tb.TextColor3=setting.value and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80)
+            propagate(mod,setting)
+        end)
+
+    elseif setting.type=="select" then
+        local idx=1
+        for i,opt in ipairs(setting.options) do if opt==setting.value then idx=i end end
+        local sb=Instance.new("TextButton",f)
+        sb.Size=UDim2.new(0.5,0,0,14); sb.Position=UDim2.new(0.49,0,0.5,-7)
+        sb.Text=setting.value; sb.TextColor3=Color3.fromRGB(155,155,255)
+        sb.BackgroundColor3=Color3.fromRGB(24,24,46); sb.BorderSizePixel=0
+        sb.Font=Enum.Font.Gotham; sb.TextSize=10; sb.ZIndex=zo+2
+        local sc=Instance.new("UICorner",sb); sc.CornerRadius=UDim.new(0,3)
+        sb.MouseButton1Click:Connect(function()
+            idx=(idx%#setting.options)+1
+            setting.value=setting.options[idx]; sb.Text=setting.value
+            propagate(mod,setting)
+        end)
+    end
+    return f
+end
+
+-- ---- Keybind row ----
+local function makeKeybindRow(parent, mod, catName, mods, zo)
+    local f=Instance.new("Frame",parent)
+    f.BackgroundColor3=Color3.fromRGB(19,12,30)
+    f.BorderSizePixel=0; f.ZIndex=zo; f.Size=UDim2.new(1,0,0,ROW_H)
+    local fc=Instance.new("UICorner",f); fc.CornerRadius=UDim.new(0,3)
+    local fs=Instance.new("UIStroke",f); fs.Color=Color3.fromRGB(85,45,140); fs.Thickness=1
+
+    local lbl=Instance.new("TextLabel",f)
+    lbl.Size=UDim2.new(0.45,0,1,0); lbl.Position=UDim2.new(0,5,0,0)
+    lbl.Text="Keybind"; lbl.TextColor3=Color3.fromRGB(175,125,215)
+    lbl.BackgroundTransparency=1; lbl.Font=Enum.Font.Gotham; lbl.TextSize=10
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=zo+1
+
+    local kb=Instance.new("TextButton",f)
+    kb.Size=UDim2.new(0.5,0,0,14); kb.Position=UDim2.new(0.49,0,0.5,-7)
+    kb.Text="["..keyName(mod.keybind).."]"
+    kb.TextColor3=Color3.fromRGB(195,155,250)
+    kb.BackgroundColor3=Color3.fromRGB(30,16,50); kb.BorderSizePixel=0
+    kb.Font=Enum.Font.GothamBold; kb.TextSize=10; kb.ZIndex=zo+2
+    local kbc=Instance.new("UICorner",kb); kbc.CornerRadius=UDim.new(0,3)
+    local kbs=Instance.new("UIStroke",kb); kbs.Color=Color3.fromRGB(105,45,185); kbs.Thickness=1
+
+    kb.MouseButton1Click:Connect(function()
+        if rebindTarget then
+            rebindTarget.lbl.Text="["..keyName(rebindTarget.mod.keybind).."]"
+            rebindTarget.lbl.TextColor3=Color3.fromRGB(195,155,250)
+        end
+        rebindTarget={mod=mod, lbl=kb, catName=catName, mods=mods}
+        kb.Text="[  ?  ]"; kb.TextColor3=Color3.fromRGB(255,220,55)
+    end)
+    return f
+end
+
+-- ---- Settings box height ----
+local function settingsH(mod)
+    return (#mod.settings+1)*(ROW_H+ROW_GAP)+4
+end
+
+-- ---- Full panel height ----
+local function panelH(mods)
+    local h=HEADER_H+PAD
+    for _,mod in ipairs(mods) do
+        h=h+BTN_H+BTN_GAP
+        if mod.settingsOpen and (#mod.settings>0 or true) then
+            h=h+settingsH(mod)+BTN_GAP
+        end
+    end
+    return h+PAD
+end
+
+-- ---- Rebuild panel ----
+rebuildPanel = function(catName, mods, panel)
+    for _,ch in ipairs(panel:GetChildren()) do
+        if ch.Name=="_Row" or ch.Name=="_SBox" or ch.Name=="_Accent" then ch:Destroy() end
+    end
+    panel.Size=UDim2.new(0,PANEL_W,0,panelH(mods))
+    local y=HEADER_H+PAD
+
+    for _,mod in ipairs(mods) do
+        local btn=Instance.new("TextButton",panel)
+        btn.Name="_Row"
+        btn.Size=UDim2.new(1,-10,0,BTN_H)
+        btn.Position=UDim2.new(0,5,0,y)
+        btn.Text=mod.name
+        btn.TextColor3=mod.enabled and Color3.fromRGB(80,255,80) or Color3.fromRGB(210,210,210)
+        btn.BackgroundColor3=mod.enabled and Color3.fromRGB(14,44,14) or Color3.fromRGB(22,22,34)
+        btn.BorderSizePixel=0; btn.Font=Enum.Font.Gotham; btn.TextSize=11
+        btn.TextXAlignment=Enum.TextXAlignment.Left; btn.ZIndex=7
+
+        local bc=Instance.new("UICorner",btn); bc.CornerRadius=UDim.new(0,5)
+        local bs=Instance.new("UIStroke",btn)
+        bs.Color=mod.settingsOpen and Color3.fromRGB(88,88,195) or Color3.fromRGB(40,40,62)
+        bs.Thickness=1
+
+        local tp=Instance.new("UIPadding",btn); tp.PaddingLeft=UDim.new(0,8)
+
+        -- dot
+        local dot=Instance.new("Frame",btn); dot.Name="Dot"
+        dot.Size=UDim2.new(0,6,0,6); dot.Position=UDim2.new(1,-10,0.5,-3)
+        dot.BackgroundColor3=mod.enabled and Color3.fromRGB(80,255,80) or Color3.fromRGB(60,60,60)
+        dot.BorderSizePixel=0; dot.ZIndex=8
+        local dc=Instance.new("UICorner",dot); dc.CornerRadius=UDim.new(1,0)
+
+        -- keybind hint
+        local kh=Instance.new("TextLabel",btn)
+        kh.Size=UDim2.new(0,28,1,0); kh.Position=UDim2.new(1,-40,0,0)
+        kh.Text=keyName(mod.keybind)
+        kh.TextColor3=Color3.fromRGB(80,80,115)
+        kh.BackgroundTransparency=1; kh.Font=Enum.Font.Gotham; kh.TextSize=9
+        kh.TextXAlignment=Enum.TextXAlignment.Right; kh.ZIndex=8
+
+        -- arrow
+        local arr=Instance.new("TextLabel",btn)
+        arr.Size=UDim2.new(0,10,1,0); arr.Position=UDim2.new(1,-52,0,0)
+        arr.Text=mod.settingsOpen and "▼" or "▶"
+        arr.TextColor3=Color3.fromRGB(95,95,160)
+        arr.BackgroundTransparency=1; arr.Font=Enum.Font.GothamBold; arr.TextSize=9
+        arr.TextXAlignment=Enum.TextXAlignment.Right; arr.ZIndex=8
+
+        -- LEFT: toggle
+        btn.MouseButton1Click:Connect(function()
+            mod.enabled=not mod.enabled
+            applyToggle(mod)
+            rebuildPanel(catName,mods,panel)
+        end)
+        -- RIGHT: settings
+        btn.MouseButton2Click:Connect(function()
+            mod.settingsOpen=not mod.settingsOpen
+            rebuildPanel(catName,mods,panel)
+        end)
+        btn.MouseEnter:Connect(function()
+            if not mod.enabled then btn.BackgroundColor3=Color3.fromRGB(28,28,44) end
+        end)
+        btn.MouseLeave:Connect(function()
+            btn.BackgroundColor3=mod.enabled and Color3.fromRGB(14,44,14) or Color3.fromRGB(22,22,34)
+        end)
+
+        y=y+BTN_H+BTN_GAP
+
+        -- Settings box
+        if mod.settingsOpen then
+            local sh=settingsH(mod)
+            local box=Instance.new("Frame",panel)
+            box.Name="_SBox"
+            box.Size=UDim2.new(1,-12,0,sh)
+            box.Position=UDim2.new(0,6,0,y)
+            box.BackgroundColor3=Color3.fromRGB(12,12,20)
+            box.BorderSizePixel=0; box.ZIndex=6
+            local bxc=Instance.new("UICorner",box); bxc.CornerRadius=UDim.new(0,5)
+            local bxs=Instance.new("UIStroke",box); bxs.Color=Color3.fromRGB(50,50,100); bxs.Thickness=1
+
+            local ll=Instance.new("UIListLayout",box)
+            ll.Padding=UDim.new(0,ROW_GAP)
+            ll.FillDirection=Enum.FillDirection.Vertical
+            ll.SortOrder=Enum.SortOrder.LayoutOrder
+            local lp=Instance.new("UIPadding",box)
+            lp.PaddingTop=UDim.new(0,2); lp.PaddingBottom=UDim.new(0,2)
+            lp.PaddingLeft=UDim.new(0,2); lp.PaddingRight=UDim.new(0,2)
+
+            for si,setting in ipairs(mod.settings) do
+                local row=makeSettingRow(box,mod,setting,8)
+                row.LayoutOrder=si
+            end
+            local kr=makeKeybindRow(box,mod,catName,mods,8)
+            kr.LayoutOrder=999
+
+            y=y+sh+BTN_GAP
+        end
+    end
+
+    -- accent bar
+    local ab=Instance.new("Frame",panel); ab.Name="_Accent"
+    ab.Size=UDim2.new(0,2,1,-HEADER_H); ab.Position=UDim2.new(0,0,0,HEADER_H)
+    ab.BackgroundColor3=Color3.fromRGB(70,70,210); ab.BorderSizePixel=0; ab.ZIndex=4
+end
+
+-- ---- Build initial panel ----
+local function buildPanel(catName, mods, pos)
+    local panel=Instance.new("Frame")
+    panel.Name=catName.."_Panel"
+    panel.Size=UDim2.new(0,PANEL_W,0,80)
+    panel.Position=pos
+    panel.BackgroundColor3=Color3.fromRGB(12,12,20)
+    panel.BorderSizePixel=0; panel.Active=true; panel.Draggable=true; panel.ZIndex=5
+    local co=Instance.new("UICorner",panel); co.CornerRadius=UDim.new(0,7)
+    local st=Instance.new("UIStroke",panel); st.Color=Color3.fromRGB(50,50,135); st.Thickness=1
+
+    local hdr=Instance.new("Frame",panel); hdr.Name="Header"
+    hdr.Size=UDim2.new(1,0,0,HEADER_H)
+    hdr.BackgroundColor3=Color3.fromRGB(16,16,34)
+    hdr.BorderSizePixel=0; hdr.ZIndex=6
+    local hc=Instance.new("UICorner",hdr); hc.CornerRadius=UDim.new(0,7)
+    local hs=Instance.new("UIStroke",hdr); hs.Color=Color3.fromRGB(70,70,185); hs.Thickness=1
+
+    local ht=Instance.new("TextLabel",hdr)
+    ht.Size=UDim2.new(1,-8,1,0); ht.Position=UDim2.new(0,8,0,0)
+    ht.Text="✦ "..catName
+    ht.TextColor3=Color3.fromRGB(140,140,245)
+    ht.BackgroundTransparency=1; ht.Font=Enum.Font.GothamBold; ht.TextSize=12
+    ht.TextXAlignment=Enum.TextXAlignment.Left; ht.ZIndex=7
+
+    panel.Parent=ScreenGui
+    PanelRefs[catName]=panel
+    rebuildPanel(catName,mods,panel)
+    return panel
+end
+
+local panelPositions={
+    Combat   = UDim2.new(0,20,  0,55),
+    Movement = UDim2.new(0,185, 0,55),
+    Visual   = UDim2.new(0,350, 0,55),
+}
+
+for _,cat in ipairs(Modules) do
+    buildPanel(cat.category, cat.mods, panelPositions[cat.category] or UDim2.new(0,20,0,55))
+end
+
+-- ============================================================
+-- GLOBAL INPUT (keybinds + rebind)
+-- ============================================================
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.UserInputType ~= Enum.UserInputType.Keyboard then return end
+
+    -- Rebind
+    if rebindTarget then
+        if inp.KeyCode ~= Enum.KeyCode.Escape then
+            rebindTarget.mod.keybind=inp.KeyCode
+        end
+        rebindTarget.lbl.Text="["..keyName(rebindTarget.mod.keybind).."]"
+        rebindTarget.lbl.TextColor3=Color3.fromRGB(195,155,250)
+        local cn=rebindTarget.catName; local ms=rebindTarget.mods
+        rebindTarget=nil
+        rebuildPanel(cn,ms,PanelRefs[cn])
+        return
+    end
+
+    if inp.KeyCode==Enum.KeyCode.RightAlt then
+        ScreenGui.Enabled=not ScreenGui.Enabled; return
+    end
+
+    for _,cat in ipairs(Modules) do
+        for _,mod in ipairs(cat.mods) do
+            if inp.KeyCode==mod.keybind then
+                mod.enabled=not mod.enabled
+                applyToggle(mod)
+                rebuildPanel(cat.category,cat.mods,PanelRefs[cat.category])
+            end
+        end
+    end
+end)
+
+-- ============================================================
+-- WATERMARK
+-- ============================================================
+local wm=Instance.new("TextLabel",ScreenGui); wm.Name="Watermark"
+wm.Size=UDim2.new(0,220,0,18); wm.Position=UDim2.new(0,20,0,10)
+wm.Text="✦ FeatherHub  |  Skywars  |  v3.0"
+wm.TextColor3=Color3.fromRGB(115,115,215)
+wm.BackgroundColor3=Color3.fromRGB(9,9,17); wm.BackgroundTransparency=0.2
+wm.BorderSizePixel=0; wm.Font=Enum.Font.GothamBold; wm.TextSize=11; wm.ZIndex=10
+local wmc=Instance.new("UICorner",wm); wmc.CornerRadius=UDim.new(0,5)
+local wms=Instance.new("UIStroke",wm); wms.Color=Color3.fromRGB(60,60,145); wms.Thickness=1
+
+print("✦ FeatherHub Skywars v3.0 loaded")
+print("  LMB=toggle  RMB=settings  RightAlt=hide UI")
