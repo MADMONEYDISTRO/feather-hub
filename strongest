@@ -1,0 +1,1174 @@
+-- FeatherHub | The Strongest Battlegrounds v1
+-- Clean UI rewrite with all original features preserved
+
+-- ═══════════════════════════════════════════════════════════════
+-- GAME CHECK
+-- ═══════════════════════════════════════════════════════════════
+if game.PlaceId ~= 10449761463 and game.PlaceId ~= 130818724007978 and game.PlaceId ~= 131048399685555 then
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Uh oh",
+        Text = "FeatherHub won't work properly in this game",
+        Duration = 2,
+    })
+    return
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- SERVICES & GLOBALS
+-- ═══════════════════════════════════════════════════════════════
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local TextChatService = game:GetService("TextChatService")
+
+local Player = Players.LocalPlayer
+local Mouse = Player:GetMouse()
+
+-- ═══════════════════════════════════════════════════════════════
+-- THEME (FeatherHub style)
+-- ═══════════════════════════════════════════════════════════════
+local THEME = {
+    bg = Color3.fromRGB(13,13,18),
+    sidebar = Color3.fromRGB(18,18,25),
+    card = Color3.fromRGB(23,23,32),
+    border = Color3.fromRGB(42,42,58),
+    text = Color3.fromRGB(228,228,240),
+    muted = Color3.fromRGB(95,95,118),
+    dim = Color3.fromRGB(30,30,44),
+    sep = Color3.fromRGB(34,34,50),
+    header = Color3.fromRGB(16,16,22),
+    inputBg = Color3.fromRGB(9,9,15),
+    accent = Color3.fromRGB(110,95,210),
+    accentLt = Color3.fromRGB(135,115,235),
+    accentDim = Color3.fromRGB(65,55,130),
+    green = Color3.fromRGB(90,195,145),
+    red = Color3.fromRGB(210,75,95),
+    gold = Color3.fromRGB(185,150,60),
+}
+local T = THEME
+
+local function tw(t) return TweenInfo.new(t or 0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out) end
+local WIN_W, WIN_H, SIDE_W, HDR_H = 450, 480, 100, 42
+
+-- ═══════════════════════════════════════════════════════════════
+-- UI CONSTRUCTION
+-- ═══════════════════════════════════════════════════════════════
+local sg = Instance.new("ScreenGui")
+sg.Name = "FeatherHub_SBG"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 999
+sg.IgnoreGuiInset = true
+pcall(function() sg.Parent = CoreGui end, function() sg.Parent = Player:WaitForChild("PlayerGui") end)
+
+local win = Instance.new("Frame")
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.BackgroundColor3 = T.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.Parent = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 14)
+Instance.new("UIStroke", win).Color = T.border
+Instance.new("UIStroke", win).Thickness = 1
+
+-- Sidebar
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+sidebar.BackgroundColor3 = T.sidebar
+sidebar.BorderSizePixel = 0
+sidebar.Parent = win
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+
+local logoPill = Instance.new("Frame")
+logoPill.Size = UDim2.new(0, 34, 0, 34)
+logoPill.Position = UDim2.new(0.5, -17, 0, 10)
+logoPill.BackgroundColor3 = T.accent
+logoPill.BorderSizePixel = 0
+logoPill.Parent = sidebar
+Instance.new("UICorner", logoPill).CornerRadius = UDim.new(0, 9)
+local logoF = Instance.new("TextLabel", logoPill)
+logoF.Size = UDim2.new(1,0,1,0)
+logoF.Text = "F"
+logoF.TextSize = 18
+logoF.Font = Enum.Font.GothamBold
+logoF.TextColor3 = Color3.new(1,1,1)
+logoF.BackgroundTransparency = 1
+
+local navCont = Instance.new("Frame")
+navCont.Size = UDim2.new(1,0,1,-130)
+navCont.Position = UDim2.new(0,0,0,60)
+navCont.BackgroundTransparency = 1
+navCont.Parent = sidebar
+local navList = Instance.new("UIListLayout", navCont)
+navList.SortOrder = Enum.SortOrder.LayoutOrder
+navList.VerticalAlignment = Enum.VerticalAlignment.Top
+navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+navList.Padding = UDim.new(0,4)
+
+local wmVer = Instance.new("TextLabel", sidebar)
+wmVer.Size = UDim2.new(1,0,0,10)
+wmVer.Position = UDim2.new(0,0,1,-34)
+wmVer.Text = "v1.0  •  feather"
+wmVer.Font = Enum.Font.Gotham
+wmVer.TextSize = 7
+wmVer.TextColor3 = T.muted
+wmVer.BackgroundTransparency = 1
+wmVer.TextXAlignment = Enum.TextXAlignment.Center
+
+-- Header (draggable)
+local hdr = Instance.new("Frame")
+hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
+hdr.BackgroundColor3 = T.header
+hdr.BorderSizePixel = 0
+hdr.Parent = win
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0,14)
+
+local hdrTitle = Instance.new("TextLabel", hdr)
+hdrTitle.Size = UDim2.new(1,-120,1,0)
+hdrTitle.Position = UDim2.new(0,14,0,0)
+hdrTitle.Text = "COMBAT"
+hdrTitle.Font = Enum.Font.GothamBold
+hdrTitle.TextSize = 14
+hdrTitle.TextColor3 = T.text
+hdrTitle.BackgroundTransparency = 1
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local hdrBadge = Instance.new("Frame", hdr)
+hdrBadge.Size = UDim2.new(0,44,0,18)
+hdrBadge.Position = UDim2.new(0,180,0.5,-9)
+hdrBadge.BackgroundColor3 = T.accentDim
+hdrBadge.BorderSizePixel = 0
+Instance.new("UICorner", hdrBadge).CornerRadius = UDim.new(0,6)
+local hdrBadgeLbl = Instance.new("TextLabel", hdrBadge)
+hdrBadgeLbl.Size = UDim2.new(1,0,1,0)
+hdrBadgeLbl.Text = "FREE"
+hdrBadgeLbl.Font = Enum.Font.GothamBold
+hdrBadgeLbl.TextSize = 7
+hdrBadgeLbl.TextColor3 = T.text
+hdrBadgeLbl.BackgroundTransparency = 1
+
+local function makeHdrBtn(xPos, symbol)
+    local b = Instance.new("TextButton", hdr)
+    b.Size = UDim2.new(0,24,0,24)
+    b.Position = UDim2.new(1,xPos,0.5,-12)
+    b.Text = symbol
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 14
+    b.TextColor3 = T.muted
+    b.BackgroundColor3 = T.dim
+    b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+    return b
+end
+local minBtn = makeHdrBtn(-56, "–")
+local closeBtn = makeHdrBtn(-28, "×")
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+local isMinimized = false
+minBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
+        sidebar.Visible = false
+        content.Visible = false
+        minBtn.Text = "+"
+    else
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+        sidebar.Visible = true
+        content.Visible = true
+        minBtn.Text = "–"
+    end
+end)
+
+-- Drag logic
+local dragging, dragStart, startPos = false
+hdr.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        local vp = workspace.CurrentCamera.ViewportSize
+        win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + delta.X, 0, vp.X - WIN_W), 0, math.clamp(startPos.Y.Offset + delta.Y, 0, vp.Y - WIN_H))
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+content.BackgroundTransparency = 1
+content.ClipsDescendants = true
+content.Parent = win
+
+-- Pages (tabs)
+local pages = {}
+local tabNames = {"COMBAT", "TELEPORT", "MISC", "SETTINGS"}
+local activeTab = 1
+
+local function makePage()
+    local pg = Instance.new("ScrollingFrame")
+    pg.Size = UDim2.new(1,0,1,0)
+    pg.BackgroundTransparency = 1
+    pg.BorderSizePixel = 0
+    pg.ScrollBarThickness = 3
+    pg.ScrollBarImageColor3 = T.accent
+    pg.CanvasSize = UDim2.new(0,0,0,0)
+    pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    pg.ScrollingDirection = Enum.ScrollingDirection.Y
+    pg.ElasticBehavior = Enum.ElasticBehavior.Never
+    pg.Visible = false
+    pg.Parent = content
+    local layout = Instance.new("UIListLayout", pg)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Padding = UDim.new(0,4)
+    local pad = Instance.new("UIPadding", pg)
+    pad.PaddingTop = UDim.new(0,8)
+    pad.PaddingBottom = UDim.new(0,8)
+    pad.PaddingLeft = UDim.new(0,8)
+    pad.PaddingRight = UDim.new(0,8)
+    return pg
+end
+
+for i = 1, #tabNames do pages[i] = makePage() end
+
+local function setTab(idx)
+    activeTab = idx
+    hdrTitle.Text = tabNames[idx]
+    for i, pg in ipairs(pages) do pg.Visible = (i == idx) end
+end
+
+-- Nav buttons
+for i, name in ipairs(tabNames) do
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,-6,0,34)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = i
+    row.Parent = navCont
+    local bar = Instance.new("Frame", row)
+    bar.Size = UDim2.new(0,3,0.4,0)
+    bar.Position = UDim2.new(0,0,0.3,0)
+    bar.BackgroundColor3 = T.accent
+    bar.BackgroundTransparency = 1
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1,0)
+    local bg = Instance.new("Frame", row)
+    bg.Size = UDim2.new(1,-4,1,-6)
+    bg.Position = UDim2.new(0,4,0,3)
+    bg.BackgroundColor3 = T.dim
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0,7)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1,-12,1,0)
+    lbl.Position = UDim2.new(0,8,0,0)
+    lbl.Text = name
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local hit = Instance.new("TextButton", row)
+    hit.Size = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.MouseButton1Click:Connect(function() setTab(i) end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- UI HELPER FUNCTIONS
+-- ═══════════════════════════════════════════════════════════════
+local function makeCard(parent, order)
+    local c = Instance.new("Frame")
+    c.Size = UDim2.new(1,0,0,0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.Parent = parent
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0,9)
+    local s = Instance.new("UIStroke", c)
+    s.Color = T.border
+    s.Thickness = 1
+    Instance.new("UIListLayout", c).SortOrder = Enum.SortOrder.LayoutOrder
+    c:FindFirstChildOfClass("UIListLayout").HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+
+local function makeRow(card, order, isLast, height)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,0,0, height or 38)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = order
+    row.Parent = card
+    if not isLast then
+        local sep = Instance.new("Frame", row)
+        sep.Size = UDim2.new(1,-24,0,1)
+        sep.Position = UDim2.new(0,12,1,-1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+    end
+    return row
+end
+
+local function makeLabel(parent, order, text, color)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,0,0,22)
+    lbl.Text = text
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 10
+    lbl.TextColor3 = color or T.muted
+    lbl.BackgroundTransparency = 1
+    lbl.LayoutOrder = order
+    lbl.Parent = parent
+    return lbl
+end
+
+local function makeButton(card, order, text, callback, small)
+    local row = makeRow(card, order, true, small and 36 or 40)
+    local btn = Instance.new("TextButton", row)
+    if small then
+        btn.Size = UDim2.new(0,120,0,28)
+        btn.Position = UDim2.new(0.5,-60,0.5,-14)
+    else
+        btn.Size = UDim2.new(1,-24,0,32)
+        btn.Position = UDim2.new(0,12,0.5,-16)
+    end
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = small and 10 or 11
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,7)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accentLt}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accent}):Play() end)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+local function makeToggle(card, order, text, initialState, onToggle)
+    local row = makeRow(card, order, false, 38)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.6,0,1,0)
+    lbl.Position = UDim2.new(0,14,0,0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    local track = Instance.new("TextButton", row)
+    track.Size = UDim2.new(0,36,0,20)
+    track.Position = UDim2.new(1,-48,0.5,-10)
+    track.BackgroundColor3 = initialState and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ""
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("Frame", track)
+    knob.Size = UDim2.new(0,16,0,16)
+    knob.Position = initialState and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+    local state = initialState
+    track.MouseButton1Click:Connect(function()
+        state = not state
+        TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)}):Play()
+        onToggle(state)
+    end)
+    return row
+end
+
+local function makeTextBox(card, order, placeholder, defaultText, callback)
+    local row = makeRow(card, order, true, 42)
+    local box = Instance.new("TextBox", row)
+    box.Size = UDim2.new(1,-24,0,32)
+    box.Position = UDim2.new(0,12,0.5,-16)
+    box.PlaceholderText = placeholder
+    box.Text = defaultText or ""
+    box.Font = Enum.Font.GothamMedium
+    box.TextSize = 10
+    box.TextColor3 = T.text
+    box.PlaceholderColor3 = T.muted
+    box.BackgroundColor3 = T.inputBg
+    box.BorderSizePixel = 0
+    box.ClearTextOnFocus = false
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0,7)
+    box.FocusLost:Connect(function(enterPressed)
+        if enterPressed then callback(box.Text) end
+    end)
+    return box, row
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- NOTIFICATION
+-- ═══════════════════════════════════════════════════════════════
+local function notify(title, msg, nType)
+    local col = nType == "success" and T.green or nType == "error" and T.red or T.accent
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0,0,0,56)
+    n.Position = UDim2.new(1,-10,1,-66)
+    n.AnchorPoint = Vector2.new(1,1)
+    n.BackgroundColor3 = T.card
+    n.BorderSizePixel = 0
+    n.ZIndex = 200
+    n.Parent = sg
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0,9)
+    local ns = Instance.new("UIStroke", n); ns.Color = col; ns.Thickness = 1
+    local bar = Instance.new("Frame", n); bar.Size = UDim2.new(0,3,0.65,0); bar.Position = UDim2.new(0,0,0.175,0); bar.BackgroundColor3 = col; Instance.new("UICorner", bar).CornerRadius = UDim.new(1,0)
+    local t1 = Instance.new("TextLabel", n); t1.Size = UDim2.new(1,-16,0,18); t1.Position = UDim2.new(0,12,0,8); t1.Text = title; t1.Font = Enum.Font.GothamBold; t1.TextSize = 11; t1.TextColor3 = T.text; t1.TextXAlignment = Enum.TextXAlignment.Left; t1.BackgroundTransparency = 1
+    local t2 = Instance.new("TextLabel", n); t2.Size = UDim2.new(1,-16,0,18); t2.Position = UDim2.new(0,12,0,26); t2.Text = msg; t2.Font = Enum.Font.Gotham; t2.TextSize = 9; t2.TextColor3 = T.text; t2.TextTransparency = 0.35; t2.TextXAlignment = Enum.TextXAlignment.Left; t2.TextWrapped = true; t2.BackgroundTransparency = 1
+    TweenService:Create(n, tw(0.25), {Size = UDim2.new(0,190,0,56)}):Play()
+    task.delay(3.5, function() if n and n.Parent then TweenService:Create(n, tw(0.25), {Position = UDim2.new(1,10,1,-66)}):Play(); task.delay(0.3, function() n:Destroy() end) end end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- FEATURE VARIABLES & STATE
+-- ═══════════════════════════════════════════════════════════════
+-- Camlock
+local camlockEnabled = false
+local camlockTarget = nil
+local camlockSmoothness = 0.16
+getgenv().Key = "c"
+
+-- Auto Block
+local autoBlockEnabled = false
+local blockCloseRange = 14
+local blockLongRange = 35
+local isBlocking = false
+
+-- Counter Notifier
+local counterNotifierEnabled = false
+local counterRange = 20
+
+-- Misc toggles
+local m1AfterBlock = false
+local counterBait = false
+local lEmote = false
+local deathCounterNotifier = false
+local autoCounterM1 = false
+local m1Reach = false
+local m1Reset = false
+local antiDeathCounter = false
+local noStun = false
+local noFatigue = false
+local antiKnockback = false
+local showCDInfo = false
+local baitMessage = "Simon says counter"
+
+-- Teleport locations
+local teleports = {
+    Mountain = CFrame.new(-59, 653, -381),
+    DeathCounter = CFrame.new(-66, 29, 20348),
+    Atomic = CFrame.new(1070, 133, 23006),
+    Baseplate = CFrame.new(992, 20, 22952),
+    Baseplate2 = CFrame.new(1065, 406, 22992),
+    MiddleMap = CFrame.new(149, 441, 26),
+}
+
+-- Animation IDs
+local closeRangeAnims = {
+    "rbxassetid://16552234590", "rbxassetid://17889290569", "rbxassetid://17889461810",
+    "rbxassetid://17889458563", "rbxassetid://17889471098", "rbxassetid://16515448089",
+    "rbxassetid://16515520431", "rbxassetid://16515503507", "rbxassetid://15162694192",
+    "rbxassetid://15240176873", "rbxassetid://15240216931", "rbxassetid://15259161390",
+    "rbxassetid://14136436157", "rbxassetid://14001963401", "rbxassetid://13997092940",
+    "rbxassetid://14004222985", "rbxassetid://13378708199", "rbxassetid://13378751717",
+    "rbxassetid://13390230973", "rbxassetid://13295936866", "rbxassetid://13295919399",
+    "rbxassetid://13296577783", "rbxassetid://13491635433", "rbxassetid://13294471966",
+    "rbxassetid://13532604085", "rbxassetid://13532600125", "rbxassetid://13532562418",
+    "rbxassetid://10469643643", "rbxassetid://10469630950", "rbxassetid://10469639222",
+    "rbxassetid://10469493270", "rbxassetid://10479335397", "rbxassetid://17325537719",
+    "rbxassetid://17325522388", "rbxassetid://17325510002", "rbxassetid://17325513870",
+    "rbxassetid://13380255751", "rbxassetid://17857788598", "rbxassetid://17799224866",
+    "rbxassetid://10470104242", "rbxassetid://10503381238", "rbxassetid://18464351556",
+    "rbxassetid://10466974800", "rbxassetid://10468665991", "rbxassetid://12509505723",
+    "rbxassetid://18179181663", "rbxassetid://17857880283", "rbxassetid://12534735382",
+    "rbxassetid://12296882427", "rbxassetid://12272894215", "rbxassetid://15290930205",
+    "rbxassetid://16431491215", "rbxassetid://16515850153", "rbxassetid://16139402582",
+    "rbxassetid://13362587853", "rbxassetid://16139108718", "rbxassetid://14046756619",
+    "rbxassetid://134775406437626", "rbxassetid://104895379416342", "rbxassetid://100059874351664",
+    "rbxassetid://123005629431309", "rbxassetid://98542310119798", "rbxassetid://77509627104305",
+    "rbxassetid://113166426814229", "rbxassetid://13376869471", "rbxassetid://15295895753",
+    "rbxassetid://13370310513", "rbxassetid://125955606488863",
+}
+local longRangeAnims = {
+    "rbxassetid://10479335397", "rbxassetid://10468665991", "rbxassetid://12684185971",
+    "rbxassetid://12509505723", "rbxassetid://12684390285", "rbxassetid://17275150809",
+    "rbxassetid://131820095363270", "rbxassetid://13362587853", "rbxassetid://14046756619",
+    "rbxassetid://15295895753", "rbxassetid://15290930205", "rbxassetid://13380255751",
+}
+local counterAnims = {
+    "rbxassetid://10469493270", "rbxassetid://10469630950", "rbxassetid://13532562418",
+    "rbxassetid://13532600125", "rbxassetid://13491635433", "rbxassetid://13296577783",
+    "rbxassetid://13370310513", "rbxassetid://13390230973", "rbxassetid://14004222985",
+    "rbxassetid://13997092940", "rbxassetid://15259161390", "rbxassetid://15240216931",
+    "rbxassetid://16515503507", "rbxassetid://16515520431", "rbxassetid://17889458563",
+    "rbxassetid://17889461810", "rbxassetid://123005629431309", "rbxassetid://100059874351664",
+}
+local deathCounterAnim = "rbxassetid://11343250001"
+local counterMoveAnims = { "rbxassetid://12351854556", "rbxassetid://15311685628", "rbxassetid://78521642007560" }
+
+-- ═══════════════════════════════════════════════════════════════
+-- HELPER FUNCTIONS
+-- ═══════════════════════════════════════════════════════════════
+local function isPlayingAnimation(humanoid, animList)
+    for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+        if track.Animation and table.find(animList, track.Animation.AnimationId) then
+            return true
+        end
+    end
+    return false
+end
+
+local function pressF()
+    Player.Character.Communicate:FireServer({{Goal="KeyPress", Key=Enum.KeyCode.F}})
+end
+local function releaseF()
+    Player.Character.Communicate:FireServer({{Goal="KeyRelease", Key=Enum.KeyCode.F}})
+end
+local function clickM1()
+    Player.Character.Communicate:FireServer({{Goal="LeftClick", Mobile=true}})
+end
+local function releaseM1()
+    Player.Character.Communicate:FireServer({{Goal="LeftClickRelease", Mobile=true}})
+end
+
+local function findNearestEnemy(maxDist)
+    local char = Player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
+    local myPos = char.HumanoidRootPart.Position
+    local nearest, minDist = nil, maxDist or math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local dist = (myPos - p.Character.HumanoidRootPart.Position).Magnitude
+            if dist < minDist then
+                nearest = p.Character.HumanoidRootPart
+                minDist = dist
+            end
+        end
+    end
+    return nearest
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- FEATURE LOOPS
+-- ═══════════════════════════════════════════════════════════════
+
+-- Camlock
+local camlockConnection
+local function updateCamlock()
+    if camlockConnection then camlockConnection:Disconnect(); camlockConnection = nil end
+    if camlockEnabled then
+        camlockConnection = RunService.Heartbeat:Connect(function()
+            if camlockTarget and camlockTarget.Parent then
+                local cam = workspace.CurrentCamera
+                cam.CFrame = CFrame.new(cam.CFrame.p, camlockTarget.Position + camlockTarget.Velocity * camlockSmoothness)
+            else
+                camlockTarget = findNearestEnemy(1000)
+            end
+        end)
+    end
+end
+
+Mouse.KeyDown:Connect(function(key)
+    if key == getgenv().Key then
+        camlockEnabled = not camlockEnabled
+        if camlockEnabled then
+            camlockTarget = findNearestEnemy(1000)
+        else
+            camlockTarget = nil
+        end
+        updateCamlock()
+    end
+end)
+
+-- Auto Block Loop
+task.spawn(function()
+    while true do
+        if autoBlockEnabled then
+            local char = Player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local myPos = char.HumanoidRootPart.Position
+                local closeEnemy, longEnemy
+                local closeDist, longDist = blockCloseRange, blockLongRange
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (myPos - p.Character.HumanoidRootPart.Position).Magnitude
+                        local hum = p.Character:FindFirstChild("Humanoid")
+                        if hum then
+                            if dist < closeDist and isPlayingAnimation(hum, closeRangeAnims) then
+                                closeEnemy = p
+                                closeDist = dist
+                            end
+                            if dist < longDist and isPlayingAnimation(hum, longRangeAnims) then
+                                longEnemy = p
+                                longDist = dist
+                            end
+                        end
+                    end
+                end
+                local shouldBlock = closeEnemy or longEnemy
+                if shouldBlock and not isBlocking then
+                    isBlocking = true
+                    pressF()
+                    task.wait(0.15)
+                    releaseF()
+                    isBlocking = false
+                    if m1AfterBlock then
+                        clickM1()
+                        task.wait(0.1)
+                        releaseM1()
+                    end
+                    -- Auto Counter M1
+                    if autoCounterM1 and longEnemy then
+                        local prey = Player.Backpack:FindFirstChild("Prey's Peril") or Player.Backpack:FindFirstChild("Split Second Counter")
+                        if prey and isPlayingAnimation(longEnemy.Character.Humanoid, counterAnims) then
+                            Player.Character.Communicate:FireServer({{Tool=prey, Goal="Console Move"}})
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.05)
+    end
+end)
+
+-- Counter Notifier
+local notifiedPlayers = {}
+local highlightCache = {}
+task.spawn(function()
+    while true do
+        if counterNotifierEnabled then
+            local char = Player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local myPos = char.HumanoidRootPart.Position
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (myPos - p.Character.HumanoidRootPart.Position).Magnitude
+                        if dist <= counterRange then
+                            local hum = p.Character:FindFirstChild("Humanoid")
+                            if hum then
+                                local animId = nil
+                                for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+                                    if track.Animation and table.find(counterMoveAnims, track.Animation.AnimationId) then
+                                        animId = track.Animation.AnimationId
+                                        break
+                                    end
+                                end
+                                if animId then
+                                    local now = tick()
+                                    if not notifiedPlayers[p] or now - notifiedPlayers[p] > 5 then
+                                        notifiedPlayers[p] = now
+                                        local color = animId == counterMoveAnims[1] and Color3.fromRGB(240,240,240) or Color3.fromRGB(0,0,254)
+                                        if not highlightCache[p] then
+                                            local hl = Instance.new("Highlight")
+                                            hl.FillColor = color
+                                            hl.OutlineColor = Color3.new(1,1,1)
+                                            hl.FillTransparency = 0.5
+                                            hl.Parent = p.Character
+                                            highlightCache[p] = hl
+                                        end
+                                        notify("Notifier", p.Name .. " used a counter move", "info")
+                                        task.delay(17.5, function()
+                                            if highlightCache[p] then highlightCache[p]:Destroy(); highlightCache[p] = nil end
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Death Counter Notifier
+local dcHighlights = {}
+local dcNotified = {}
+task.spawn(function()
+    while true do
+        if deathCounterNotifier then
+            local live = workspace:FindFirstChild("Live")
+            if live then
+                for _, obj in ipairs(live:GetChildren()) do
+                    local plr = Players:FindFirstChild(obj.Name)
+                    if plr and obj:FindFirstChildWhichIsA("Accessory", true) then
+                        for _, acc in ipairs(obj:GetDescendants()) do
+                            if acc:IsA("Accessory") and acc.Name == "Counter" then
+                                if not dcNotified[obj] then
+                                    dcNotified[obj] = true
+                                    if not dcHighlights[obj] then
+                                        local hl = Instance.new("Highlight")
+                                        hl.FillColor = Color3.fromRGB(255,0,0)
+                                        hl.OutlineColor = Color3.new(1,1,1)
+                                        hl.FillTransparency = 0.5
+                                        hl.Parent = obj
+                                        dcHighlights[obj] = hl
+                                    end
+                                    notify("Notifier", plr.Name .. " used Death Counter", "info")
+                                    -- Billboard
+                                    local head = obj:FindFirstChild("Head")
+                                    if head then
+                                        local bg = Instance.new("BillboardGui")
+                                        bg.Name = "Ded"
+                                        bg.Size = UDim2.new(8,0,2,0)
+                                        bg.StudsOffset = Vector3.new(0,2,0)
+                                        bg.Adornee = head
+                                        bg.AlwaysOnTop = true
+                                        bg.Parent = head
+                                        local lbl = Instance.new("TextLabel", bg)
+                                        lbl.Size = UDim2.new(1,0,1,0)
+                                        lbl.BackgroundTransparency = 1
+                                        lbl.Text = "Death Counter"
+                                        lbl.TextColor3 = Color3.fromRGB(255,0,0)
+                                        lbl.TextScaled = true
+                                        lbl.Font = Enum.Font.SourceSansBold
+                                    end
+                                    task.delay(10.1, function()
+                                        if dcHighlights[obj] then dcHighlights[obj]:Destroy(); dcHighlights[obj] = nil end
+                                        if head and head:FindFirstChild("Ded") then head.Ded:Destroy() end
+                                    end)
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.2)
+    end
+end)
+
+-- Counter Bait
+local baitActive = false
+task.spawn(function()
+    while true do
+        if counterBait then
+            local char = Player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local myPos = char.HumanoidRootPart.Position
+                local found = false
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (myPos - p.Character.HumanoidRootPart.Position).Magnitude
+                        if dist <= counterRange then
+                            local hum = p.Character:FindFirstChild("Humanoid")
+                            if hum and isPlayingAnimation(hum, counterMoveAnims) then
+                                found = true
+                                break
+                            end
+                        end
+                    end
+                end
+                if found and not baitActive then
+                    baitActive = true
+                    TextChatService.TextChannels.RBXGeneral:SendAsync(baitMessage)
+                    task.wait(0.2)
+                    if lEmote then
+                        local anim = Instance.new("Animation")
+                        anim.AnimationId = "rbxassetid://18614546390"
+                        local track = char.Humanoid:FindFirstChildOfClass("Animator"):LoadAnimation(anim)
+                        track:Play()
+                        task.wait(1)
+                        track:Stop()
+                    end
+                elseif not found then
+                    baitActive = false
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- M1 Reach (Teleport behind)
+local function m1ReachHandler(animTrack)
+    if not m1Reach then return end
+    local target = findNearestEnemy(16)
+    if target then
+        local look = target.CFrame.LookVector
+        local dot = look:Dot((Player.Character.HumanoidRootPart.Position - target.Position).unit)
+        local offset = target.Position + look * (dot > 0 and 0.3 or -0.3)
+        TweenService:Create(Player.Character.HumanoidRootPart, TweenInfo.new(0.09), {CFrame = CFrame.lookAt(offset, target.Position)}):Play()
+    end
+end
+Player.CharacterAdded:Connect(function(char)
+    char:WaitForChild("Humanoid").AnimationPlayed:Connect(m1ReachHandler)
+end)
+if Player.Character then
+    Player.Character:WaitForChild("Humanoid").AnimationPlayed:Connect(m1ReachHandler)
+end
+
+-- M1 Reset
+local function m1ResetHandler(animator)
+    RunService.Heartbeat:Connect(function()
+        if m1Reset then
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                local id = track.Animation and track.Animation.AnimationId
+                if id == "rbxassetid://10480793962" or id == "rbxassetid://10480796021" then
+                    local remaining = track.Length - track.TimePosition
+                    if remaining > 0.19 then
+                        task.delay(remaining - 0.19, function()
+                            if track.IsPlaying then track:Stop() end
+                        end)
+                    end
+                end
+            end
+        end
+    end)
+end
+Player.CharacterAdded:Connect(function(char)
+    m1ResetHandler(char.Humanoid:WaitForChild("Animator"))
+end)
+if Player.Character then
+    m1ResetHandler(Player.Character.Humanoid:WaitForChild("Animator"))
+end
+
+-- Anti Death Counter
+local function antiDeathCounterHandler(hum)
+    hum.AnimationPlayed:Connect(function(anim)
+        if antiDeathCounter and anim.Animation.AnimationId == deathCounterAnim then
+            local root = Player.Character.HumanoidRootPart
+            local oldCF = root.CFrame
+            task.wait(1.5)
+            notify("Combat Gui", "Bypassing Death Counter", "info")
+            task.wait(2)
+            Player.Character:SetPrimaryPartCFrame(CFrame.new(-93435, -490, -4673))
+            local void = Instance.new("Part")
+            void.Parent = workspace.Terrain
+            void.Name = "Void"
+            void.Transparency = 1
+            void.Anchored = true
+            void.Size = Vector3.new(2048,1,2048)
+            void.Position = Vector3.new(0, workspace.FallenPartsDestroyHeight, 0)
+            void.Locked = true
+            RunService.Heartbeat:Connect(function()
+                if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+                    void.Position = Vector3.new(Player.Character.HumanoidRootPart.Position.X, workspace.FallenPartsDestroyHeight, Player.Character.HumanoidRootPart.Position.Z)
+                end
+            end)
+            task.wait(3)
+            Player.Character:SetPrimaryPartCFrame(oldCF)
+            workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+            workspace.CurrentCamera.CameraSubject = Player.Character.Humanoid
+            Player.CameraMinZoomDistance = 0.5
+            Player.CameraMaxZoomDistance = 400
+            Player.CameraMode = Enum.CameraMode.Classic
+            Player.Character.Head.Anchored = false
+        end
+    end)
+end
+Player.CharacterAdded:Connect(function(char)
+    antiDeathCounterHandler(char.Humanoid)
+end)
+if Player.Character then
+    antiDeathCounterHandler(Player.Character.Humanoid)
+end
+
+-- No Stun
+task.spawn(function()
+    while true do
+        if noStun then
+            local live = workspace:FindFirstChild("Live")
+            if live then
+                for _, obj in ipairs(live:GetChildren()) do
+                    local plr = Players:FindFirstChild(obj.Name)
+                    if plr then
+                        for _, acc in ipairs(obj:GetDescendants()) do
+                            if acc:IsA("Accessory") and (acc.Name == "Slowed" or acc.Name == "Freeze" or acc.Name == "NoDash" or acc.Name == "NoBlock" or acc.Name == "NoPunch" or acc.Name == "NoJump" or acc.Name == "ComboStun") then
+                                acc:Destroy()
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Anti Knockback
+task.spawn(function()
+    while true do
+        if antiKnockback then
+            local live = workspace:FindFirstChild("Live")
+            if live then
+                for _, obj in ipairs(live:GetChildren()) do
+                    local plr = Players:FindFirstChild(obj.Name)
+                    if plr then
+                        for _, acc in ipairs(obj:GetDescendants()) do
+                            if acc:IsA("Accessory") and (acc.Name == "Ragdoll" or acc.Name == "RagdollSim") then
+                                acc:Destroy()
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- No Fatigue
+local function noFatigueHandler(hum)
+    hum:GetPropertyChangedSignal("JumpPower"):Connect(function()
+        if noFatigue and hum.JumpPower < 50 then
+            hum.JumpPower = 48.5
+        end
+    end)
+    task.spawn(function()
+        while true do
+            if noFatigue and hum and hum.JumpPower < 50 then
+                hum.JumpPower = 48.5
+            end
+            task.wait(0.1)
+        end
+    end)
+end
+Player.CharacterAdded:Connect(function(char)
+    noFatigueHandler(char.Humanoid)
+end)
+if Player.Character then
+    noFatigueHandler(Player.Character.Humanoid)
+end
+
+-- Show CD Info
+local cdInfoActive = false
+local cdConnections = {}
+local function startCDInfo()
+    if cdInfoActive then return end
+    cdInfoActive = true
+    local function createTimer(name, duration, posOffset)
+        local sg = Instance.new("ScreenGui")
+        sg.Name = name
+        sg.Parent = Player.PlayerGui
+        sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        local label = Instance.new("TextLabel", sg)
+        label.BackgroundTransparency = 1
+        label.Position = posOffset
+        label.Size = UDim2.new(0.1,0,0.05,0)
+        label.Font = Enum.Font.SourceSansBold
+        label.TextColor3 = Color3.new(1,1,1)
+        label.TextScaled = true
+        label.Text = name .. ": " .. string.format("%.1f", duration)
+        local step = 0.1
+        for t = duration, 0, -step do
+            label.Text = name .. ": " .. string.format("%.1f", t)
+            task.wait(step)
+        end
+        sg:Destroy()
+    end
+    local function onAnimPlayed(anim)
+        local id = anim.Animation.AnimationId
+        if id == "rbxassetid://10480793962" or id == "rbxassetid://10480796021" then
+            task.spawn(function() createTimer("SideDash", 1.9, UDim2.new(0,0,0.92,0)) end)
+        elseif id == "rbxassetid://10491993682" or id == "rbxassetid://10479335397" then
+            task.spawn(function() createTimer("Dash", 4.8, UDim2.new(0,0,0.86,0)) end)
+        end
+    end
+    local function checkRagdoll()
+        local live = workspace:FindFirstChild("Live")
+        if live then
+            local obj = live:FindFirstChild(Player.Name)
+            if obj and obj:FindFirstChild("RagdollCancel") then
+                task.spawn(function() createTimer("Evasive", 30, UDim2.new(0,0,0.8,0)) end)
+            end
+        end
+    end
+    local animator = Player.Character.Humanoid:FindFirstChildOfClass("Animator")
+    table.insert(cdConnections, animator.AnimationPlayed:Connect(onAnimPlayed))
+    table.insert(cdConnections, RunService.Heartbeat:Connect(checkRagdoll))
+end
+local function stopCDInfo()
+    cdInfoActive = false
+    for _, conn in ipairs(cdConnections) do conn:Disconnect() end
+    cdConnections = {}
+end
+
+-- Anti Lag
+local function antiLag()
+    local map = workspace:FindFirstChild("Map")
+    if map then
+        for _, v in ipairs({"Grass","Trees","GrassTop","GrassBottom","Benchs"}) do
+            local obj = map:FindFirstChild(v)
+            if obj then obj:Destroy() end
+        end
+    end
+    local rs = ReplicatedStorage
+    for _, v in ipairs({"Cutscenes","CameraShaker","Emotes","Resources"}) do
+        local folder = rs:FindFirstChild(v)
+        if folder then
+            for _, item in ipairs(folder:GetChildren()) do item:Destroy() end
+        end
+    end
+    local lib = rs:FindFirstChild("library")
+    if lib and lib:FindFirstChild("CameraShaker") then lib.CameraShaker:Destroy() end
+    local live = workspace:FindFirstChild("Live")
+    if live then
+        local obj = live:FindFirstChild(Player.Name)
+        if obj then
+            for _, part in ipairs({"Left Arm","Right Arm"}) do
+                local p = obj:FindFirstChild(part)
+                if p then p.Transparency = 0 end
+            end
+        end
+    end
+    local lighting = game:GetService("Lighting")
+    for _, v in ipairs({"Atmosphere","Clear Blue Sky"}) do
+        local obj = lighting:FindFirstChild(v)
+        if obj then obj:Destroy() end
+    end
+    local clouds = workspace.Terrain:FindFirstChild("Clouds")
+    if clouds then clouds:Destroy() end
+    notify("Anti Lag", "Applied optimizations", "success")
+end
+
+-- Void Script
+local function voidScript()
+    loadstring(game:HttpGet("https://pastefy.app/zV3ruT7F/raw"))()
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- BUILD UI PAGES
+-- ═══════════════════════════════════════════════════════════════
+
+-- PAGE 1: COMBAT
+local pg_combat = pages[1]
+local card1 = makeCard(pg_combat, 1)
+makeToggle(card1, 1, "Auto Block", false, function(state)
+    autoBlockEnabled = state
+end)
+makeToggle(card1, 2, "Counter Notifier", false, function(state)
+    counterNotifierEnabled = state
+end)
+makeToggle(card1, 3, "M1 After Block", false, function(state) m1AfterBlock = state end)
+makeToggle(card1, 4, "Auto Counter M1", false, function(state) autoCounterM1 = state end)
+
+local card2 = makeCard(pg_combat, 2)
+makeLabel(card2, 1, "Counter Bait", T.accent)
+makeToggle(card2, 2, "Enable Counter Bait", false, function(state) counterBait = state end)
+makeToggle(card2, 3, "L Emote on Bait", false, function(state) lEmote = state end)
+local baitBox = makeTextBox(card2, 4, "Bait message", baitMessage, function(txt) baitMessage = txt end)
+
+local card3 = makeCard(pg_combat, 3)
+makeLabel(card3, 1, "Camlock", T.accent)
+makeButton(card3, 2, "Toggle Camlock (Key: "..getgenv().Key..")", function()
+    camlockEnabled = not camlockEnabled
+    if camlockEnabled then camlockTarget = findNearestEnemy(1000) else camlockTarget = nil end
+    updateCamlock()
+    notify("Camlock", camlockEnabled and "Enabled" or "Disabled", "success")
+end, true)
+
+-- PAGE 2: TELEPORT
+local pg_tp = pages[2]
+local tpCard = makeCard(pg_tp, 1)
+for name, cf in pairs(teleports) do
+    makeButton(tpCard, #tpCard:GetChildren(), name, function()
+        if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+            Player.Character.HumanoidRootPart.CFrame = cf
+        end
+    end, true)
+end
+
+-- PAGE 3: MISC
+local pg_misc = pages[3]
+local miscCard = makeCard(pg_misc, 1)
+makeToggle(miscCard, 1, "No Stun", false, function(state) noStun = state end)
+makeToggle(miscCard, 2, "No Fatigue", false, function(state) noFatigue = state end)
+makeToggle(miscCard, 3, "Anti Knockback", false, function(state) antiKnockback = state end)
+makeToggle(miscCard, 4, "Death Counter Notifier", false, function(state) deathCounterNotifier = state end)
+makeToggle(miscCard, 5, "Anti Death Counter", false, function(state) antiDeathCounter = state end)
+makeToggle(miscCard, 6, "M1 Reach", false, function(state) m1Reach = state end)
+makeToggle(miscCard, 7, "M1 Reset", false, function(state) m1Reset = state end)
+makeToggle(miscCard, 8, "Show CD Info", false, function(state)
+    showCDInfo = state
+    if state then startCDInfo() else stopCDInfo() end
+end)
+makeButton(miscCard, 9, "Anti Lag", antiLag, true)
+makeButton(miscCard, 10, "Void Script", voidScript, true)
+
+-- PAGE 4: SETTINGS
+local pg_set = pages[4]
+local setCard = makeCard(pg_set, 1)
+makeLabel(setCard, 1, "Auto Block Ranges", T.accent)
+local box1 = makeTextBox(setCard, 2, "Close Range", tostring(blockCloseRange), function(t)
+    blockCloseRange = tonumber(t) or 14
+end)
+local box2 = makeTextBox(setCard, 3, "Long Range", tostring(blockLongRange), function(t)
+    blockLongRange = tonumber(t) or 35
+end)
+local box3 = makeTextBox(setCard, 4, "Counter Notifier Range", tostring(counterRange), function(t)
+    counterRange = tonumber(t) or 20
+end)
+makeButton(setCard, 5, "Reset Defaults", function()
+    blockCloseRange = 14
+    blockLongRange = 35
+    counterRange = 20
+    box1.Text = "14"
+    box2.Text = "35"
+    box3.Text = "20"
+    notify("Settings", "Reset to defaults", "success")
+end, true)
+
+-- ═══════════════════════════════════════════════════════════════
+-- FINALIZE
+-- ═══════════════════════════════════════════════════════════════
+local vp = workspace.CurrentCamera.ViewportSize
+win.Position = UDim2.new(0, (vp.X - WIN_W)/2, 0, (vp.Y - WIN_H)/2)
+win.Visible = true
+win.Size = UDim2.new(0,0,0,0)
+win.BackgroundTransparency = 1
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0,WIN_W,0,WIN_H)}):Play()
+task.delay(0.45, function() win.BackgroundTransparency = 0 end)
+
+setTab(1)
+notify("FeatherHub SBG", "Loaded successfully", "success")
+
+-- Toggle UI with RightBracket
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.RightBracket then
+        sg.Enabled = not sg.Enabled
+    end
+end)
+
+-- Initial Camlock prompt (as original)
+task.wait(0.9)
+StarterGui:SetCore("SendNotification", {
+    Title = "Note",
+    Text = "Remember to setup the script before using (or default setup)",
+    Duration = 3,
+})
+local bindable = Instance.new("BindableFunction")
+bindable.OnInvoke = function(response)
+    if response == "Yes" then
+        -- Camlock already implemented, just notify
+        notify("Camlock", "Use key '"..getgenv().Key.."' to toggle", "info")
+    end
+end
+StarterGui:SetCore("SendNotification", {
+    Title = "Hey",
+    Text = "Do you want to enable Camlock?",
+    Duration = 85,
+    Button1 = "Yes",
+    Button2 = "No",
+    Callback = bindable,
+})
