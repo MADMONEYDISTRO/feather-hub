@@ -1,0 +1,314 @@
+
+
+local RunService=game:GetService("RunService")
+local Players=game:GetService("Players")
+local UserInputService=game:GetService("UserInputService")
+local TweenService=game:GetService("TweenService")
+local StarterGui=game:GetService("StarterGui")
+local CoreGui=game:GetService("CoreGui")
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local Lighting=game:GetService("Lighting")
+
+local Player=Players.LocalPlayer
+local DisplayName=tostring(Player.DisplayName)
+local Username=tostring(Player.Name)
+local Camera=workspace.CurrentCamera
+local Mouse=Player:GetMouse()
+
+local isMobile=false
+pcall(function() isMobile=UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled end)
+
+-- STATE
+local u4=true;local u5=true;local u6=false;local u66=14;local u67=Color3.fromRGB(255,255,255)
+local u68=false;local u69=false;local u70=false;local u71=false;local u72=0.5;local u152=false;local u151={}
+local u177=false;local u192=false;local u210=false;local u241=false;local u254=false
+local u376=1.1;local u377=false;local u269=4;local u270=5;local u271=false;local u272=nil;local u273=nil
+local u362=30;local u363=false;local u302=false;local u296=3;local u304=nil;local u303=0.001
+local u430="Head";local u431=30;local u432=false
+local u17=true;local u18=false;local u19=false;local u20=nil;local u60=nil
+
+-- PALETTE
+local DARK={bg=Color3.fromRGB(14,14,16),sidebar=Color3.fromRGB(20,20,24),card=Color3.fromRGB(26,26,30),border=Color3.fromRGB(44,44,52),text=Color3.fromRGB(240,240,244),muted=Color3.fromRGB(100,100,115),dim=Color3.fromRGB(32,32,38),sep=Color3.fromRGB(36,36,44),header=Color3.fromRGB(18,18,22)}
+local LIGHT={bg=Color3.fromRGB(248,248,250),sidebar=Color3.fromRGB(255,255,255),card=Color3.fromRGB(255,255,255),border=Color3.fromRGB(218,218,228),text=Color3.fromRGB(18,18,22),muted=Color3.fromRGB(145,145,160),dim=Color3.fromRGB(235,235,242),sep=Color3.fromRGB(225,225,232),header=Color3.fromRGB(252,252,255)}
+local accent=Color3.fromRGB(90,90,210);local accentLight=Color3.fromRGB(120,110,230)
+local green=Color3.fromRGB(100,200,160);local red=Color3.fromRGB(220,80,100);local gold=Color3.fromRGB(200,170,80)
+local isDark=true;local T=DARK
+local function tw(t,s,d) return TweenInfo.new(t or 0.2,s or Enum.EasingStyle.Quart,d or Enum.EasingDirection.Out) end
+
+local themeReg={}
+local function reg(o,p,l,d) table.insert(themeReg,{o=o,p=p,l=l,d=d}) end
+local function applyReg() for _,e in ipairs(themeReg) do if e.o and e.o.Parent then e.o[e.p]=isDark and e.d or e.l end end end
+
+local WIN_W,WIN_H,SIDE_W
+if isMobile then WIN_W=360;WIN_H=460;SIDE_W=72 else WIN_W=480;WIN_H=420;SIDE_W=96 end
+local HDR_H=44
+
+local sg=Instance.new("ScreenGui");sg.Name="FeatherHubCrim1";sg.ResetOnSpawn=false;sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling;sg.DisplayOrder=999;sg.IgnoreGuiInset=true
+if not pcall(function() sg.Parent=CoreGui end) then sg.Parent=Player:WaitForChild("PlayerGui") end
+
+local function notify(title,msg,nType)
+    local col=({success=green,error=red,warning=gold})[nType] or accent
+    local n=Instance.new("Frame");n.Size=UDim2.new(0,0,0,50);n.Position=UDim2.new(1,-10,1,-62);n.AnchorPoint=Vector2.new(1,1);n.BackgroundColor3=T.bg;n.BorderSizePixel=0;n.ClipsDescendants=true;n.Parent=sg
+    Instance.new("UICorner",n).CornerRadius=UDim.new(0,8);Instance.new("UIStroke",n).Color=T.border
+    local bar=Instance.new("Frame");bar.Size=UDim2.new(0,3,1,0);bar.BackgroundColor3=col;bar.BorderSizePixel=0;bar.Parent=n;Instance.new("UICorner",bar).CornerRadius=UDim.new(0,8)
+    local t1=Instance.new("TextLabel");t1.Size=UDim2.new(1,-16,0,16);t1.Position=UDim2.new(0,12,0,7);t1.Text=title;t1.Font=Enum.Font.GothamBold;t1.TextSize=10;t1.TextColor3=T.text;t1.TextXAlignment=Enum.TextXAlignment.Left;t1.BackgroundTransparency=1;t1.Parent=n
+    local t2=Instance.new("TextLabel");t2.Size=UDim2.new(1,-16,0,18);t2.Position=UDim2.new(0,12,0,24);t2.Text=msg;t2.Font=Enum.Font.Gotham;t2.TextSize=9;t2.TextColor3=T.text;t2.TextTransparency=0.35;t2.TextXAlignment=Enum.TextXAlignment.Left;t2.TextWrapped=true;t2.BackgroundTransparency=1;t2.Parent=n
+    TweenService:Create(n,tw(0.35,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,260,0,50)}):Play()
+    task.delay(2.8,function() TweenService:Create(n,tw(),{Size=UDim2.new(0,0,0,50),BackgroundTransparency=1}):Play();task.wait(0.3);if n and n.Parent then n:Destroy() end end)
+end
+
+local vpSz=workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920,1080)
+local startX=math.floor(vpSz.X/2-WIN_W/2);local startY=math.floor(vpSz.Y/2-WIN_H/2)
+
+local win=Instance.new("Frame");win.Name="Win";win.Size=UDim2.new(0,WIN_W,0,WIN_H);win.Position=UDim2.new(0,startX,0,startY);win.BackgroundColor3=T.bg;win.BorderSizePixel=0;win.ClipsDescendants=true;win.ZIndex=1;win.Parent=sg
+Instance.new("UICorner",win).CornerRadius=UDim.new(0,14)
+local winStroke=Instance.new("UIStroke");winStroke.Color=T.border;winStroke.Thickness=1;winStroke.Parent=win;reg(win,"BackgroundColor3",LIGHT.bg,DARK.bg);reg(winStroke,"Color",LIGHT.border,DARK.border)
+local winGlow=Instance.new("ImageLabel");winGlow.Size=UDim2.new(1,40,1,40);winGlow.Position=UDim2.new(0,-20,0,-20);winGlow.BackgroundTransparency=1;winGlow.Image="rbxassetid://1316045217";winGlow.ImageColor3=Color3.fromRGB(90,70,160);winGlow.ImageTransparency=0.88;winGlow.ScaleType=Enum.ScaleType.Slice;winGlow.SliceCenter=Rect.new(10,10,118,118);winGlow.ZIndex=-1;winGlow.Parent=win
+
+-- SIDEBAR
+local sidebar=Instance.new("Frame");sidebar.Size=UDim2.new(0,SIDE_W,1,0);sidebar.BackgroundColor3=T.sidebar;sidebar.BorderSizePixel=0;sidebar.ZIndex=3;sidebar.Parent=win;Instance.new("UICorner",sidebar).CornerRadius=UDim.new(0,14);reg(sidebar,"BackgroundColor3",LIGHT.sidebar,DARK.sidebar)
+local sbCover=Instance.new("Frame");sbCover.Size=UDim2.new(0,14,1,0);sbCover.Position=UDim2.new(1,-14,0,0);sbCover.BackgroundColor3=T.sidebar;sbCover.BorderSizePixel=0;sbCover.ZIndex=3;sbCover.Parent=sidebar;reg(sbCover,"BackgroundColor3",LIGHT.sidebar,DARK.sidebar)
+local logoPill=Instance.new("Frame");logoPill.Size=UDim2.new(0,34,0,34);logoPill.Position=UDim2.new(0.5,-17,0,10);logoPill.BackgroundColor3=accent;logoPill.BorderSizePixel=0;logoPill.ZIndex=5;logoPill.Parent=sidebar;Instance.new("UICorner",logoPill).CornerRadius=UDim.new(0,9)
+local logoF=Instance.new("TextLabel");logoF.Size=UDim2.new(1,0,1,0);logoF.Text="F";logoF.TextSize=18;logoF.Font=Enum.Font.GothamBold;logoF.TextColor3=Color3.new(1,1,1);logoF.BackgroundTransparency=1;logoF.ZIndex=6;logoF.Parent=logoPill
+local sbSep1=Instance.new("Frame");sbSep1.Size=UDim2.new(0.72,0,0,1);sbSep1.Position=UDim2.new(0.14,0,0,52);sbSep1.BackgroundColor3=T.sep;sbSep1.BorderSizePixel=0;sbSep1.ZIndex=4;sbSep1.Parent=sidebar;reg(sbSep1,"BackgroundColor3",LIGHT.sep,DARK.sep)
+local navCont=Instance.new("Frame");navCont.Size=UDim2.new(1,0,1,-138);navCont.Position=UDim2.new(0,0,0,58);navCont.BackgroundTransparency=1;navCont.ZIndex=4;navCont.Parent=sidebar
+local navList=Instance.new("UIListLayout");navList.SortOrder=Enum.SortOrder.LayoutOrder;navList.VerticalAlignment=Enum.VerticalAlignment.Top;navList.HorizontalAlignment=Enum.HorizontalAlignment.Center;navList.Padding=UDim.new(0,2);navList.Parent=navCont
+local sbSep2=Instance.new("Frame");sbSep2.Size=UDim2.new(0.72,0,0,1);sbSep2.Position=UDim2.new(0.14,0,1,-78);sbSep2.BackgroundColor3=T.sep;sbSep2.BorderSizePixel=0;sbSep2.ZIndex=4;sbSep2.Parent=sidebar;reg(sbSep2,"BackgroundColor3",LIGHT.sep,DARK.sep)
+local wmN=Instance.new("TextLabel");wmN.Size=UDim2.new(1,0,0,14);wmN.Position=UDim2.new(0,0,1,-72);wmN.Text="featherhub";wmN.Font=Enum.Font.GothamBold;wmN.TextSize=9;wmN.TextColor3=accent;wmN.BackgroundTransparency=1;wmN.TextXAlignment=Enum.TextXAlignment.Center;wmN.ZIndex=5;wmN.Parent=sidebar
+local wmV=Instance.new("TextLabel");wmV.Size=UDim2.new(1,0,0,12);wmV.Position=UDim2.new(0,0,1,-56);wmV.Text="v1  •  criminality";wmV.Font=Enum.Font.Gotham;wmV.TextSize=7;wmV.TextColor3=T.muted;wmV.BackgroundTransparency=1;wmV.TextXAlignment=Enum.TextXAlignment.Center;wmV.ZIndex=5;wmV.Parent=sidebar;reg(wmV,"TextColor3",LIGHT.muted,DARK.muted)
+local thBtn=Instance.new("TextButton");thBtn.Size=UDim2.new(1,-12,0,26);thBtn.Position=UDim2.new(0,6,1,-34);thBtn.BackgroundColor3=T.dim;thBtn.BorderSizePixel=0;thBtn.Text="☀  Light";thBtn.Font=Enum.Font.GothamBold;thBtn.TextSize=8;thBtn.TextColor3=T.muted;thBtn.AutoButtonColor=false;thBtn.ZIndex=5;thBtn.Parent=sidebar;Instance.new("UICorner",thBtn).CornerRadius=UDim.new(0,7)
+local thS=Instance.new("UIStroke");thS.Color=T.border;thS.Thickness=1;thS.Parent=thBtn;reg(thBtn,"BackgroundColor3",LIGHT.dim,DARK.dim);reg(thBtn,"TextColor3",LIGHT.muted,DARK.muted);reg(thS,"Color",LIGHT.border,DARK.border)
+
+-- HEADER
+local hdr=Instance.new("Frame");hdr.Size=UDim2.new(1,-SIDE_W,0,HDR_H);hdr.Position=UDim2.new(0,SIDE_W,0,0);hdr.BackgroundColor3=T.header;hdr.BorderSizePixel=0;hdr.ZIndex=3;hdr.Parent=win;Instance.new("UICorner",hdr).CornerRadius=UDim.new(0,14);reg(hdr,"BackgroundColor3",LIGHT.header,DARK.header)
+local hdrLC=Instance.new("Frame");hdrLC.Size=UDim2.new(0,14,1,0);hdrLC.BackgroundColor3=T.header;hdrLC.BorderSizePixel=0;hdrLC.ZIndex=3;hdrLC.Parent=hdr;reg(hdrLC,"BackgroundColor3",LIGHT.header,DARK.header)
+local hdrBC=Instance.new("Frame");hdrBC.Size=UDim2.new(0,14,0,14);hdrBC.Position=UDim2.new(1,-14,1,-14);hdrBC.BackgroundColor3=T.header;hdrBC.BorderSizePixel=0;hdrBC.ZIndex=3;hdrBC.Parent=hdr;reg(hdrBC,"BackgroundColor3",LIGHT.header,DARK.header)
+local hdrLine=Instance.new("Frame");hdrLine.Size=UDim2.new(1,-8,0,1);hdrLine.Position=UDim2.new(0,4,1,-1);hdrLine.BackgroundColor3=T.sep;hdrLine.BorderSizePixel=0;hdrLine.ZIndex=4;hdrLine.Parent=hdr;reg(hdrLine,"BackgroundColor3",LIGHT.sep,DARK.sep)
+local hdrTitle=Instance.new("TextLabel");hdrTitle.Size=UDim2.new(1,-100,1,0);hdrTitle.Position=UDim2.new(0,14,0,0);hdrTitle.Text="FeatherHub Criminality";hdrTitle.Font=Enum.Font.GothamBold;hdrTitle.TextSize=isMobile and 13 or 12;hdrTitle.TextColor3=T.text;hdrTitle.BackgroundTransparency=1;hdrTitle.TextXAlignment=Enum.TextXAlignment.Left;hdrTitle.ZIndex=5;hdrTitle.Parent=hdr;reg(hdrTitle,"TextColor3",LIGHT.text,DARK.text)
+
+local minBtn=Instance.new("TextButton");minBtn.Size=UDim2.new(0,26,0,26);minBtn.Position=UDim2.new(1,-62,0.5,-13);minBtn.Text="—";minBtn.Font=Enum.Font.GothamBold;minBtn.TextSize=14;minBtn.TextColor3=T.muted;minBtn.BackgroundColor3=T.dim;minBtn.BorderSizePixel=0;minBtn.AutoButtonColor=false;minBtn.ZIndex=5;minBtn.Parent=hdr;Instance.new("UICorner",minBtn).CornerRadius=UDim.new(0,6);reg(minBtn,"BackgroundColor3",LIGHT.dim,DARK.dim);reg(minBtn,"TextColor3",LIGHT.muted,DARK.muted)
+minBtn.MouseEnter:Connect(function() TweenService:Create(minBtn,tw(),{BackgroundColor3=accent,TextColor3=Color3.new(1,1,1)}):Play() end)
+minBtn.MouseLeave:Connect(function() TweenService:Create(minBtn,tw(),{BackgroundColor3=T.dim,TextColor3=T.muted}):Play() end)
+
+local closeBtn=Instance.new("TextButton");closeBtn.Size=UDim2.new(0,26,0,26);closeBtn.Position=UDim2.new(1,-32,0.5,-13);closeBtn.Text="×";closeBtn.Font=Enum.Font.GothamBold;closeBtn.TextSize=18;closeBtn.TextColor3=T.muted;closeBtn.BackgroundColor3=T.dim;closeBtn.BorderSizePixel=0;closeBtn.AutoButtonColor=false;closeBtn.ZIndex=5;closeBtn.Parent=hdr;Instance.new("UICorner",closeBtn).CornerRadius=UDim.new(0,6);reg(closeBtn,"BackgroundColor3",LIGHT.dim,DARK.dim);reg(closeBtn,"TextColor3",LIGHT.muted,DARK.muted)
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn,tw(),{BackgroundColor3=red,TextColor3=Color3.new(1,1,1)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn,tw(),{BackgroundColor3=T.dim,TextColor3=T.muted}):Play() end)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+local isMinimized=false;local content
+local function toggleMinimize() isMinimized=not isMinimized
+    if isMinimized then TweenService:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,HDR_H)}):Play();sidebar.Visible=false;content.Visible=false;TweenService:Create(hdr,tw(0.3),{Size=UDim2.new(1,0,0,HDR_H),Position=UDim2.new(0,0,0,0)}):Play();hdrLC.Visible=false;hdrBC.Visible=false;hdrLine.Visible=false;minBtn.Text="+"
+    else TweenService:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,WIN_H)}):Play();TweenService:Create(hdr,tw(0.3),{Size=UDim2.new(1,-SIDE_W,0,HDR_H),Position=UDim2.new(0,SIDE_W,0,0)}):Play();hdrLC.Visible=true;hdrBC.Visible=true;hdrLine.Visible=true;task.delay(0.1,function() sidebar.Visible=true;content.Visible=true end);minBtn.Text="—" end
+end
+minBtn.MouseButton1Click:Connect(toggleMinimize)
+
+-- SMOOTH DRAG
+do local dragging,dragInput,dragStart,startPos;local targetPos=UDim2.new(0,startX,0,startY);local SMOOTH=0.12
+    hdr.InputBegan:Connect(function(i) local t=i.UserInputType;if t==Enum.UserInputType.MouseButton1 or t==Enum.UserInputType.Touch then dragging=true;dragStart=i.Position;startPos=win.Position;targetPos=win.Position end end)
+    hdr.InputChanged:Connect(function(i) local t=i.UserInputType;if t==Enum.UserInputType.MouseMovement or t==Enum.UserInputType.Touch then dragInput=i end end)
+    UserInputService.InputChanged:Connect(function(i) if i==dragInput and dragging then local d=i.Position-dragStart;local v=workspace.CurrentCamera.ViewportSize;targetPos=UDim2.new(0,math.clamp(startPos.X.Offset+d.X,0,v.X-win.AbsoluteSize.X),0,math.clamp(startPos.Y.Offset+d.Y,0,v.Y-win.AbsoluteSize.Y)) end end)
+    UserInputService.InputEnded:Connect(function(i) local t=i.UserInputType;if t==Enum.UserInputType.MouseButton1 or t==Enum.UserInputType.Touch then dragging=false end end)
+    RunService.RenderStepped:Connect(function() if win and win.Parent then local cx,cy=win.Position.X.Offset,win.Position.Y.Offset;local tx,ty=targetPos.X.Offset,targetPos.Y.Offset;win.Position=UDim2.new(0,cx+(tx-cx)*SMOOTH,0,cy+(ty-cy)*SMOOTH) end end)
+end
+
+content=Instance.new("Frame");content.Size=UDim2.new(1,-SIDE_W,1,-HDR_H);content.Position=UDim2.new(0,SIDE_W,0,HDR_H);content.BackgroundTransparency=1;content.BorderSizePixel=0;content.ZIndex=2;content.Parent=win
+
+-- TABS
+local TABS={{id="home",name="HOME"},{id="combat",name="COMBAT"},{id="esp",name="ESP"},{id="move",name="MOVE"},{id="tools",name="TOOLS"},{id="tp",name="TELEPORT"}}
+local pages={};local navBtns={};local activeTab=1
+
+local function makePage() local pg=Instance.new("ScrollingFrame");pg.Size=UDim2.new(1,0,1,0);pg.BackgroundTransparency=1;pg.BorderSizePixel=0;pg.ScrollBarThickness=3;pg.ScrollBarImageColor3=accent;pg.CanvasSize=UDim2.new(0,0,0,0);pg.AutomaticCanvasSize=Enum.AutomaticSize.Y;pg.ScrollingDirection=Enum.ScrollingDirection.Y;pg.ElasticBehavior=Enum.ElasticBehavior.Never;pg.Visible=false;pg.ZIndex=2;pg.Parent=content
+    local l=Instance.new("UIListLayout");l.SortOrder=Enum.SortOrder.LayoutOrder;l.HorizontalAlignment=Enum.HorizontalAlignment.Center;l.Padding=UDim.new(0,6);l.Parent=pg
+    local p=Instance.new("UIPadding");p.PaddingTop=UDim.new(0,10);p.PaddingBottom=UDim.new(0,10);p.PaddingLeft=UDim.new(0,10);p.PaddingRight=UDim.new(0,10);p.Parent=pg;return pg end
+for i in ipairs(TABS) do pages[i]=makePage() end
+
+local function setTab(idx) if isMinimized then toggleMinimize() end;activeTab=idx;hdrTitle.Text=TABS[idx].name=="HOME" and "FeatherHub Criminality" or TABS[idx].name
+    for i,btn in ipairs(navBtns) do local on=(i==idx);TweenService:Create(btn.bg,tw(0.15),{BackgroundColor3=on and accent or T.dim,BackgroundTransparency=on and 0.15 or 0}):Play();TweenService:Create(btn.lbl,tw(0.15),{TextColor3=on and accent or T.muted}):Play();btn.bar.BackgroundTransparency=on and 0 or 1;pages[i].Visible=on end end
+
+for i,def in ipairs(TABS) do
+    local row=Instance.new("Frame");row.Size=UDim2.new(1,-6,0,isMobile and 32 or 28);row.BackgroundTransparency=1;row.LayoutOrder=i;row.ZIndex=4;row.Parent=navCont
+    local bar=Instance.new("Frame");bar.Size=UDim2.new(0,3,0.5,0);bar.Position=UDim2.new(0,0,0.25,0);bar.BackgroundColor3=accent;bar.BackgroundTransparency=1;bar.BorderSizePixel=0;bar.ZIndex=5;bar.Parent=row;Instance.new("UICorner",bar).CornerRadius=UDim.new(1,0)
+    local bg=Instance.new("Frame");bg.Size=UDim2.new(1,-4,1,-4);bg.Position=UDim2.new(0,4,0,2);bg.BackgroundColor3=T.dim;bg.BorderSizePixel=0;bg.ZIndex=4;bg.Parent=row;Instance.new("UICorner",bg).CornerRadius=UDim.new(0,7)
+    local lbl=Instance.new("TextLabel");lbl.Size=UDim2.new(1,-12,1,0);lbl.Position=UDim2.new(0,10,0,0);lbl.Text=def.name;lbl.Font=Enum.Font.GothamBold;lbl.TextSize=isMobile and 7 or 6;lbl.TextColor3=T.muted;lbl.BackgroundTransparency=1;lbl.TextXAlignment=Enum.TextXAlignment.Left;lbl.ZIndex=5;lbl.Parent=row
+    local hit=Instance.new("TextButton");hit.Size=UDim2.new(1,0,1,0);hit.BackgroundTransparency=1;hit.Text="";hit.ZIndex=6;hit.Parent=row
+    local ci=i;hit.MouseButton1Click:Connect(function() setTab(ci) end);hit.TouchTap:Connect(function() setTab(ci) end)
+    navBtns[i]={bg=bg,lbl=lbl,bar=bar};reg(bg,"BackgroundColor3",LIGHT.dim,DARK.dim);reg(lbl,"TextColor3",LIGHT.muted,DARK.muted)
+end
+
+-- BUILDERS
+local function makeCard(parent,order) local c=Instance.new("Frame");c.Size=UDim2.new(1,0,0,0);c.AutomaticSize=Enum.AutomaticSize.Y;c.BackgroundColor3=T.card;c.BorderSizePixel=0;c.LayoutOrder=order;c.ZIndex=3;c.Parent=parent;Instance.new("UICorner",c).CornerRadius=UDim.new(0,10);local s=Instance.new("UIStroke");s.Color=T.border;s.Thickness=1;s.Parent=c;local l=Instance.new("UIListLayout");l.SortOrder=Enum.SortOrder.LayoutOrder;l.HorizontalAlignment=Enum.HorizontalAlignment.Center;l.Padding=UDim.new(0,0);l.Parent=c;reg(c,"BackgroundColor3",LIGHT.card,DARK.card);reg(s,"Color",LIGHT.border,DARK.border);return c end
+local function makeSection(parent,label,order) local f=Instance.new("Frame");f.Size=UDim2.new(1,0,0,20);f.BackgroundTransparency=1;f.LayoutOrder=order;f.ZIndex=3;f.Parent=parent;local l=Instance.new("TextLabel");l.Size=UDim2.new(1,0,1,0);l.Text=string.upper(label);l.Font=Enum.Font.GothamBold;l.TextSize=8;l.TextColor3=accent;l.TextXAlignment=Enum.TextXAlignment.Left;l.BackgroundTransparency=1;l.ZIndex=3;l.Parent=f;local line=Instance.new("Frame");line.Size=UDim2.new(0,26,0,2);line.Position=UDim2.new(0,0,1,-2);line.BackgroundColor3=accent;line.BorderSizePixel=0;line.ZIndex=3;line.Parent=f;Instance.new("UICorner",line).CornerRadius=UDim.new(1,0) end
+local function makeRow(card,order,isLast,h) local row=Instance.new("Frame");row.Size=UDim2.new(1,0,0,h or 42);row.BackgroundTransparency=1;row.BorderSizePixel=0;row.LayoutOrder=order;row.ZIndex=4;row.Parent=card;if not isLast then local sep=Instance.new("Frame");sep.Size=UDim2.new(1,-24,0,1);sep.Position=UDim2.new(0,12,1,-1);sep.BackgroundColor3=T.sep;sep.BorderSizePixel=0;sep.ZIndex=4;sep.Parent=row;reg(sep,"BackgroundColor3",LIGHT.sep,DARK.sep) end;return row end
+local function makeInfoRow(card,order,lt,vt,vc,isLast) local row=makeRow(card,order,isLast,36);local l=Instance.new("TextLabel");l.Size=UDim2.new(0.55,0,1,0);l.Position=UDim2.new(0,14,0,0);l.Text=lt;l.Font=Enum.Font.GothamSemibold;l.TextSize=10;l.TextColor3=T.muted;l.TextXAlignment=Enum.TextXAlignment.Left;l.BackgroundTransparency=1;l.ZIndex=5;l.Parent=row;reg(l,"TextColor3",LIGHT.muted,DARK.muted);local r=Instance.new("TextLabel");r.Name="Val";r.Size=UDim2.new(0.45,0,1,0);r.Position=UDim2.new(0.55,0,0,0);r.Text=vt;r.Font=Enum.Font.GothamBold;r.TextSize=10;r.TextColor3=vc or T.text;r.TextXAlignment=Enum.TextXAlignment.Right;r.BackgroundTransparency=1;r.ZIndex=5;r.Parent=row;Instance.new("UIPadding",r).PaddingRight=UDim.new(0,14);return row,r end
+
+local function makeToggle(card,order,label,initVal,cb,isLast) local row=makeRow(card,order,isLast,42);local state=initVal
+    local lbl=Instance.new("TextLabel");lbl.Size=UDim2.new(1,-80,1,0);lbl.Position=UDim2.new(0,14,0,0);lbl.Text=label;lbl.Font=Enum.Font.GothamSemibold;lbl.TextSize=10;lbl.TextColor3=T.text;lbl.TextXAlignment=Enum.TextXAlignment.Left;lbl.BackgroundTransparency=1;lbl.ZIndex=5;lbl.Parent=row;reg(lbl,"TextColor3",LIGHT.text,DARK.text)
+    local pill=Instance.new("Frame");pill.Size=UDim2.new(0,44,0,22);pill.Position=UDim2.new(1,-54,0.5,-11);pill.BackgroundColor3=state and accent or T.dim;pill.BorderSizePixel=0;pill.ZIndex=5;pill.Parent=row;Instance.new("UICorner",pill).CornerRadius=UDim.new(1,0)
+    local knob=Instance.new("Frame");knob.Size=UDim2.new(0,16,0,16);knob.Position=state and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8);knob.BackgroundColor3=state and Color3.new(1,1,1) or T.muted;knob.BorderSizePixel=0;knob.ZIndex=6;knob.Parent=pill;Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
+    local hit=Instance.new("TextButton");hit.Size=UDim2.new(0,60,1,0);hit.Position=UDim2.new(1,-62,0,0);hit.BackgroundTransparency=1;hit.Text="";hit.ZIndex=7;hit.Parent=row
+    local function toggle() state=not state;TweenService:Create(pill,tw(0.15),{BackgroundColor3=state and accent or T.dim}):Play();TweenService:Create(knob,tw(0.15),{Position=state and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8),BackgroundColor3=state and Color3.new(1,1,1) or T.muted}):Play();pcall(cb,state);notify(label,state and "Enabled" or "Disabled",state and "success" or "error") end
+    hit.MouseButton1Click:Connect(toggle);hit.TouchTap:Connect(toggle);return row end
+
+local function makeActionBtn(card,order,label,cb,isLast) local row=makeRow(card,order,isLast,42)
+    local lbl=Instance.new("TextLabel");lbl.Size=UDim2.new(1,-80,1,0);lbl.Position=UDim2.new(0,14,0,0);lbl.Text=label;lbl.Font=Enum.Font.GothamSemibold;lbl.TextSize=10;lbl.TextColor3=T.text;lbl.TextXAlignment=Enum.TextXAlignment.Left;lbl.BackgroundTransparency=1;lbl.ZIndex=5;lbl.Parent=row;reg(lbl,"TextColor3",LIGHT.text,DARK.text)
+    local badge=Instance.new("TextButton");badge.Size=UDim2.new(0,50,0,22);badge.Position=UDim2.new(1,-58,0.5,-11);badge.Text="RUN";badge.Font=Enum.Font.GothamBold;badge.TextSize=8;badge.TextColor3=Color3.new(1,1,1);badge.BackgroundColor3=accent;badge.BorderSizePixel=0;badge.AutoButtonColor=false;badge.ZIndex=5;badge.Parent=row;Instance.new("UICorner",badge).CornerRadius=UDim.new(0,5)
+    badge.MouseEnter:Connect(function() TweenService:Create(badge,tw(),{BackgroundColor3=accentLight}):Play() end);badge.MouseLeave:Connect(function() TweenService:Create(badge,tw(),{BackgroundColor3=accent}):Play() end)
+    badge.MouseButton1Click:Connect(cb);badge.TouchTap:Connect(cb);return row end
+
+local function makeSlider(card,order,label,min,max,default,incr,cb,isLast) local row=makeRow(card,order,isLast,48)
+    local lbl=Instance.new("TextLabel");lbl.Size=UDim2.new(0.5,0,0,16);lbl.Position=UDim2.new(0,14,0,4);lbl.Text=label;lbl.Font=Enum.Font.GothamSemibold;lbl.TextSize=10;lbl.TextColor3=T.muted;lbl.TextXAlignment=Enum.TextXAlignment.Left;lbl.BackgroundTransparency=1;lbl.ZIndex=5;lbl.Parent=row;reg(lbl,"TextColor3",LIGHT.muted,DARK.muted)
+    local valLbl=Instance.new("TextLabel");valLbl.Size=UDim2.new(0.3,0,0,16);valLbl.Position=UDim2.new(0.7,-14,0,4);valLbl.Text=tostring(default);valLbl.Font=Enum.Font.GothamBold;valLbl.TextSize=10;valLbl.TextColor3=accent;valLbl.TextXAlignment=Enum.TextXAlignment.Right;valLbl.BackgroundTransparency=1;valLbl.ZIndex=5;valLbl.Parent=row;Instance.new("UIPadding",valLbl).PaddingRight=UDim.new(0,14)
+    local track=Instance.new("Frame");track.Size=UDim2.new(1,-28,0,5);track.Position=UDim2.new(0,14,0,28);track.BackgroundColor3=T.dim;track.BorderSizePixel=0;track.ZIndex=5;track.Parent=row;Instance.new("UICorner",track).CornerRadius=UDim.new(1,0);reg(track,"BackgroundColor3",LIGHT.dim,DARK.dim)
+    local fill=Instance.new("Frame");fill.Size=UDim2.new((default-min)/(max-min),0,1,0);fill.BackgroundColor3=accent;fill.BorderSizePixel=0;fill.ZIndex=6;fill.Parent=track;Instance.new("UICorner",fill).CornerRadius=UDim.new(1,0)
+    local knob=Instance.new("Frame");knob.Size=UDim2.new(0,12,0,12);knob.Position=UDim2.new((default-min)/(max-min),-6,0.5,-6);knob.BackgroundColor3=Color3.new(1,1,1);knob.ZIndex=7;knob.Parent=track;Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0);local ks=Instance.new("UIStroke",knob);ks.Color=accent;ks.Thickness=2;ks.Transparency=0.4
+    local sdrag=false
+    local function upd(px) local tA=track.AbsolutePosition.X;local tS=track.AbsoluteSize.X;local rel=math.clamp((px-tA)/tS,0,1);local raw=min+(max-min)*rel;local val=math.floor(raw/incr+0.5)*incr;val=math.clamp(val,min,max);rel=(val-min)/(max-min);fill.Size=UDim2.new(rel,0,1,0);knob.Position=UDim2.new(rel,-6,0.5,-6);valLbl.Text=tostring(val);cb(val) end
+    track.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sdrag=true;upd(i.Position.X) end end)
+    UserInputService.InputChanged:Connect(function(i) if sdrag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then upd(i.Position.X) end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sdrag=false end end)
+    return row end
+
+local function tpTo(cf) local ch=Player.Character or Player.CharacterAdded:Wait();local pp=ch.PrimaryPart;if not pp then return end;local dest=cf+Vector3.new(0,2,0);local dist=(dest.Position-pp.Position).Magnitude;local dur=dist>500 and 9 or(dist>150 and 7 or 5);local t=tick();while tick()-t<dur do pp.CFrame=dest;task.wait(0.01) end end
+
+-- PAGE 1: HOME
+local pg1=pages[1];local wCard=makeCard(pg1,1);local wRow=makeRow(wCard,1,true,50)
+local wIbg=Instance.new("Frame");wIbg.Size=UDim2.new(0,32,0,32);wIbg.Position=UDim2.new(0,12,0.5,-16);wIbg.BackgroundColor3=accent;wIbg.BackgroundTransparency=0.82;wIbg.BorderSizePixel=0;wIbg.Parent=wRow;Instance.new("UICorner",wIbg).CornerRadius=UDim.new(0,8)
+Instance.new("TextLabel",wIbg).Size=UDim2.new(1,0,1,0);wIbg:GetChildren()[2].Text="🔫";wIbg:GetChildren()[2].TextSize=16;wIbg:GetChildren()[2].BackgroundTransparency=1
+local wT=Instance.new("TextLabel");wT.Size=UDim2.new(1,-56,0,16);wT.Position=UDim2.new(0,50,0,6);wT.Text="Welcome, "..DisplayName;wT.Font=Enum.Font.GothamBold;wT.TextSize=11;wT.TextColor3=T.text;wT.TextXAlignment=Enum.TextXAlignment.Left;wT.BackgroundTransparency=1;wT.ZIndex=5;wT.Parent=wRow;reg(wT,"TextColor3",LIGHT.text,DARK.text)
+local wS=Instance.new("TextLabel");wS.Size=UDim2.new(1,-56,0,14);wS.Position=UDim2.new(0,50,0,23);wS.Text="Navigate tabs to configure";wS.Font=Enum.Font.Gotham;wS.TextSize=8;wS.TextColor3=T.muted;wS.TextXAlignment=Enum.TextXAlignment.Left;wS.BackgroundTransparency=1;wS.ZIndex=5;wS.Parent=wRow;reg(wS,"TextColor3",LIGHT.muted,DARK.muted)
+makeSection(pg1,"Info",2);local iCard=makeCard(pg1,3);makeInfoRow(iCard,1,"Player",Username,T.text,false);makeInfoRow(iCard,2,"Version","v1",accent,false);makeInfoRow(iCard,3,"Keybind","] toggle",T.muted,true)
+
+-- PAGE 2: COMBAT
+local pg2=pages[2]
+makeSection(pg2,"Aimbot",1);local aCard=makeCard(pg2,2)
+makeToggle(aCard,1,"Aimlock",false,function(v) u6=v
+    if v then getgenv().AimPart="Head";getgenv().AimRadius=100;getgenv().FirstPerson=true;getgenv().TeamCheck=false;getgenv().PredictMovement=u4;getgenv().PredictionVelocity=16;u19=true
+        u60=UserInputService.InputBegan:Connect(function(i) if not UserInputService:GetFocusedTextBox() and i.UserInputType==Enum.UserInputType.MouseButton2 then u18=true
+            local best,bd=nil,math.huge;local center=Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y/2)
+            for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health>0 then local sp,onS=Camera:WorldToViewportPoint(p.Character.Head.Position);if onS then local m=(Vector2.new(sp.X,sp.Y)-center).Magnitude;if m<bd and m<getgenv().AimRadius then bd=m;best=p end end end end
+            if best then u20=best;if u5 then notify("Aimlock","Target: "..tostring(u20),"warning") end end end end)
+        local aimC;aimC=RunService.RenderStepped:Connect(function() if u6 and u17 and u18 and u20 and u20.Character and u20.Character:FindFirstChild(getgenv().AimPart) then
+            if getgenv().PredictMovement then Camera.CFrame=CFrame.new(Camera.CFrame.p,u20.Character[getgenv().AimPart].Position+u20.Character[getgenv().AimPart].Velocity/getgenv().PredictionVelocity) else Camera.CFrame=CFrame.new(Camera.CFrame.p,u20.Character[getgenv().AimPart].Position) end end;if not u6 and aimC then aimC:Disconnect() end end)
+        UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton2 then u18=false;u20=nil end end)
+    else if u60 then u60:Disconnect();u60=nil end;u18=false;u20=nil end end,false)
+makeToggle(aCard,2,"Predict Movement",true,function(v) u4=v;getgenv().PredictMovement=v end,false)
+makeToggle(aCard,3,"Notify Target",true,function(v) u5=v end,true)
+
+makeSection(pg2,"Melee",3);local meCard=makeCard(pg2,4)
+makeToggle(meCard,1,"Melee Aura",false,function(v) u432=v
+    if v then local function getNear() local ch=Player.Character;if not ch or not ch:FindFirstChild(u430) then return nil end;local myP=ch[u430].Position;local best,bd=nil,math.huge;for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character and p.Character:FindFirstChild(u430) then local d=(myP-p.Character[u430].Position).Magnitude;if d<bd then bd=d;best=p end end end;return bd<=u431 and best or nil end
+        meleeaurarunservice=RunService.RenderStepped:Connect(function() if not u432 then if meleeaurarunservice then meleeaurarunservice:Disconnect() end return end
+            for _,tool in pairs(Player.Character:GetChildren()) do if tool:IsA("Tool") then local handle=tool:FindFirstChild("WeaponHandle") or tool:FindFirstChild("Handle")
+                if tool.Name=="Fists" then for _,arm in pairs(Player.Character:GetChildren()) do if arm.Name=="Left Arm" or arm.Name=="Right Arm" then local tgt=getNear();if tgt and tgt.Character and tgt.Character:FindFirstChild(u430) and tgt.Character.Humanoid.Health>0 then for _,dp in pairs(arm:GetChildren()) do if dp.Name=="DmgPoint" then local h=tgt.Character[u430];dp.WorldCFrame=CFrame.new(h.Position.X+math.random(-1,1)/10,h.Position.Y+math.random(-1,1)/10,h.Position.Z+math.random(-1,1)/10)*CFrame.new(0,0.5,0) end end end end end
+                elseif handle and (handle:FindFirstChild("Swing1") or handle:FindFirstChild("Swing2")) then local tgt=getNear();if tgt and tgt.Character and tgt.Character:FindFirstChild(u430) and tgt.Character.Humanoid.Health>0 then for _,dp in pairs(handle:GetChildren()) do if dp.Name=="DmgPoint" then local h=tgt.Character[u430];dp.WorldCFrame=CFrame.new(h.Position.X+math.random(-1,1)/10,h.Position.Y+math.random(-1,1)/10,h.Position.Z+math.random(-1,1)/10)*CFrame.new(0,0.5,0) end end end end end end end)
+    elseif meleeaurarunservice then meleeaurarunservice:Disconnect() end end,true)
+
+-- PAGE 3: ESP
+local pg3=pages[3]
+local function setupESP(plr) if plr==Player then return end;local char=plr.Character;if not char then return end;local head=char:WaitForChild("Head",5);if not head then return end;local old=head:FindFirstChild("UsernameBillboard");if old then old:Destroy() end
+    local bb=Instance.new("BillboardGui");bb.Name="UsernameBillboard";bb.Adornee=head;bb.Size=UDim2.new(6,0,1,0);bb.StudsOffset=Vector3.new(0,3,0);bb.AlwaysOnTop=true;bb.Enabled=u68;bb.Parent=head
+    local il=Instance.new("TextLabel");il.Name="InfoLabel";il.Parent=bb;il.Size=UDim2.new(1,0,1,0);il.BackgroundTransparency=1;il.TextColor3=u67;il.TextStrokeTransparency=0.5;il.Font=Enum.Font.SourceSansBold;il.TextSize=u66
+    il.Text=u69 and "Name: "..plr.Name.." | Health: "..math.floor(char.Humanoid.Health) or "Name: "..plr.Name
+    if u69 then char.Humanoid.HealthChanged:Connect(function() if il then il.Text="Name: "..plr.Name.." | Health: "..math.floor(char.Humanoid.Health) end end) end
+    if u71 then local hl=char:FindFirstChild("Highlight") or Instance.new("Highlight");hl.Name="Highlight";hl.Adornee=char;hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop;hl.Parent=char;hl.OutlineColor=u67;hl.FillColor=u67;hl.FillTransparency=u72 end end
+for _,p in ipairs(Players:GetPlayers()) do setupESP(p);p.CharacterAdded:Connect(function() setupESP(p) end) end
+Players.PlayerAdded:Connect(function(p) p.CharacterAdded:Connect(function() setupESP(p) end) end)
+
+-- Tracers
+pcall(function() for _,p in ipairs(Players:GetPlayers()) do if not u151[p.UserId] then local l=Drawing.new("Line");l.Visible=false;l.Color=Color3.new(1,1,1);l.Thickness=1;l.Transparency=1;u151[p.UserId]=l end end end)
+Players.PlayerAdded:Connect(function(p) pcall(function() local l=Drawing.new("Line");l.Visible=false;l.Color=Color3.new(1,1,1);l.Thickness=1;l.Transparency=1;u151[p.UserId]=l end) end)
+Players.PlayerRemoving:Connect(function(p) if u151[p.UserId] then u151[p.UserId]:Remove();u151[p.UserId]=nil end end)
+RunService.RenderStepped:Connect(function() if u152 then for _,p in ipairs(Players:GetPlayers()) do local ln=u151[p.UserId];if ln and p~=Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health>0 then local sp,onS=Camera:worldToViewportPoint(p.Character.HumanoidRootPart.Position);if onS then ln.From=Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y);ln.To=Vector2.new(sp.X,sp.Y);ln.Visible=true else ln.Visible=false end elseif ln then ln.Visible=false end end else for _,ln in pairs(u151) do ln.Visible=false end end end)
+
+makeSection(pg3,"Player",1);local eC1=makeCard(pg3,2)
+makeToggle(eC1,1,"Player ESP",false,function(v) u68=v;for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character and p.Character:FindFirstChild("Head") then local bb=p.Character.Head:FindFirstChild("UsernameBillboard");if bb then bb.Enabled=v end end end end,false)
+makeToggle(eC1,2,"Show Health",false,function(v) u69=v;for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character and p.Character:FindFirstChild("Head") then local bb=p.Character.Head:FindFirstChild("UsernameBillboard");if bb then local il=bb:FindFirstChild("InfoLabel");if il then il.Text=v and "Name: "..p.Name.." | Health: "..math.floor(p.Character.Humanoid.Health) or "Name: "..p.Name end end end end end,false)
+makeToggle(eC1,3,"Highlight",false,function(v) u71=v;for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character then if v then local hl=p.Character:FindFirstChild("Highlight") or Instance.new("Highlight");hl.Name="Highlight";hl.Adornee=p.Character;hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop;hl.Parent=p.Character;hl.OutlineColor=u67;hl.FillColor=u67;hl.FillTransparency=u72 else local hl=p.Character:FindFirstChild("Highlight");if hl then hl:Destroy() end end end end end,false)
+makeToggle(eC1,4,"Rainbow",false,function(v) u70=v end,false)
+makeToggle(eC1,5,"Tracers",false,function(v) u152=v end,true)
+
+makeSection(pg3,"World",6);local eC2=makeCard(pg3,7)
+makeToggle(eC2,1,"Safe ESP",false,function(v) u177=v;if v then task.spawn(function() while u177 do task.wait(1);pcall(function() for _,obj in pairs(workspace.Map.BredMakurz:GetChildren()) do if not obj:FindFirstChild("SafeESP") then local bb=Instance.new("BillboardGui",obj);bb.Name="SafeESP";bb.AlwaysOnTop=true;bb.Size=UDim2.new(1.2,0,1.2,0);local nl=Instance.new("TextLabel",bb);nl.Size=UDim2.new(1,0,0.3,0);nl.Name="name";nl.Font=Enum.Font.SourceSans;nl.TextSize=14;nl.TextStrokeTransparency=0;nl.BackgroundTransparency=1;local hl=Instance.new("TextLabel",bb);hl.Size=UDim2.new(1,0,0.3,0);hl.Name="health";hl.Font=Enum.Font.SourceSans;hl.TextSize=14;hl.TextStrokeTransparency=0;hl.BackgroundTransparency=1;hl.TextColor3=Color3.fromRGB(0,255,0);hl.Position=UDim2.new(0,0,0,17);if obj.Name:lower():find("smallsafe") then nl.Text="Small Safe" elseif obj.Name:lower():find("mediumsafe") then nl.Text="Medium Safe" elseif obj.Name:lower():find("register") or obj.Name:lower():find("cash") then nl.Text="Register" end;if obj:FindFirstChild("Values") and obj.Values:FindFirstChild("Broken") then nl.TextColor3=obj.Values.Broken.Value and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0) end else if obj:FindFirstChild("Values") and obj.Values:FindFirstChild("Broken") and obj.SafeESP:FindFirstChild("name") then if obj.Values.Broken.Value then obj.SafeESP.name.TextColor3=Color3.fromRGB(255,0,0);pcall(function() obj.SafeESP.health.Visible=false end) else obj.SafeESP.name.TextColor3=Color3.fromRGB(0,255,0);pcall(function() obj.SafeESP.health.Visible=true;obj.SafeESP.health.Text="Health: "..obj.Values.Health.Value end) end end end end end) end end) else pcall(function() for _,obj in pairs(workspace.Map.BredMakurz:GetChildren()) do if obj:FindFirstChild("SafeESP") then obj.SafeESP:Destroy() end end end) end end,false)
+makeToggle(eC2,2,"Dealer ESP",false,function(v) u241=v;if v then task.spawn(function() while u241 do task.wait(0.5);pcall(function() for _,d in pairs(workspace.Map.Shopz:GetChildren()) do if(d.Name=="Dealer" or d.Name=="ArmoryDealer") and not d:FindFirstChild("DealerESP") then local hl=Instance.new("Highlight");hl.Parent=d;hl.Name="DealerESP";if d.Name=="ArmoryDealer" then hl.FillColor=Color3.fromRGB(153,204,255);hl.OutlineColor=hl.FillColor else hl.FillColor=Color3.fromRGB(153,255,153);hl.OutlineColor=hl.FillColor end end end end) end end) else pcall(function() for _,d in pairs(workspace.Map.Shopz:GetChildren()) do if d:FindFirstChild("DealerESP") then d.DealerESP:Destroy() end end end) end end,false)
+makeToggle(eC2,3,"Tool ESP",false,function(v) u192=v;if v then task.spawn(function() while u192 do task.wait(0);for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character and p.Character:FindFirstChild("Head") then local tool="";for _,c in pairs(p.Character:GetChildren()) do if c:IsA("Tool") then tool=c.Name end end;local te=p.Character.Head:FindFirstChild("ToolsESP");if not te then local bb=Instance.new("BillboardGui",p.Character.Head);bb.Name="ToolsESP";bb.AlwaysOnTop=true;bb.Size=UDim2.new(1.2,0,1.2,0);local tl=Instance.new("TextLabel",bb);tl.Size=UDim2.new(1,0,0.3,0);tl.Font=Enum.Font.SourceSans;tl.TextSize=14;tl.TextStrokeTransparency=0;tl.BackgroundTransparency=1;tl.Text=tool;tl.TextColor3=Color3.new(1,0.65,0) else te.TextLabel.Text=tool end end end end end) else for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character and p.Character:FindFirstChild("Head") and p.Character.Head:FindFirstChild("ToolsESP") then p.Character.Head.ToolsESP:Destroy() end end end end,false)
+makeToggle(eC2,4,"Crate ESP",false,function(v) u210=v;if v then task.spawn(function() while u210 do task.wait(1);pcall(function() for _,c in pairs(workspace.Filter.SpawnedPiles:GetChildren()) do if c.Name=="C1" and c:FindFirstChild("MeshPart") and not c:FindFirstChild("ESP") then local hl=Instance.new("Highlight");hl.Name="ESP";hl.Parent=c;hl.FillColor=Color3.fromRGB(255,255,0);hl.OutlineColor=hl.FillColor end end;pcall(function() for _,c in pairs(workspace.Debris.VParts:GetChildren()) do if c.Name=="SupplyCrate" and not c:FindFirstChild("ESP") then local hl=Instance.new("Highlight");hl.Name="ESP";hl.Parent=c;hl.FillColor=Color3.fromRGB(255,255,0);hl.OutlineColor=hl.FillColor end end end);pcall(function() for _,c in pairs(workspace.Map.MysteryBoxes:GetChildren()) do if c.Name=="MysteryBox" and not c:FindFirstChild("ESP") then local hl=Instance.new("Highlight");hl.Name="ESP";hl.Parent=c;hl.FillColor=Color3.fromRGB(0,255,255);hl.OutlineColor=hl.FillColor end end end) end) end end) else pcall(function() for _,c in pairs(workspace.Filter.SpawnedPiles:GetChildren()) do if c:FindFirstChild("ESP") then c.ESP:Destroy() end end end);pcall(function() for _,c in pairs(workspace.Debris.VParts:GetChildren()) do if c:FindFirstChild("ESP") then c.ESP:Destroy() end end end);pcall(function() for _,c in pairs(workspace.Map.MysteryBoxes:GetChildren()) do if c:FindFirstChild("ESP") then c.ESP:Destroy() end end end) end end,false)
+makeToggle(eC2,5,"Scrap ESP",false,function(v) u254=v;if v then task.spawn(function() while u254 do task.wait(1);pcall(function() for _,c in pairs(workspace.Filter.SpawnedPiles:GetChildren()) do if(c.Name=="S1" or c.Name=="S2") and c:FindFirstChild("MeshPart") and not c:FindFirstChild("ESP") then local hl=Instance.new("Highlight");hl.Name="ESP";hl.Parent=c;hl.FillColor=Color3.fromRGB(150,150,150);hl.OutlineColor=hl.FillColor end end end) end end) else pcall(function() for _,c in pairs(workspace.Filter.SpawnedPiles:GetChildren()) do if(c.Name=="S1" or c.Name=="S2") and c:FindFirstChild("ESP") then c.ESP:Destroy() end end end) end end,true)
+
+-- PAGE 4: MOVEMENT
+local pg4=pages[4]
+makeSection(pg4,"Speed",1);local mC1=makeCard(pg4,2)
+makeToggle(mC1,1,"Speed Boost",false,function(v) u377=v;if v then task.spawn(function() local ch=Player.Character;local hum=ch and ch:FindFirstChildWhichIsA("Humanoid");while u377 and ch and hum and hum.Parent do local dt=RunService.Heartbeat:Wait();if hum.MoveDirection.Magnitude>0 then ch:TranslateBy(hum.MoveDirection*u376*dt*10) end;task.wait() end end) end end,false)
+makeSlider(mC1,2,"Speed Multi",1,7,1.1,0.1,function(v) u376=v end,false)
+makeSlider(mC1,3,"Gravity",75,196,196,1,function(v) workspace.Gravity=v end,true)
+
+makeSection(pg4,"Strafe",4);local mC2=makeCard(pg4,5)
+makeToggle(mC2,1,"Strafe Nearest",false,function(v) u271=v;if v then local best,bd=nil,math.huge;for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then local d=(Player.Character.HumanoidRootPart.Position-p.Character.HumanoidRootPart.Position).Magnitude;if d<bd then bd=d;best=p end end end;u272=best
+    if u272 then local angle=0;u273=RunService.RenderStepped:Connect(function(dt) if u271 and u272 and u272.Character and u272.Character:FindFirstChild("HumanoidRootPart") then local pos=u272.Character.HumanoidRootPart.Position;angle=angle+u270*dt;Player.Character.HumanoidRootPart.CFrame=CFrame.new(pos+Vector3.new(u269*math.cos(angle),0,u269*math.sin(angle)),pos);local h=Player.Character:FindFirstChildOfClass("Humanoid");if h then h.PlatformStand=true end else local h=Player.Character:FindFirstChildOfClass("Humanoid");if h then h.PlatformStand=false end;if u273 then u273:Disconnect();u273=nil end end end) else u271=false end
+    elseif u273 then u273:Disconnect();u273=nil;local h=Player.Character:FindFirstChildOfClass("Humanoid");if h then h.PlatformStand=false end end end,false)
+makeSlider(mC2,2,"Radius",1,10,4,1,function(v) u269=v end,false)
+makeSlider(mC2,3,"Speed",1,10,5,1,function(v) u270=v end,true)
+
+makeSection(pg4,"Spin",6);local mC3=makeCard(pg4,7)
+makeToggle(mC3,1,"Spin",false,function(v) u363=v end,false)
+makeSlider(mC3,2,"Spin Speed",1,100,30,1,function(v) u362=v end,true)
+task.spawn(function() local a=0;RunService.RenderStepped:Connect(function(dt) if u363 and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then a=a+u362*dt;Player.Character.HumanoidRootPart.CFrame=CFrame.new(Player.Character.HumanoidRootPart.Position)*CFrame.Angles(0,a,0) end end) end)
+
+makeSection(pg4,"Follow",8);local mC4=makeCard(pg4,9)
+makeToggle(mC4,1,"Follow Behind",false,function(v) u302=v;if v then task.spawn(function() while u302 do local best,bd=nil,math.huge;local myR=Player.Character and Player.Character:FindFirstChild("HumanoidRootPart");if myR then for _,p in ipairs(Players:GetPlayers()) do if p~=Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then local h=p.Character:FindFirstChildOfClass("Humanoid");if h and h.Health>=15 then local d=(myR.Position-p.Character.HumanoidRootPart.Position).Magnitude;if d<bd then bd=d;best=p end end end end end;if best then u304=best;local tr=best.Character.HumanoidRootPart;myR.CFrame=CFrame.new(tr.Position-tr.CFrame.LookVector*u296,tr.Position) end;task.wait(u303) end end) end end,false)
+makeSlider(mC4,2,"Distance",1,5,3,0.1,function(v) u296=v end,true)
+
+-- PAGE 5: TOOLS
+local pg5=pages[5]
+makeSection(pg5,"Combat",1);local tC1=makeCard(pg5,2)
+makeActionBtn(tC1,1,"WallBang",function() pcall(function() workspace.Map.Parts.M_Parts.Parent=workspace.Characters end);notify("WallBang","Done","success") end,false)
+makeActionBtn(tC1,2,"Fling",function() pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/sauga77kjk/RobloxExploitRepository/main/TouchFLING"))() end);notify("Fling","Loaded","success") end,false)
+makeActionBtn(tC1,3,"Chat Spy",function() pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/LisSploit/FemboysHubChat/main/Spy"))() end);notify("Chat Spy","Loaded","success") end,true)
+
+makeSection(pg5,"World",4);local tC2=makeCard(pg5,5)
+makeActionBtn(tC2,1,"Anti Doors",function() pcall(function() local doors=workspace.Map:FindFirstChild("Doors");if doors then for _,d in ipairs(doors:GetChildren()) do if d:IsA("Model") then for _,p in ipairs(d:GetDescendants()) do if p:IsA("BasePart") then p.Transparency=0.5;p.Material=Enum.Material.SmoothPlastic;p.CanCollide=false;if p.Name=="DFrame" then p.Transparency=1 end end end end end end end);notify("Doors","Transparent","success") end,false)
+makeActionBtn(tC2,2,"Remove Barbed Wire",function() pcall(function() for _,f in ipairs(workspace.Filter.Parts.F_Parts:GetChildren()) do if f:IsA("Folder") then f:Destroy() end end end);notify("Wire","Removed","success") end,false)
+makeActionBtn(tC2,3,"Fullbright",function() pcall(function() Lighting.Ambient=Color3.fromRGB(255,255,255);Lighting.Brightness=1;Lighting.FogEnd=1e10;for _,e in pairs(Lighting:GetDescendants()) do if e:IsA("BloomEffect") or e:IsA("BlurEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("SunRaysEffect") then e.Enabled=false end end end);notify("Fullbright","On","success") end,false)
+makeActionBtn(tC2,4,"Auto Lockpick",function() pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/Iceyze/crim-autolockpick/main/main.lua"))() end);notify("Lockpick","Loaded","success") end,false)
+makeActionBtn(tC2,5,"Click TP (Q)",function() Mouse.KeyDown:connect(function(k) if k=="q" and Mouse.Target then Player.Character.HumanoidRootPart.CFrame=CFrame.new(Mouse.Hit.X,Mouse.Hit.Y+5,Mouse.Hit.Z) end end);notify("Click TP","Q to TP","success") end,true)
+
+makeSection(pg5,"Vision",6);local tC3=makeCard(pg5,7)
+makeSlider(tC3,1,"Day Time",1,24,12,1,function(v) pcall(function() local ts=ReplicatedStorage.Values.TimeState;ts.Value=v;ts.Enabled.Value=true end) end,false)
+makeSlider(tC3,2,"Max Zoom",10,250,10,2,function(v) Player.CameraMaxZoomDistance=v end,true)
+
+-- PAGE 6: TELEPORTS
+local pg6=pages[6]
+makeSection(pg6,"Locations",1);local tpC1=makeCard(pg6,2)
+makeActionBtn(tpC1,1,"Tower",function() tpTo(CFrame.new(-4513.35,149.35,-879.46)) end,false)
+makeActionBtn(tpC1,2,"Motel",function() tpTo(CFrame.new(-4671.03,3.3,-905.13)) end,false)
+makeActionBtn(tpC1,3,"Cafe",function() tpTo(CFrame.new(-4630.46,6.05,-269.56)) end,false)
+makeActionBtn(tpC1,4,"Illegal Pizza",function() tpTo(CFrame.new(-4419.32,5.2,-124.55)) end,false)
+makeActionBtn(tpC1,5,"Junkyard",function() tpTo(CFrame.new(-3919.52,3.8,-449)) end,false)
+makeActionBtn(tpC1,6,"Sewer",function() tpTo(CFrame.new(-4658.19,-69.37,-871.91)) end,false)
+makeActionBtn(tpC1,7,"Vibe Down",function() tpTo(CFrame.new(-4780.97,-200.96,-895.45)) end,false)
+makeActionBtn(tpC1,8,"Vibe Up",function() tpTo(CFrame.new(-4776.98,-34.77,-788.09)) end,true)
+
+makeSection(pg6,"Nearest",9);local tpC2=makeCard(pg6,10)
+makeActionBtn(tpC2,1,"Nearest Dealer",function() pcall(function() local ch=Player.Character;local best,bd=nil,math.huge;for _,d in ipairs(workspace.Map.Shopz:GetChildren()) do if(d.Name=="ArmoryDealer" or d.Name=="Dealer") and d:FindFirstChild("MainPart") then local dist=(ch.PrimaryPart.Position-d.MainPart.Position).Magnitude;if dist<bd then bd=dist;best=d.MainPart end end end;if best then local dest=best.Position+best.CFrame.LookVector*3;local t=tick();while tick()-t<6 do ch:SetPrimaryPartCFrame(CFrame.new(dest,best.Position));task.wait(0.01) end end end) end,false)
+makeActionBtn(tpC2,2,"Nearest Safe",function() pcall(function() local myR=Player.Character:WaitForChild("HumanoidRootPart");local best,bd=nil,math.huge;for _,obj in pairs(workspace.Map.BredMakurz:GetDescendants()) do if obj:IsA("Model") and obj:FindFirstChild("MainPart") and obj:FindFirstChild("Values") then local br=obj.Values:FindFirstChild("Broken");if br and not br.Value then local d=(myR.Position-obj.MainPart.Position).Magnitude;if d<bd then bd=d;best=obj.MainPart end end end end;if best then local dest=best.Position+best.CFrame.LookVector*3;local t=tick();while tick()-t<6 do myR.CFrame=CFrame.new(dest,best.Position);task.wait(0.01) end end end) end,false)
+makeActionBtn(tpC2,3,"Nearest Vending",function() pcall(function() local myR=Player.Character:WaitForChild("HumanoidRootPart");local best,bd=nil,math.huge;local vm=workspace.Map:FindFirstChild("VendingMachines");if vm then for _,v in pairs(vm:GetChildren()) do local p=v:FindFirstChild("Parts");if p then local s=p:FindFirstChild("ScreenMesh");if s and s:IsA("BasePart") then local d=(myR.Position-s.Position).Magnitude;if d<bd then bd=d;best=s end end end end end;if best then local dest=best.Position+best.CFrame.LookVector*3;local t=tick();while tick()-t<6 do myR.CFrame=CFrame.new(dest,best.Position);task.wait(0.01) end end end) end,false)
+makeActionBtn(tpC2,4,"Nearest ATM",function() pcall(function() local myR=Player.Character:WaitForChild("HumanoidRootPart");local best,bd=nil,math.huge;local main=workspace.Map.ATMz.ATM.Parts.Main;for _,a in ipairs(main:GetChildren()) do if a:IsA("BasePart") and a.Name=="atm" then local d=(myR.Position-a.Position).Magnitude;if d<bd then bd=d;best=a end end end;if best then local dest=best.Position+best.CFrame.LookVector*-3;local t=tick();while tick()-t<6 do myR.CFrame=CFrame.new(dest,best.Position);task.wait(0.01) end end end) end,false)
+makeActionBtn(tpC2,5,"Rebel Dealer",function() pcall(function() local ch=Player.Character;for _,d in ipairs(workspace.Map.Shopz:GetChildren()) do if d.Name=="RebelDealer" and d:FindFirstChild("MainPart") then local dest=d.MainPart.Position+d.MainPart.CFrame.LookVector*3;local t=tick();while tick()-t<4 do ch:SetPrimaryPartCFrame(CFrame.new(dest,d.MainPart.Position));task.wait(0.01) end;return end end;notify("TP","Not found","error") end) end,false)
+makeActionBtn(tpC2,6,"Mystery Box",function() pcall(function() local ch=Player.Character;local mb=workspace.Map.MysteryBoxes:FindFirstChild("MysteryBox");if mb and mb:FindFirstChild("MainPart") then local dest=mb.MainPart.Position+mb.MainPart.CFrame.LookVector*3;local t=tick();while tick()-t<4 do ch:SetPrimaryPartCFrame(CFrame.new(dest,mb.MainPart.Position));task.wait(0.01) end else notify("TP","Not found","error") end end) end,false)
+makeActionBtn(tpC2,7,"Nearest Cash",function() pcall(function() local ch=Player.Character;local best,bd=nil,math.huge;local myP=ch.HumanoidRootPart.Position;for _,c in pairs(workspace.Filter.SpawnedBread:GetChildren()) do if c:IsA("MeshPart") then local d=(c.Position-myP).Magnitude;if d<bd then bd=d;best=c end end end;if best then local dest=best.Position+Vector3.new(0,5,0);local t=tick();while tick()-t<5 do ch:SetPrimaryPartCFrame(CFrame.new(dest,dest+best.CFrame.LookVector));task.wait(0.01) end else notify("TP","No cash","error") end end) end,true)
+
+-- THEME
+local function applyTheme() T=isDark and DARK or LIGHT;applyReg();thBtn.Text=isDark and "☀  Light" or "🌙  Dark";winGlow.ImageColor3=isDark and Color3.fromRGB(90,70,160) or Color3.fromRGB(180,170,220);for i,btn in ipairs(navBtns) do if i~=activeTab then btn.bg.BackgroundColor3=T.dim;btn.lbl.TextColor3=T.muted end end end
+thBtn.MouseButton1Click:Connect(function() isDark=not isDark;applyTheme() end);thBtn.TouchTap:Connect(function() isDark=not isDark;applyTheme() end)
+thBtn.MouseEnter:Connect(function() TweenService:Create(thBtn,tw(0.12),{BackgroundColor3=accent,TextColor3=Color3.new(1,1,1)}):Play() end)
+thBtn.MouseLeave:Connect(function() TweenService:Create(thBtn,tw(0.12),{BackgroundColor3=T.dim,TextColor3=T.muted}):Play() end)
+
+UserInputService.InputBegan:Connect(function(i,gp) if gp then return end;if i.UserInputType==Enum.UserInputType.Keyboard and i.KeyCode==Enum.KeyCode.RightBracket then sg.Enabled=not sg.Enabled end end)
+
+task.spawn(function() while sg and sg.Parent do TweenService:Create(winGlow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.82}):Play();task.wait(2.4);TweenService:Create(winGlow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.92}):Play();task.wait(2.4) end end)
+
+win.AnchorPoint=Vector2.new(0.5,0.5);win.Position=UDim2.new(0,startX+math.floor(WIN_W/2),0,startY+math.floor(WIN_H/2));win.Size=UDim2.new(0,0,0,0);win.BackgroundTransparency=1
+local openTw=TweenService:Create(win,tw(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,WIN_W,0,WIN_H),BackgroundTransparency=0});openTw:Play();openTw.Completed:Connect(function() win.AnchorPoint=Vector2.new(0,0);win.Position=UDim2.new(0,startX,0,startY) end)
+
+setTab(1)
+notify("FeatherHub Criminality","v1 Loaded — press ] to hide","success")
+print("[FeatherHub Criminality v1] Ready")
