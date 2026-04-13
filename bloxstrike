@@ -1,0 +1,1363 @@
+-- FeatherHub Blox Strike
+-- Custom UI (No Rayfield) | BHop removed, Skin Changer improved
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+local CharactersFolder = Workspace:WaitForChild("Characters", 10)
+
+-- ==================== UI Setup ====================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FeatherHubBloxStrike"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999
+ScreenGui.IgnoreGuiInset = true
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then ScreenGui.Parent = player:WaitForChild("PlayerGui") end
+
+-- Theme
+local T = {
+    bg = Color3.fromRGB(13, 13, 18),
+    sidebar = Color3.fromRGB(18, 18, 25),
+    card = Color3.fromRGB(23, 23, 32),
+    border = Color3.fromRGB(42, 42, 58),
+    text = Color3.fromRGB(228, 228, 240),
+    muted = Color3.fromRGB(95, 95, 118),
+    dim = Color3.fromRGB(30, 30, 44),
+    sep = Color3.fromRGB(34, 34, 50),
+    header = Color3.fromRGB(16, 16, 22),
+    inputBg = Color3.fromRGB(9, 9, 15),
+    accent = Color3.fromRGB(110, 95, 210),
+    accentLt = Color3.fromRGB(135, 115, 235),
+    accentDim = Color3.fromRGB(65, 55, 130),
+    green = Color3.fromRGB(90, 195, 145),
+    red = Color3.fromRGB(210, 75, 95),
+    gold = Color3.fromRGB(185, 150, 60)
+}
+
+local WIN_W, WIN_H, SIDE_W, HDR_H = 580, 480, 130, 48
+
+local function createTween(obj, props, dur, easing, dir)
+    return TweenService:Create(obj, TweenInfo.new(dur or 0.22, easing or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out), props)
+end
+
+local function notify(title, msg, nType)
+    local col = T.accent
+    if nType == "success" then col = T.green
+    elseif nType == "error" then col = T.red
+    elseif nType == "warning" then col = T.gold end
+
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 0, 0, 62)
+    notif.Position = UDim2.new(1, -12, 1, -76)
+    notif.AnchorPoint = Vector2.new(1, 1)
+    notif.BackgroundColor3 = T.card
+    notif.BorderSizePixel = 0
+    notif.ZIndex = 100
+    notif.Parent = ScreenGui
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 10)
+    local stroke = Instance.new("UIStroke", notif)
+    stroke.Color = col
+    stroke.Thickness = 1
+    local bar = Instance.new("Frame", notif)
+    bar.Size = UDim2.new(0, 3, 0.65, 0)
+    bar.Position = UDim2.new(0, 0, 0.175, 0)
+    bar.BackgroundColor3 = col
+    bar.BorderSizePixel = 0
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+    local titleLabel = Instance.new("TextLabel", notif)
+    titleLabel.Size = UDim2.new(1, -18, 0, 20)
+    titleLabel.Position = UDim2.new(0, 14, 0, 9)
+    titleLabel.Text = title
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextSize = 11
+    titleLabel.TextColor3 = T.text
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.ZIndex = 101
+
+    local msgLabel = Instance.new("TextLabel", notif)
+    msgLabel.Size = UDim2.new(1, -18, 0, 20)
+    msgLabel.Position = UDim2.new(0, 14, 0, 29)
+    msgLabel.Text = msg
+    msgLabel.Font = Enum.Font.Gotham
+    msgLabel.TextSize = 9
+    msgLabel.TextColor3 = T.text
+    msgLabel.TextTransparency = 0.35
+    msgLabel.TextXAlignment = Enum.TextXAlignment.Left
+    msgLabel.TextWrapped = true
+    msgLabel.BackgroundTransparency = 1
+    msgLabel.ZIndex = 101
+
+    notif.Size = UDim2.new(0, 0, 0, 62)
+    createTween(notif, {Size = UDim2.new(0, 210, 0, 62)}, 0.25):Play()
+    task.delay(3.5, function()
+        if notif and notif.Parent then
+            createTween(notif, {Position = UDim2.new(1, 12, 1, -76)}, 0.25):Play()
+            task.delay(0.3, function() if notif and notif.Parent then notif:Destroy() end end)
+        end
+    end)
+end
+
+-- Main Window
+local Win = Instance.new("Frame")
+Win.Name = "MainWindow"
+Win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+Win.BackgroundColor3 = T.bg
+Win.BorderSizePixel = 0
+Win.ClipsDescendants = true
+Win.ZIndex = 1
+Win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+Win.Parent = ScreenGui
+Instance.new("UICorner", Win).CornerRadius = UDim.new(0, 16)
+local WinStroke = Instance.new("UIStroke", Win)
+WinStroke.Color = T.border
+WinStroke.Thickness = 1
+
+-- Sidebar
+local Sidebar = Instance.new("Frame")
+Sidebar.Name = "Sidebar"
+Sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+Sidebar.BackgroundColor3 = T.sidebar
+Sidebar.BorderSizePixel = 0
+Sidebar.ZIndex = 3
+Sidebar.Parent = Win
+Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 16)
+
+local SidebarCover = Instance.new("Frame")
+SidebarCover.Size = UDim2.new(0, 16, 1, 0)
+SidebarCover.Position = UDim2.new(1, -16, 0, 0)
+SidebarCover.BackgroundColor3 = T.sidebar
+SidebarCover.BorderSizePixel = 0
+SidebarCover.ZIndex = 3
+SidebarCover.Parent = Sidebar
+
+-- Logo
+local LogoPill = Instance.new("Frame")
+LogoPill.Size = UDim2.new(0, 40, 0, 40)
+LogoPill.Position = UDim2.new(0.5, -20, 0, 12)
+LogoPill.BackgroundColor3 = T.accent
+LogoPill.BorderSizePixel = 0
+LogoPill.ZIndex = 5
+LogoPill.Parent = Sidebar
+Instance.new("UICorner", LogoPill).CornerRadius = UDim.new(0, 11)
+
+local LogoText = Instance.new("TextLabel", LogoPill)
+LogoText.Size = UDim2.new(1, 0, 1, 0)
+LogoText.Text = "BS"
+LogoText.TextSize = 16
+LogoText.Font = Enum.Font.GothamBold
+LogoText.TextColor3 = Color3.new(1, 1, 1)
+LogoText.BackgroundTransparency = 1
+LogoText.ZIndex = 6
+
+-- Sidebar Separator
+local SideSepTop = Instance.new("Frame")
+SideSepTop.Size = UDim2.new(0.6, 0, 0, 1)
+SideSepTop.Position = UDim2.new(0.2, 0, 0, 60)
+SideSepTop.BackgroundColor3 = T.sep
+SideSepTop.BorderSizePixel = 0
+SideSepTop.ZIndex = 4
+SideSepTop.Parent = Sidebar
+
+-- Navigation Container
+local NavContainer = Instance.new("Frame")
+NavContainer.Size = UDim2.new(1, 0, 1, -140)
+NavContainer.Position = UDim2.new(0, 0, 0, 68)
+NavContainer.BackgroundTransparency = 1
+NavContainer.ZIndex = 4
+NavContainer.Parent = Sidebar
+
+local NavList = Instance.new("UIListLayout", NavContainer)
+NavList.SortOrder = Enum.SortOrder.LayoutOrder
+NavList.VerticalAlignment = Enum.VerticalAlignment.Top
+NavList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+NavList.Padding = UDim.new(0, 4)
+
+-- Sidebar Bottom Separator
+local SideSepBot = Instance.new("Frame")
+SideSepBot.Size = UDim2.new(0.6, 0, 0, 1)
+SideSepBot.Position = UDim2.new(0.2, 0, 1, -50)
+SideSepBot.BackgroundColor3 = T.sep
+SideSepBot.BorderSizePixel = 0
+SideSepBot.ZIndex = 4
+SideSepBot.Parent = Sidebar
+
+-- Version Label
+local VersionLabel = Instance.new("TextLabel")
+VersionLabel.Size = UDim2.new(1, 0, 0, 12)
+VersionLabel.Position = UDim2.new(0, 0, 1, -38)
+VersionLabel.Text = "Blox Strike v1.0"
+VersionLabel.Font = Enum.Font.Gotham
+VersionLabel.TextSize = 7
+VersionLabel.TextColor3 = T.muted
+VersionLabel.BackgroundTransparency = 1
+VersionLabel.TextXAlignment = Enum.TextXAlignment.Center
+VersionLabel.ZIndex = 5
+VersionLabel.Parent = Sidebar
+
+-- Header
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+Header.Position = UDim2.new(0, SIDE_W, 0, 0)
+Header.BackgroundColor3 = T.header
+Header.BorderSizePixel = 0
+Header.ZIndex = 3
+Header.Parent = Win
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 16)
+
+local HeaderLeftCover = Instance.new("Frame")
+HeaderLeftCover.Size = UDim2.new(0, 16, 1, 0)
+HeaderLeftCover.BackgroundColor3 = T.header
+HeaderLeftCover.BorderSizePixel = 0
+HeaderLeftCover.ZIndex = 3
+HeaderLeftCover.Parent = Header
+
+local HeaderBotCover = Instance.new("Frame")
+HeaderBotCover.Size = UDim2.new(0, 16, 0, 16)
+HeaderBotCover.Position = UDim2.new(1, -16, 1, -16)
+HeaderBotCover.BackgroundColor3 = T.header
+HeaderBotCover.BorderSizePixel = 0
+HeaderBotCover.ZIndex = 3
+HeaderBotCover.Parent = Header
+
+local HeaderLine = Instance.new("Frame")
+HeaderLine.Size = UDim2.new(1, -10, 0, 1)
+HeaderLine.Position = UDim2.new(0, 5, 1, -1)
+HeaderLine.BackgroundColor3 = T.sep
+HeaderLine.BorderSizePixel = 0
+HeaderLine.ZIndex = 4
+HeaderLine.Parent = Header
+
+local HeaderTitle = Instance.new("TextLabel")
+HeaderTitle.Size = UDim2.new(1, -140, 1, 0)
+HeaderTitle.Position = UDim2.new(0, 16, 0, 0)
+HeaderTitle.Text = "Combat"
+HeaderTitle.Font = Enum.Font.GothamBold
+HeaderTitle.TextSize = 13
+HeaderTitle.TextColor3 = T.text
+HeaderTitle.BackgroundTransparency = 1
+HeaderTitle.TextXAlignment = Enum.TextXAlignment.Left
+HeaderTitle.ZIndex = 5
+HeaderTitle.Parent = Header
+
+-- Header Buttons
+local function makeHeaderButton(xOffset, symbol)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 28, 0, 28)
+    btn.Position = UDim2.new(1, xOffset, 0.5, -14)
+    btn.Text = symbol
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 16
+    btn.TextColor3 = T.muted
+    btn.BackgroundColor3 = T.dim
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    btn.Parent = Header
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+    return btn
+end
+
+local MinimizeBtn = makeHeaderButton(-66, "–")
+local CloseBtn = makeHeaderButton(-34, "×")
+
+CloseBtn.MouseEnter:Connect(function()
+    createTween(CloseBtn, {BackgroundColor3 = T.red, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+CloseBtn.MouseLeave:Connect(function()
+    createTween(CloseBtn, {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play()
+end)
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Minimize functionality
+local isMinimized = false
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    if isMinimized then
+        createTween(Win, {Size = UDim2.new(0, WIN_W, 0, HDR_H)}, 0.3):Play()
+        Sidebar.Visible = false
+        Content.Visible = false
+        createTween(Header, {Size = UDim2.new(1, 0, 0, HDR_H), Position = UDim2.new(0, 0, 0, 0)}, 0.3):Play()
+        HeaderLeftCover.Visible = false
+        HeaderBotCover.Visible = false
+        HeaderLine.Visible = false
+        MinimizeBtn.Text = "+"
+    else
+        createTween(Win, {Size = UDim2.new(0, WIN_W, 0, WIN_H)}, 0.3):Play()
+        createTween(Header, {Size = UDim2.new(1, -SIDE_W, 0, HDR_H), Position = UDim2.new(0, SIDE_W, 0, 0)}, 0.3):Play()
+        HeaderLeftCover.Visible = true
+        HeaderBotCover.Visible = true
+        HeaderLine.Visible = true
+        task.delay(0.1, function()
+            Sidebar.Visible = true
+            Content.Visible = true
+        end)
+        MinimizeBtn.Text = "–"
+    end
+end
+MinimizeBtn.MouseButton1Click:Connect(toggleMinimize)
+MinimizeBtn.MouseEnter:Connect(function()
+    createTween(MinimizeBtn, {BackgroundColor3 = T.accent, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+MinimizeBtn.MouseLeave:Connect(function()
+    createTween(MinimizeBtn, {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play()
+end)
+
+-- Content Area
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+Content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+Content.BackgroundTransparency = 1
+Content.BorderSizePixel = 0
+Content.ZIndex = 2
+Content.ClipsDescendants = true
+Content.Parent = Win
+
+-- Dragging
+local dragging, dragStart, startPos
+Header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Win.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        local viewport = camera.ViewportSize
+        Win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + delta.X, 0, viewport.X - WIN_W), 0, math.clamp(startPos.Y.Offset + delta.Y, 0, viewport.Y - WIN_H))
+    end
+end)
+
+-- Tabs
+local Tabs = {
+    {name = "Combat"},
+    {name = "Skins"},
+    {name = "Visuals"},
+}
+local Pages = {}
+local NavButtons = {}
+local ActiveTab = 1
+
+local function createPage()
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = T.accent
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.ScrollingDirection = Enum.ScrollingDirection.Y
+    page.ElasticBehavior = Enum.ElasticBehavior.Never
+    page.Visible = false
+    page.ZIndex = 2
+    page.Parent = Content
+    local layout = Instance.new("UIListLayout", page)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Padding = UDim.new(0, 7)
+    local padding = Instance.new("UIPadding", page)
+    padding.PaddingTop = UDim.new(0, 12)
+    padding.PaddingBottom = UDim.new(0, 12)
+    padding.PaddingLeft = UDim.new(0, 12)
+    padding.PaddingRight = UDim.new(0, 12)
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 24)
+    end)
+    return page
+end
+
+for i = 1, #Tabs do Pages[i] = createPage() end
+
+local function setTab(index)
+    if isMinimized then toggleMinimize() end
+    local oldIndex = ActiveTab
+    ActiveTab = index
+    HeaderTitle.Text = Tabs[index].name
+    for i, btn in ipairs(NavButtons) do
+        local isActive = (i == index)
+        createTween(btn.bg, {BackgroundColor3 = isActive and T.accent or T.dim, BackgroundTransparency = isActive and 0.12 or 0}, 0.16):Play()
+        createTween(btn.lbl, {TextColor3 = isActive and Color3.new(1,1,1) or T.text}, 0.16):Play()
+        btn.bar.BackgroundTransparency = isActive and 0 or 1
+        btn.bar.BackgroundColor3 = T.accent
+    end
+    if oldIndex ~= index then
+        if Pages[oldIndex] then Pages[oldIndex].Visible = false end
+        if Pages[index] then
+            Pages[index].Position = UDim2.new(0, 0, 0, 0)
+            Pages[index].CanvasPosition = Vector2.new(0, 0)
+            Pages[index].Visible = true
+            local cover = Instance.new("Frame")
+            cover.Size = UDim2.new(1, 0, 1, 0)
+            cover.BackgroundColor3 = T.bg
+            cover.BackgroundTransparency = 0
+            cover.BorderSizePixel = 0
+            cover.ZIndex = 8
+            cover.Parent = Pages[index]
+            createTween(cover, {BackgroundTransparency = 1}, 0.18, Enum.EasingStyle.Quad):Play()
+            task.delay(0.2, function() if cover and cover.Parent then cover:Destroy() end end)
+        end
+    else
+        for i = 1, #Pages do Pages[i].Visible = (i == index) end
+    end
+end
+
+for i, tab in ipairs(Tabs) do
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -8, 0, 38)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = i
+    row.ZIndex = 4
+    row.Parent = NavContainer
+
+    local bar = Instance.new("Frame", row)
+    bar.Size = UDim2.new(0, 3, 0.45, 0)
+    bar.Position = UDim2.new(0, 0, 0.275, 0)
+    bar.BackgroundColor3 = T.accent
+    bar.BackgroundTransparency = 1
+    bar.BorderSizePixel = 0
+    bar.ZIndex = 5
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+    local bg = Instance.new("Frame", row)
+    bg.Size = UDim2.new(1, -5, 1, -6)
+    bg.Position = UDim2.new(0, 5, 0, 3)
+    bg.BackgroundColor3 = T.dim
+    bg.BackgroundTransparency = 0
+    bg.BorderSizePixel = 0
+    bg.ZIndex = 4
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1, -14, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.Text = tab.name
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 9
+    lbl.TextColor3 = T.text
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 5
+
+    local hit = Instance.new("TextButton", row)
+    hit.Size = UDim2.new(1, 0, 1, 0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.ZIndex = 6
+    local idx = i
+    hit.MouseButton1Click:Connect(function() setTab(idx) end)
+
+    NavButtons[i] = {bg = bg, lbl = lbl, bar = bar}
+end
+
+-- UI Helper Functions
+local function makeCard(parent, order)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 0, 0)
+    card.AutomaticSize = Enum.AutomaticSize.Y
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    card.LayoutOrder = order
+    card.ZIndex = 3
+    card.Parent = parent
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 11)
+    local stroke = Instance.new("UIStroke", card)
+    stroke.Color = T.border
+    stroke.Thickness = 1
+    local layout = Instance.new("UIListLayout", card)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return card
+end
+
+local function makeRow(card, order, isLast, height)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, height or 46)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.ZIndex = 4
+    row.Parent = card
+    if not isLast then
+        local sep = Instance.new("Frame", row)
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+        sep.ZIndex = 4
+    end
+    return row
+end
+
+local function makeSection(parent, title, order)
+    local section = Instance.new("Frame")
+    section.Size = UDim2.new(1, 0, 0, 22)
+    section.BackgroundTransparency = 1
+    section.BorderSizePixel = 0
+    section.LayoutOrder = order
+    section.ZIndex = 3
+    section.Parent = parent
+    local lbl = Instance.new("TextLabel", section)
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = title
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = T.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 3
+    local line = Instance.new("Frame", section)
+    line.Size = UDim2.new(0, 28, 0, 2)
+    line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = T.accent
+    line.BorderSizePixel = 0
+    line.ZIndex = 3
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return section
+end
+
+local function makeToggle(parent, order, title, default, callback)
+    local row = makeRow(parent, order, false, 44)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.65, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 16, 0, 0)
+    lbl.Text = title
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 5
+
+    local track = Instance.new("TextButton", row)
+    track.Size = UDim2.new(0, 38, 0, 20)
+    track.Position = UDim2.new(1, -52, 0.5, -10)
+    track.BackgroundColor3 = default and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ""
+    track.ZIndex = 5
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("Frame", track)
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.new(1, 1, 1)
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 6
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local state = default
+    local function updateUI()
+        createTween(track, {BackgroundColor3 = state and T.accent or T.dim}, 0.15):Play()
+        createTween(knob, {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}, 0.15):Play()
+    end
+    track.MouseButton1Click:Connect(function()
+        state = not state
+        updateUI()
+        callback(state)
+    end)
+    return {
+        SetValue = function(self, val)
+            if state ~= val then
+                state = val
+                updateUI()
+                callback(val)
+            end
+        end,
+        Value = state
+    }
+end
+
+local function makeSlider(parent, order, title, min, max, default, suffix, callback)
+    local row = makeRow(parent, order, false, 60)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.45, 0, 0, 20)
+    lbl.Position = UDim2.new(0, 16, 0, 8)
+    lbl.Text = title
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 5
+
+    local valLabel = Instance.new("TextLabel", row)
+    valLabel.Size = UDim2.new(0, 40, 0, 20)
+    valLabel.Position = UDim2.new(1, -56, 0, 8)
+    valLabel.Text = tostring(default) .. (suffix or "")
+    valLabel.Font = Enum.Font.GothamBold
+    valLabel.TextSize = 9
+    valLabel.TextColor3 = T.accent
+    valLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valLabel.BackgroundTransparency = 1
+    valLabel.ZIndex = 5
+
+    local track = Instance.new("Frame", row)
+    track.Size = UDim2.new(1, -32, 0, 6)
+    track.Position = UDim2.new(0, 16, 0, 38)
+    track.BackgroundColor3 = T.dim
+    track.BorderSizePixel = 0
+    track.ZIndex = 5
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = T.accent
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 6
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("TextButton", track)
+    knob.Size = UDim2.new(0, 14, 0, 14)
+    knob.Position = UDim2.new((default - min) / (max - min), -7, 0.5, -7)
+    knob.BackgroundColor3 = Color3.new(1, 1, 1)
+    knob.BorderSizePixel = 0
+    knob.AutoButtonColor = false
+    knob.Text = ""
+    knob.ZIndex = 7
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local draggingSlider = false
+    knob.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            draggingSlider = true
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            draggingSlider = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if draggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local relX = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+            local val = min + relX * (max - min)
+            if suffix == "px" or not string.find(suffix or "", "%.") then val = math.floor(val) end
+            fill.Size = UDim2.new(relX, 0, 1, 0)
+            knob.Position = UDim2.new(relX, -7, 0.5, -7)
+            valLabel.Text = tostring(val) .. (suffix or "")
+            callback(val)
+        end
+    end)
+    return {SetValue = function(_, v)
+        local relX = (v - min) / (max - min)
+        fill.Size = UDim2.new(relX, 0, 1, 0)
+        knob.Position = UDim2.new(relX, -7, 0.5, -7)
+        valLabel.Text = tostring(v) .. (suffix or "")
+    end}
+end
+
+local function makeButton(parent, order, title, callback)
+    local row = makeRow(parent, order, true, 48)
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(1, -28, 0, 34)
+    btn.Position = UDim2.new(0, 14, 0.5, -17)
+    btn.Text = title
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    btn.MouseButton1Click:Connect(callback)
+    btn.MouseEnter:Connect(function()
+        createTween(btn, {BackgroundColor3 = T.accentLt}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        createTween(btn, {BackgroundColor3 = T.accent}):Play()
+    end)
+    return btn
+end
+
+local function makeDropdown(parent, order, title, values, defaultIndex, callback)
+    local row = makeRow(parent, order, false, 52)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.4, 0, 0, 20)
+    lbl.Position = UDim2.new(0, 16, 0, 8)
+    lbl.Text = title
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 5
+
+    local selected = values[defaultIndex] or values[1]
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0.55, -20, 0, 30)
+    btn.Position = UDim2.new(1, -btn.Size.X.Offset - 16, 0.5, -15)
+    btn.Text = selected
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 10
+    btn.TextColor3 = T.text
+    btn.BackgroundColor3 = T.inputBg
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color = T.border
+    stroke.Thickness = 1
+
+    local dropdownOpen = false
+    local dropdownFrame
+    local closeConnection
+
+    local function closeDropdown()
+        if dropdownFrame then dropdownFrame:Destroy(); dropdownFrame = nil end
+        if closeConnection then closeConnection:Disconnect(); closeConnection = nil end
+        dropdownOpen = false
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        if dropdownOpen then closeDropdown(); return end
+        dropdownOpen = true
+        dropdownFrame = Instance.new("Frame")
+        dropdownFrame.Size = UDim2.new(0, btn.AbsoluteSize.X, 0, #values * 30)
+        dropdownFrame.Position = UDim2.new(0, btn.AbsolutePosition.X, 0, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y)
+        dropdownFrame.BackgroundColor3 = T.card
+        dropdownFrame.BorderSizePixel = 0
+        dropdownFrame.ZIndex = 100
+        dropdownFrame.Parent = ScreenGui
+        Instance.new("UICorner", dropdownFrame).CornerRadius = UDim.new(0, 6)
+        Instance.new("UIStroke", dropdownFrame).Color = T.border
+        local ddLayout = Instance.new("UIListLayout", dropdownFrame)
+        ddLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        for _, v in ipairs(values) do
+            local opt = Instance.new("TextButton", dropdownFrame)
+            opt.Size = UDim2.new(1, 0, 0, 30)
+            opt.Text = v
+            opt.Font = Enum.Font.GothamMedium
+            opt.TextSize = 10
+            opt.TextColor3 = T.text
+            opt.BackgroundColor3 = T.card
+            opt.BorderSizePixel = 0
+            opt.ZIndex = 101
+            opt.AutoButtonColor = false
+            opt.MouseEnter:Connect(function() createTween(opt, {BackgroundColor3 = T.dim}):Play() end)
+            opt.MouseLeave:Connect(function() createTween(opt, {BackgroundColor3 = T.card}):Play() end)
+            opt.MouseButton1Click:Connect(function()
+                btn.Text = v
+                selected = v
+                closeDropdown()
+                callback(v)
+            end)
+        end
+        task.wait(0.05)
+        closeConnection = UserInputService.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                local mousePos = UserInputService:GetMouseLocation()
+                local inDropdown = false
+                if dropdownFrame then
+                    local ap, as = dropdownFrame.AbsolutePosition, dropdownFrame.AbsoluteSize
+                    if mousePos.X >= ap.X and mousePos.X <= ap.X + as.X and mousePos.Y >= ap.Y and mousePos.Y <= ap.Y + as.Y then inDropdown = true end
+                end
+                local bap, bas = btn.AbsolutePosition, btn.AbsoluteSize
+                if mousePos.X >= bap.X and mousePos.X <= bap.X + bas.X and mousePos.Y >= bap.Y and mousePos.Y <= bap.Y + bas.Y then inDropdown = true end
+                if not inDropdown then closeDropdown() end
+            end
+        end)
+    end)
+    return {
+        SetValues = function(self, newVals)
+            values = newVals
+            btn.Text = values[1] or ""
+            if dropdownOpen then closeDropdown() end
+        end,
+        SetValue = function(self, val)
+            btn.Text = val
+            selected = val
+        end,
+        Value = selected
+    }
+end
+
+-- ==================== SHARED LOGIC ====================
+local function getTFolder() return CharactersFolder:FindFirstChild("Terrorists") end
+local function getCTFolder() return CharactersFolder:FindFirstChild("Counter-Terrorists") end
+
+local function isAlive()
+    local t, ct = getTFolder(), getCTFolder()
+    return (t and t:FindFirstChild(player.Name)) or (ct and ct:FindFirstChild(player.Name))
+end
+
+local function getEnemyFolder()
+    if not isAlive() then return nil end
+    local t, ct = getTFolder(), getCTFolder()
+    if t and t:FindFirstChild(player.Name) then return ct end
+    if ct and ct:FindFirstChild(player.Name) then return t end
+    return nil
+end
+
+-- ==================== COMBAT TAB ====================
+do
+    local page = Pages[1]
+
+    -- Aimbot
+    local AimbotEnabled, ShowFOV = false, false
+    local FOV_Radius, Smoothing = 100, 3
+    local isAiming = false
+
+    local FOVCircle = Drawing.new("Circle")
+    FOVCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    FOVCircle.Radius = FOV_Radius
+    FOVCircle.Filled = false
+    FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+    FOVCircle.Visible = false
+    FOVCircle.Thickness = 1
+
+    local function getClosestEnemyToMouse()
+        local closest, shortest = nil, FOV_Radius
+        local enemyFolder = getEnemyFolder()
+        if not enemyFolder or not AimbotEnabled then return nil end
+        local mousePos = UserInputService:GetMouseLocation()
+        for _, enemy in ipairs(enemyFolder:GetChildren()) do
+            local hum = enemy:FindFirstChildOfClass("Humanoid")
+            local head = enemy:FindFirstChild("Head")
+            if hum and hum.Health > 0 and head then
+                local headPos, onScreen = camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    local dist = (Vector2.new(headPos.X, headPos.Y) - mousePos).Magnitude
+                    if dist < shortest then shortest = dist; closest = head end
+                end
+            end
+        end
+        return closest
+    end
+
+    UserInputService.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = true end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = false end
+    end)
+
+    RunService.RenderStepped:Connect(function()
+        FOVCircle.Visible = ShowFOV
+        if ShowFOV then
+            FOVCircle.Position = UserInputService:GetMouseLocation()
+            FOVCircle.Radius = FOV_Radius
+        end
+        if not isAiming or not isAlive() or not AimbotEnabled then return end
+        local targetHead = getClosestEnemyToMouse()
+        if targetHead then
+            local headPos = camera:WorldToViewportPoint(targetHead.Position)
+            local mousePos = UserInputService:GetMouseLocation()
+            local moveX = (headPos.X - mousePos.X) / Smoothing
+            local moveY = (headPos.Y - mousePos.Y) / Smoothing
+            if mousemoverel then mousemoverel(moveX, moveY) end
+        end
+    end)
+
+    makeSection(page, "Aimbot Settings", 1)
+    makeToggle(page, 2, "Enable Aimbot (Hold Right Click)", false, function(v) AimbotEnabled = v end)
+    makeToggle(page, 3, "Show FOV Circle", false, function(v) ShowFOV = v end)
+    makeSlider(page, 4, "FOV Radius", 10, 500, 100, "px", function(v) FOV_Radius = v end)
+    makeSlider(page, 5, "Aimbot Smoothing", 1, 10, 3, "", function(v) Smoothing = v end)
+
+    -- TriggerBot
+    local TriggerBotEnabled, TriggerBotDelay = false, 0
+    makeSection(page, "TriggerBot Settings", 6)
+    makeToggle(page, 7, "Enable TriggerBot", false, function(v) TriggerBotEnabled = v end)
+    makeSlider(page, 8, "Shot Delay", 0, 500, 0, "ms", function(v) TriggerBotDelay = v end)
+
+    task.spawn(function()
+        while task.wait(0.01) do
+            if TriggerBotEnabled and isAlive() then
+                local vp = camera.ViewportSize
+                local ray = camera:ViewportPointToRay(vp.X / 2, vp.Y / 2)
+                local params = RaycastParams.new()
+                params.FilterType = Enum.RaycastFilterType.Exclude
+                local ignore = {camera}
+                if player.Character then table.insert(ignore, player.Character) end
+                params.FilterDescendantsInstances = ignore
+                local result = Workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+                if result and result.Instance then
+                    local model = result.Instance:FindFirstAncestorOfClass("Model")
+                    if model and model:FindFirstChildOfClass("Humanoid") then
+                        local enemyFolder = getEnemyFolder()
+                        if enemyFolder and model.Parent == enemyFolder then
+                            local hum = model:FindFirstChildOfClass("Humanoid")
+                            if hum and hum.Health > 0 then
+                                if TriggerBotDelay > 0 then task.wait(TriggerBotDelay / 1000) end
+                                if mouse1click then mouse1click() end
+                                task.wait(0.05)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    -- Hitbox
+    local HitboxEnabled, HitboxSize = false, 3
+    local originalHeadSizes = {}
+    makeSection(page, "Simple Hitbox (Max 3)", 9)
+    makeToggle(page, 10, "Enable Hitbox", false, function(v) HitboxEnabled = v end)
+    makeSlider(page, 11, "Hitbox Size", 1, 3, 3, " Studs", function(v) HitboxSize = v end)
+
+    task.spawn(function()
+        while task.wait(0.5) do
+            local enemyFolder = getEnemyFolder()
+            if enemyFolder then
+                for _, enemy in ipairs(enemyFolder:GetChildren()) do
+                    local head = enemy:FindFirstChild("Head")
+                    local hum = enemy:FindFirstChildOfClass("Humanoid")
+                    if head and hum and hum.Health > 0 then
+                        if not originalHeadSizes[head] then originalHeadSizes[head] = head.Size end
+                        if HitboxEnabled then
+                            head.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
+                            head.CanCollide = false
+                            head.Transparency = 0.5
+                        else
+                            if originalHeadSizes[head] and head.Size ~= originalHeadSizes[head] then
+                                head.Size = originalHeadSizes[head]
+                                head.Transparency = 0
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ==================== SKINS TAB ====================
+do
+    local page = Pages[2]
+    makeSection(page, "Skin Changer (by twistedk1d)", 1)
+
+    local scriptRunning = false
+    local selectedKnife = "Butterfly Knife"
+    local spawned, inspecting, swinging = false, false, false
+    local lastAttackTime = 0
+    local ATTACK_COOLDOWN = 1
+    local ACTION_INSPECT, ACTION_ATTACK = "InspectKnifeAction", "AttackKnifeAction"
+
+    pcall(function() ReplicatedStorage.Assets.Weapons.Karambit.Camera.ViewmodelLight.Transparency = 1 end)
+
+    local knives = {
+        ["Karambit"] = {Offset = CFrame.new(0, -1.5, 1.5)},
+        ["Butterfly Knife"] = {Offset = CFrame.new(0, -1.5, 1.5)},
+        ["M9 Bayonet"] = {Offset = CFrame.new(0, -1.5, 1)},
+        ["Flip Knife"] = {Offset = CFrame.new(0, -1.5, 1.25)},
+        ["Gut Knife"] = {Offset = CFrame.new(0, -1.5, 0.5)},
+    }
+
+    local vm, animator
+    local equipAnim, idleAnim, inspectAnim, HeavySwingAnim, Swing1Anim, Swing2Anim
+
+    local function getKnifeInCamera() return camera:FindFirstChild("T Knife") or camera:FindFirstChild("CT Knife") end
+
+    local function cleanPart(part)
+        if not part:IsA("BasePart") then return end
+        part.CanCollide, part.Anchored, part.CastShadow, part.CanTouch, part.CanQuery = false, false, false, false, false
+    end
+
+    local function disableCollisions(model)
+        for _, part in model:GetDescendants() do cleanPart(part) end
+    end
+
+    local function hideOriginalKnife(knife)
+        for _, part in knife:GetDescendants() do
+            if part:IsA("BasePart") or part:IsA("MeshPart") or part:IsA("Texture") then part.Transparency = 1 end
+        end
+    end
+
+    local function playSound(folder, name)
+        local weaponSounds = ReplicatedStorage.Sounds:FindFirstChild(selectedKnife)
+        if not weaponSounds then return end
+        local sound = weaponSounds:WaitForChild(folder):WaitForChild(name):Clone()
+        sound.Parent = camera
+        sound:Play()
+        sound.Ended:Once(function() sound:Destroy() end)
+        return sound
+    end
+
+    local function attachAsset(folder, armPartName, assetModelName, finalName, offset)
+        local targetArm = vm:FindFirstChild(armPartName)
+        if not targetArm then return end
+        local assetMesh = folder:WaitForChild(assetModelName):Clone()
+        cleanPart(assetMesh)
+        assetMesh.Name = finalName
+        assetMesh.Parent = targetArm
+        local motor = Instance.new("Motor6D")
+        motor.Part0, motor.Part1, motor.C0, motor.Parent = targetArm, assetMesh, offset, targetArm
+    end
+
+    local function handleAction(actionName, inputState, inputObject)
+        if inputState ~= Enum.UserInputState.Begin or not spawned or not animator or not isAlive() then return Enum.ContextActionResult.Pass end
+        if actionName == ACTION_INSPECT then
+            if (equipAnim and equipAnim.IsPlaying) or inspecting or swinging then return Enum.ContextActionResult.Pass end
+            inspecting = true
+            if idleAnim then idleAnim:Stop() end
+            inspectAnim:Play()
+            inspectAnim.Stopped:Once(function() inspecting = false end)
+        elseif actionName == ACTION_ATTACK then
+            local currentTime = os.clock()
+            if (equipAnim and equipAnim.IsPlaying) or (currentTime - lastAttackTime < ATTACK_COOLDOWN) then return Enum.ContextActionResult.Pass end
+            lastAttackTime = currentTime
+            if inspecting then inspecting = false; if inspectAnim then inspectAnim:Stop() end end
+            swinging = true
+            if idleAnim then idleAnim:Stop() end
+            local anims = {HeavySwingAnim, Swing1Anim, Swing2Anim}
+            local chosenAnim = anims[math.random(1, #anims)]
+            local soundFolder = (chosenAnim == HeavySwingAnim and "HitOne") or (chosenAnim == Swing1Anim and "HitTwo") or "HitThree"
+            chosenAnim:Play()
+            local s = playSound(soundFolder, "1")
+            if s then s.Volume = 5 end
+            chosenAnim.Stopped:Once(function() swinging = false end)
+        end
+        return Enum.ContextActionResult.Pass
+    end
+
+    local function removeViewmodel()
+        spawned = false
+        ContextActionService:UnbindAction(ACTION_INSPECT)
+        ContextActionService:UnbindAction(ACTION_ATTACK)
+        if vm then vm:Destroy(); vm = nil end
+        animator, inspecting, swinging = nil, false, false
+    end
+
+    local function spawnViewmodel(knife)
+        if spawned or not scriptRunning then return end
+        local myModel = isAlive()
+        if not myModel then return end
+        spawned = true
+
+        local knifeTemplate = ReplicatedStorage.Assets.Weapons:WaitForChild(selectedKnife)
+        local knifeOffset = knives[selectedKnife].Offset
+        vm = knifeTemplate:WaitForChild("Camera"):Clone()
+        vm.Name, vm.Parent = selectedKnife, camera
+
+        disableCollisions(vm)
+        hideOriginalKnife(knife)
+
+        if myModel.Parent.Name == "Terrorists" then
+            local tGloves = ReplicatedStorage.Assets.Weapons:WaitForChild("T Glove")
+            attachAsset(tGloves, "Left Arm", "Left Arm", "Glove", CFrame.new(0, 0, -1.5))
+            attachAsset(tGloves, "Right Arm", "Right Arm", "Glove", CFrame.new(0, 0, -1.5))
+        else
+            local sleeves = ReplicatedStorage.Assets.Sleeves:WaitForChild("IDF")
+            local ctGloves = ReplicatedStorage.Assets.Weapons:WaitForChild("CT Glove")
+            attachAsset(sleeves, "Left Arm", "Left Arm", "Sleeve", CFrame.new(0, 0, 0.5))
+            attachAsset(ctGloves, "Left Arm", "Left Arm", "Glove", CFrame.new(0, 0, -1.5))
+            attachAsset(sleeves, "Right Arm", "Right Arm", "Sleeve", CFrame.new(0, 0, 0.5))
+            attachAsset(ctGloves, "Right Arm", "Right Arm", "Glove", CFrame.new(0, 0, -1.5))
+        end
+
+        local animController = vm:FindFirstChildOfClass("AnimationController") or vm:FindFirstChildOfClass("Animator")
+        animator = animController:FindFirstChildWhichIsA("Animator") or animController
+        local animFolder = ReplicatedStorage.Assets.WeaponAnimations:WaitForChild(selectedKnife):WaitForChild("CameraAnimations")
+
+        equipAnim = animator:LoadAnimation(animFolder:WaitForChild("Equip"))
+        idleAnim = animator:LoadAnimation(animFolder:WaitForChild("Idle"))
+        inspectAnim = animator:LoadAnimation(animFolder:WaitForChild("Inspect"))
+        HeavySwingAnim = animator:LoadAnimation(animFolder:WaitForChild("Heavy Swing"))
+        Swing1Anim = animator:LoadAnimation(animFolder:WaitForChild("Swing1"))
+        Swing2Anim = animator:LoadAnimation(animFolder:WaitForChild("Swing2"))
+
+        vm:SetPrimaryPartCFrame(camera.CFrame * CFrame.new(0, -1.5, 5))
+        TweenService:Create(vm.PrimaryPart, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            CFrame = camera.CFrame * knifeOffset
+        }):Play()
+
+        equipAnim:Play()
+        playSound("Equip", "1")
+
+        ContextActionService:BindAction(ACTION_INSPECT, handleAction, false, Enum.KeyCode.F)
+        ContextActionService:BindAction(ACTION_ATTACK, handleAction, false, Enum.UserInputType.MouseButton1)
+    end
+
+    RunService.RenderStepped:Connect(function()
+        if not scriptRunning or not vm or not vm.PrimaryPart then return end
+        vm.PrimaryPart.CFrame = camera.CFrame * knives[selectedKnife].Offset
+        if not (equipAnim and equipAnim.IsPlaying) and not inspecting and not swinging then
+            if idleAnim and not idleAnim.IsPlaying then idleAnim:Play() end
+        end
+    end)
+
+    task.spawn(function()
+        while task.wait(0.1) do
+            local living = isAlive()
+            local currentKnife = getKnifeInCamera()
+            if scriptRunning and living and currentKnife and not spawned then
+                spawnViewmodel(currentKnife)
+            elseif (not scriptRunning or not currentKnife or not living) and spawned then
+                removeViewmodel()
+            end
+        end
+    end)
+
+    -- Weapon Skin Changer
+    local SkinChangerEnabled = false
+    local SelectedSkins = {}
+    local DropdownObjects = {}
+    local SkinOptions = {}
+    local COOLDOWN = 0.1
+    local WEAR = "Factory New"
+
+    local CT_ONLY = {["USP-S"]=true, ["Five-SeveN"]=true, ["MP9"]=true, ["FAMAS"]=true, ["M4A1-S"]=true, ["M4A4"]=true, ["AUG"]=true}
+    local SHARED = {["P250"]=true, ["Desert Eagle"]=true, ["Dual Berettas"]=true, ["Negev"]=true, ["P90"]=true, ["Nova"]=true, ["XM1014"]=true, ["AWP"]=true, ["SSG 08"]=true}
+    local KNIVES = {["Karambit"]=true, ["Butterfly Knife"]=true, ["M9 Bayonet"]=true, ["Flip Knife"]=true, ["Gut Knife"]=true, ["T Knife"]=true, ["CT Knife"]=true}
+    local GLOVES = {["Sports Gloves"]=true}
+    local SkinsFolder = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Skins")
+    local IgnoreFolders = {["HE Grenade"]=true, ["Incendiary Grenade"]=true, ["Molotov"]=true, ["Smoke Grenade"]=true, ["Flashbang"]=true, ["Decoy Grenade"]=true, ["C4"]=true, ["CT Glove"]=true, ["T Glove"]=true}
+
+    local function applyWeaponSkin(model)
+        if not model or not SkinChangerEnabled or not isAlive() then return end
+        local skinName = SelectedSkins[model.Name]
+        if not skinName then return end
+
+        pcall(function()
+            local skinFolder = SkinsFolder:FindFirstChild(model.Name)
+            if not skinFolder then return end
+            local skinType = skinFolder:FindFirstChild(skinName)
+            local sourceFolder = skinType and skinType:FindFirstChild("Camera") and skinType.Camera:FindFirstChild(WEAR)
+            if not sourceFolder then return end
+
+            for _, obj in camera:GetChildren() do
+                local left, right = obj:FindFirstChild("Left Arm"), obj:FindFirstChild("Right Arm")
+                if left or right then
+                    local gloveFolder = SkinsFolder:FindFirstChild("Sports Gloves")
+                    local gloveSkin = gloveFolder and gloveFolder:FindFirstChild(SelectedSkins["Sports Gloves"])
+                    local gloveSource = gloveSkin and gloveSkin:FindFirstChild("Camera") and gloveSkin.Camera:FindFirstChild(WEAR)
+                    if gloveSource then
+                        for _, side in {"Left Arm", "Right Arm"} do
+                            local arm, src = obj:FindFirstChild(side), gloveSource:FindFirstChild(side)
+                            if arm and src then
+                                local gloveMesh = arm:FindFirstChild("Glove")
+                                if gloveMesh then
+                                    local existing = gloveMesh:FindFirstChildOfClass("SurfaceAppearance")
+                                    if existing then existing:Destroy() end
+                                    local clone = src:Clone()
+                                    clone.Name, clone.Parent = "SurfaceAppearance", gloveMesh
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            if not GLOVES[model.Name] then
+                local weaponFolder = model:FindFirstChild("Weapon")
+                if weaponFolder then
+                    for _, part in weaponFolder:GetDescendants() do
+                        if part:IsA("BasePart") then
+                            local newSkin = sourceFolder:FindFirstChild(part.Name)
+                            if newSkin then
+                                local existing = part:FindFirstChildOfClass("SurfaceAppearance")
+                                if existing then existing:Destroy() end
+                                local clone = newSkin:Clone()
+                                clone.Name, clone.Parent = "SurfaceAppearance", part
+                            end
+                        end
+                    end
+                end
+            end
+            model:SetAttribute("SkinApplied", skinName)
+        end)
+    end
+
+    makeToggle(page, 2, "Enable Skin Changer", false, function(v)
+        SkinChangerEnabled = v
+        if not v then for _, obj in camera:GetChildren() do obj:SetAttribute("SkinApplied", nil) end end
+    end)
+
+    makeButton(page, 3, "Randomize All Skins", function()
+        for weaponName, optionsList in pairs(SkinOptions) do
+            if #optionsList > 0 then
+                local randomSkin = optionsList[math.random(1, #optionsList)]
+                if DropdownObjects[weaponName] then
+                    for _, dropdown in ipairs(DropdownObjects[weaponName]) do dropdown:SetValue(randomSkin) end
+                end
+            end
+        end
+    end)
+
+    local function CreateSkinDropdown(weaponName, orderOffset)
+        local folder = SkinsFolder:FindFirstChild(weaponName)
+        if not folder then return orderOffset end
+        local options = {}
+        for _, skin in folder:GetChildren() do table.insert(options, skin.Name) end
+        table.sort(options)
+        SkinOptions[weaponName] = options
+        if not SelectedSkins[weaponName] then SelectedSkins[weaponName] = options[1] end
+
+        local dp = makeDropdown(page, orderOffset, weaponName, options, 1, function(opt)
+            SelectedSkins[weaponName] = opt
+            if DropdownObjects[weaponName] then
+                for _, other in ipairs(DropdownObjects[weaponName]) do
+                    if other.Value ~= opt then other:SetValue(opt) end
+                end
+            end
+            for _, obj in camera:GetChildren() do obj:SetAttribute("SkinApplied", nil); applyWeaponSkin(obj) end
+        end)
+        DropdownObjects[weaponName] = DropdownObjects[weaponName] or {}
+        table.insert(DropdownObjects[weaponName], dp)
+        return orderOffset + 1
+    end
+
+    local order = 4
+    makeToggle(page, order, "Enable Custom Knife", false, function(v) scriptRunning = v; if not v then removeViewmodel() end end); order = order + 1
+    makeDropdown(page, order, "Selected Custom Knife", {"Butterfly Knife", "Karambit", "M9 Bayonet", "Flip Knife", "Gut Knife"}, 1, function(v) selectedKnife = v; if spawned then removeViewmodel() end end); order = order + 1
+    makeSection(page, "Knives Skins", order); order = order + 1
+    for name in pairs(KNIVES) do order = CreateSkinDropdown(name, order) end
+    makeSection(page, "Gloves", order); order = order + 1
+    for name in pairs(GLOVES) do order = CreateSkinDropdown(name, order) end
+    makeSection(page, "CT Weapons", order); order = order + 1
+    for name in pairs(CT_ONLY) do order = CreateSkinDropdown(name, order) end
+    makeSection(page, "T Weapons", order); order = order + 1
+    for name in pairs(SHARED) do order = CreateSkinDropdown(name, order) end
+    for _, folder in SkinsFolder:GetChildren() do
+        local n = folder.Name
+        if not IgnoreFolders[n] and not KNIVES[n] and not GLOVES[n] and not CT_ONLY[n] and not SHARED[n] then
+            order = CreateSkinDropdown(n, order)
+        end
+    end
+
+    camera.ChildAdded:Connect(function(obj)
+        if not SkinChangerEnabled or not isAlive() then return end
+        task.wait(COOLDOWN); applyWeaponSkin(obj)
+    end)
+
+    task.spawn(function()
+        while task.wait(0.5) do
+            if SkinChangerEnabled and isAlive() then
+                for _, obj in camera:GetChildren() do
+                    if SelectedSkins[obj.Name] and obj:GetAttribute("SkinApplied") ~= SelectedSkins[obj.Name] then applyWeaponSkin(obj) end
+                end
+            end
+        end
+    end)
+end
+
+-- ==================== VISUALS TAB ====================
+do
+    local page = Pages[3]
+    local EspEnabled, EspBox, EspName, EspHealth, EspDistance = false, true, true, true, true
+    local espCache = {}
+
+    local function createESP()
+        local esp = {
+            boxOutline = Drawing.new("Square"), box = Drawing.new("Square"),
+            name = Drawing.new("Text"), distance = Drawing.new("Text"),
+            healthOutline = Drawing.new("Line"), healthBar = Drawing.new("Line")
+        }
+        esp.boxOutline.Thickness = 3; esp.boxOutline.Filled = false; esp.boxOutline.Color = Color3.new(0, 0, 0)
+        esp.box.Thickness = 1; esp.box.Filled = false; esp.box.Color = Color3.fromRGB(255, 50, 50)
+        esp.name.Center = true; esp.name.Outline = true; esp.name.Color = Color3.new(1, 1, 1); esp.name.Size = 16
+        esp.distance.Center = true; esp.distance.Outline = true; esp.distance.Color = Color3.new(0.8, 0.8, 0.8); esp.distance.Size = 13
+        esp.healthOutline.Thickness = 3; esp.healthOutline.Color = Color3.new(0, 0, 0)
+        esp.healthBar.Thickness = 1; esp.healthBar.Color = Color3.new(0, 1, 0)
+        return esp
+    end
+
+    RunService.RenderStepped:Connect(function()
+        if not EspEnabled or not isAlive() then
+            for _, e in pairs(espCache) do for _, d in pairs(e) do d.Visible = false end end
+            return
+        end
+        local enemyFolder = getEnemyFolder()
+        if not enemyFolder then return end
+        local currentAlive = {}
+        for _, enemy in ipairs(enemyFolder:GetChildren()) do
+            local hum, root, head = enemy:FindFirstChildOfClass("Humanoid"), enemy:FindFirstChild("HumanoidRootPart"), enemy:FindFirstChild("Head")
+            if hum and hum.Health > 0 and root and head then
+                currentAlive[enemy] = true
+                if not espCache[enemy] then espCache[enemy] = createESP() end
+                local esp = espCache[enemy]
+                local rootPos, onScreen = camera:WorldToViewportPoint(root.Position)
+                local headPos = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                local legPos = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+                if onScreen then
+                    local boxH, boxW = math.abs(headPos.Y - legPos.Y), math.abs(headPos.Y - legPos.Y) / 2
+                    local dist = math.floor((camera.CFrame.Position - root.Position).Magnitude)
+                    if EspBox then
+                        esp.boxOutline.Size = Vector2.new(boxW, boxH); esp.boxOutline.Position = Vector2.new(rootPos.X - boxW / 2, headPos.Y); esp.boxOutline.Visible = true
+                        esp.box.Size = Vector2.new(boxW, boxH); esp.box.Position = Vector2.new(rootPos.X - boxW / 2, headPos.Y); esp.box.Visible = true
+                    else esp.boxOutline.Visible, esp.box.Visible = false, false end
+                    if EspHealth then
+                        local hpPct = hum.Health / hum.MaxHealth
+                        local barX = rootPos.X - boxW / 2 - 6
+                        esp.healthOutline.From = Vector2.new(barX, headPos.Y - 1); esp.healthOutline.To = Vector2.new(barX, headPos.Y + boxH + 1); esp.healthOutline.Visible = true
+                        esp.healthBar.From = Vector2.new(barX, headPos.Y + boxH); esp.healthBar.To = Vector2.new(barX, headPos.Y + boxH - (boxH * hpPct)); esp.healthBar.Color = Color3.new(1 - hpPct, hpPct, 0); esp.healthBar.Visible = true
+                    else esp.healthOutline.Visible, esp.healthBar.Visible = false, false end
+                    if EspName then esp.name.Text = enemy.Name; esp.name.Position = Vector2.new(rootPos.X, headPos.Y - 20); esp.name.Visible = true else esp.name.Visible = false end
+                    if EspDistance then esp.distance.Text = "[" .. dist .. "m]"; esp.distance.Position = Vector2.new(rootPos.X, headPos.Y + boxH + 2); esp.distance.Visible = true else esp.distance.Visible = false end
+                else for _, d in pairs(esp) do d.Visible = false end end
+            end
+        end
+        for cEnemy, e in pairs(espCache) do
+            if not currentAlive[cEnemy] then for _, d in pairs(e) do d:Remove() end; espCache[cEnemy] = nil end
+        end
+    end)
+
+    makeSection(page, "ESP Master Switch", 1)
+    makeToggle(page, 2, "Enable Player ESP", false, function(v) EspEnabled = v end)
+    makeSection(page, "ESP Settings", 3)
+    makeToggle(page, 4, "Show Box", true, function(v) EspBox = v end)
+    makeToggle(page, 5, "Show Health", true, function(v) EspHealth = v end)
+    makeToggle(page, 6, "Show Name", true, function(v) EspName = v end)
+    makeToggle(page, 7, "Show Distance", true, function(v) EspDistance = v end)
+
+    -- Anti-Flash / Anti-Smoke
+    local AntiFlashEnabled, AntiSmokeEnabled = false, false
+    makeSection(page, "World & Effects", 8)
+    makeToggle(page, 9, "Anti-Flashbang", false, function(v) AntiFlashEnabled = v end)
+    makeToggle(page, 10, "Anti-Smoke", false, function(v) AntiSmokeEnabled = v end)
+
+    task.spawn(function()
+        while task.wait(0.2) do
+            if AntiFlashEnabled then
+                local gui = player.PlayerGui:FindFirstChild("FlashbangEffect")
+                local effect = Lighting:FindFirstChild("FlashbangColorCorrection")
+                if gui then gui:Destroy() end
+                if effect then effect:Destroy() end
+            end
+        end
+    end)
+
+    task.spawn(function()
+        while task.wait(0.5) do
+            if AntiSmokeEnabled then
+                local debris = Workspace:FindFirstChild("Debris")
+                if debris then
+                    for _, folder in ipairs(debris:GetChildren()) do
+                        if string.match(folder.Name, "Voxel") then folder:ClearAllChildren(); folder:Destroy() end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ==================== Startup ====================
+setTab(1)
+notify("FeatherHub Blox Strike", "Script loaded successfully!", "success")
