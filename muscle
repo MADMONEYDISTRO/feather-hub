@@ -1,992 +1,1530 @@
--- FeatherHub v2 | Muscle Legends
--- All-in-one workout & rebirth automation
--- (Compact Edition with Polished Dropdowns)
+-- Muscle Legends Hub - Custom UI (No Fluent Library)
+-- Fixed dropdowns, removed icons, smoother UI
 
--- ═══════════════════════════════════════════════════════════════
--- SERVICES & GLOBALS
--- ═══════════════════════════════════════════════════════════════
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
-local Player = Players.LocalPlayer
-local Character = Player.Character or Player.CharacterAdded:Wait()
-local HRP = Character:WaitForChild("HumanoidRootPart")
+local LocalPlayer = Players.LocalPlayer
 
-local REvents = ReplicatedStorage:WaitForChild("rEvents")
-local muscleEvent = Player:WaitForChild("muscleEvent")
+-- ==================== UI Setup ====================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MuscleLegendsHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999
+ScreenGui.IgnoreGuiInset = true
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
--- ═══════════════════════════════════════════════════════════════
--- THEME (FeatherHub style)
--- ═══════════════════════════════════════════════════════════════
-local THEME = {
-    bg = Color3.fromRGB(13,13,18),
-    sidebar = Color3.fromRGB(18,18,25),
-    card = Color3.fromRGB(23,23,32),
-    border = Color3.fromRGB(42,42,58),
-    text = Color3.fromRGB(228,228,240),
-    muted = Color3.fromRGB(95,95,118),
-    dim = Color3.fromRGB(30,30,44),
-    sep = Color3.fromRGB(34,34,50),
-    header = Color3.fromRGB(16,16,22),
-    inputBg = Color3.fromRGB(9,9,15),
-    accent = Color3.fromRGB(110,95,210),
-    accentLt = Color3.fromRGB(135,115,235),
-    accentDim = Color3.fromRGB(65,55,130),
-    green = Color3.fromRGB(90,195,145),
-    red = Color3.fromRGB(210,75,95),
-    gold = Color3.fromRGB(185,150,60),
+-- Theme
+local Theme = {
+    bg = Color3.fromRGB(13, 13, 18),
+    sidebar = Color3.fromRGB(18, 18, 25),
+    card = Color3.fromRGB(23, 23, 32),
+    border = Color3.fromRGB(42, 42, 58),
+    text = Color3.fromRGB(228, 228, 240),
+    muted = Color3.fromRGB(95, 95, 118),
+    dim = Color3.fromRGB(30, 30, 44),
+    sep = Color3.fromRGB(34, 34, 50),
+    header = Color3.fromRGB(16, 16, 22),
+    inputBg = Color3.fromRGB(9, 9, 15),
+    accent = Color3.fromRGB(110, 95, 210),
+    accentLt = Color3.fromRGB(135, 115, 235),
+    accentDim = Color3.fromRGB(65, 55, 130),
+    green = Color3.fromRGB(90, 195, 145),
+    red = Color3.fromRGB(210, 75, 95),
+    gold = Color3.fromRGB(185, 150, 60)
 }
-local T = THEME
 
-local function tw(t) return TweenInfo.new(t or 0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out) end
-local WIN_W, WIN_H, SIDE_W, HDR_H = 420, 460, 90, 42
+local T = Theme
+local WIN_W, WIN_H, SIDE_W, HDR_H = 550, 480, 120, 48
 
--- ═══════════════════════════════════════════════════════════════
--- UI CONSTRUCTION (Draggable, Tabs, Cards)
--- ═══════════════════════════════════════════════════════════════
-local sg = Instance.new("ScreenGui")
-sg.Name = "FeatherHubV2_Muscle"
-sg.ResetOnSpawn = false
-sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-sg.DisplayOrder = 999
-sg.IgnoreGuiInset = true
-pcall(function() sg.Parent = CoreGui end, function() sg.Parent = Player:WaitForChild("PlayerGui") end)
+-- Helper functions
+local function createTween(obj, props, duration, easing, direction)
+    return TweenService:Create(obj, TweenInfo.new(duration or 0.22, easing or Enum.EasingStyle.Quart, direction or Enum.EasingDirection.Out), props)
+end
 
-local win = Instance.new("Frame")
-win.Name = "Win"
-win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
-win.BackgroundColor3 = T.bg
-win.BorderSizePixel = 0
-win.ClipsDescendants = true
-win.Parent = sg
-Instance.new("UICorner", win).CornerRadius = UDim.new(0, 14)
-local winStroke = Instance.new("UIStroke")
-winStroke.Color = T.border
-winStroke.Thickness = 1
-winStroke.Parent = win
+local function notify(title, msg, nType)
+    local col = T.accent
+    if nType == "success" then col = T.green
+    elseif nType == "error" then col = T.red
+    elseif nType == "warning" then col = T.gold end
+
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 0, 0, 62)
+    notif.Position = UDim2.new(1, -12, 1, -76)
+    notif.AnchorPoint = Vector2.new(1, 1)
+    notif.BackgroundColor3 = T.card
+    notif.BorderSizePixel = 0
+    notif.ZIndex = 100
+    notif.Parent = ScreenGui
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 10)
+    local stroke = Instance.new("UIStroke", notif)
+    stroke.Color = col
+    stroke.Thickness = 1
+    local bar = Instance.new("Frame", notif)
+    bar.Size = UDim2.new(0, 3, 0.65, 0)
+    bar.Position = UDim2.new(0, 0, 0.175, 0)
+    bar.BackgroundColor3 = col
+    bar.BorderSizePixel = 0
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+    local titleLabel = Instance.new("TextLabel", notif)
+    titleLabel.Size = UDim2.new(1, -18, 0, 20)
+    titleLabel.Position = UDim2.new(0, 14, 0, 9)
+    titleLabel.Text = title
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextSize = 11
+    titleLabel.TextColor3 = T.text
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.ZIndex = 101
+
+    local msgLabel = Instance.new("TextLabel", notif)
+    msgLabel.Size = UDim2.new(1, -18, 0, 20)
+    msgLabel.Position = UDim2.new(0, 14, 0, 29)
+    msgLabel.Text = msg
+    msgLabel.Font = Enum.Font.Gotham
+    msgLabel.TextSize = 9
+    msgLabel.TextColor3 = T.text
+    msgLabel.TextTransparency = 0.35
+    msgLabel.TextXAlignment = Enum.TextXAlignment.Left
+    msgLabel.TextWrapped = true
+    msgLabel.BackgroundTransparency = 1
+    msgLabel.ZIndex = 101
+
+    notif.Size = UDim2.new(0, 0, 0, 62)
+    createTween(notif, {Size = UDim2.new(0, 210, 0, 62)}, 0.25):Play()
+    task.delay(3.5, function()
+        if notif and notif.Parent then
+            createTween(notif, {Position = UDim2.new(1, 12, 1, -76)}, 0.25):Play()
+            task.delay(0.3, function() if notif and notif.Parent then notif:Destroy() end end)
+        end
+    end)
+end
+
+-- Main Window
+local Win = Instance.new("Frame")
+Win.Name = "MainWindow"
+Win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+Win.BackgroundColor3 = T.bg
+Win.BorderSizePixel = 0
+Win.ClipsDescendants = true
+Win.ZIndex = 1
+Win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+Win.Parent = ScreenGui
+Instance.new("UICorner", Win).CornerRadius = UDim.new(0, 16)
+local WinStroke = Instance.new("UIStroke", Win)
+WinStroke.Color = T.border
+WinStroke.Thickness = 1
 
 -- Sidebar
-local sidebar = Instance.new("Frame")
-sidebar.Name = "Sidebar"
-sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
-sidebar.BackgroundColor3 = T.sidebar
-sidebar.BorderSizePixel = 0
-sidebar.Parent = win
-Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+local Sidebar = Instance.new("Frame")
+Sidebar.Name = "Sidebar"
+Sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+Sidebar.BackgroundColor3 = T.sidebar
+Sidebar.BorderSizePixel = 0
+Sidebar.ZIndex = 3
+Sidebar.Parent = Win
+Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 16)
 
-local logoPill = Instance.new("Frame")
-logoPill.Size = UDim2.new(0, 34, 0, 34)
-logoPill.Position = UDim2.new(0.5, -17, 0, 10)
-logoPill.BackgroundColor3 = T.accent
-logoPill.BorderSizePixel = 0
-logoPill.Parent = sidebar
-Instance.new("UICorner", logoPill).CornerRadius = UDim.new(0, 9)
-local logoF = Instance.new("TextLabel")
-logoF.Size = UDim2.new(1, 0, 1, 0)
-logoF.Text = "F"
-logoF.TextSize = 18
-logoF.Font = Enum.Font.GothamBold
-logoF.TextColor3 = Color3.new(1,1,1)
-logoF.BackgroundTransparency = 1
-logoF.Parent = logoPill
+local SidebarCover = Instance.new("Frame")
+SidebarCover.Size = UDim2.new(0, 16, 1, 0)
+SidebarCover.Position = UDim2.new(1, -16, 0, 0)
+SidebarCover.BackgroundColor3 = T.sidebar
+SidebarCover.BorderSizePixel = 0
+SidebarCover.ZIndex = 3
+SidebarCover.Parent = Sidebar
 
-local navCont = Instance.new("Frame")
-navCont.Size = UDim2.new(1, 0, 1, -130)
-navCont.Position = UDim2.new(0, 0, 0, 60)
-navCont.BackgroundTransparency = 1
-navCont.Parent = sidebar
-local navList = Instance.new("UIListLayout")
-navList.SortOrder = Enum.SortOrder.LayoutOrder
-navList.VerticalAlignment = Enum.VerticalAlignment.Top
-navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-navList.Padding = UDim.new(0, 4)
-navList.Parent = navCont
+-- Logo
+local LogoPill = Instance.new("Frame")
+LogoPill.Size = UDim2.new(0, 40, 0, 40)
+LogoPill.Position = UDim2.new(0.5, -20, 0, 12)
+LogoPill.BackgroundColor3 = T.accent
+LogoPill.BorderSizePixel = 0
+LogoPill.ZIndex = 5
+LogoPill.Parent = Sidebar
+Instance.new("UICorner", LogoPill).CornerRadius = UDim.new(0, 11)
 
-local wmVer = Instance.new("TextLabel")
-wmVer.Size = UDim2.new(1, 0, 0, 10)
-wmVer.Position = UDim2.new(0, 0, 1, -34)
-wmVer.Text = "v2.0  •  feather"
-wmVer.Font = Enum.Font.Gotham
-wmVer.TextSize = 7
-wmVer.TextColor3 = T.muted
-wmVer.BackgroundTransparency = 1
-wmVer.TextXAlignment = Enum.TextXAlignment.Center
-wmVer.Parent = sidebar
+local LogoText = Instance.new("TextLabel", LogoPill)
+LogoText.Size = UDim2.new(1, 0, 1, 0)
+LogoText.Text = "ML"
+LogoText.TextSize = 16
+LogoText.Font = Enum.Font.GothamBold
+LogoText.TextColor3 = Color3.new(1, 1, 1)
+LogoText.BackgroundTransparency = 1
+LogoText.ZIndex = 6
 
--- Header (draggable)
-local hdr = Instance.new("Frame")
-hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
-hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
-hdr.BackgroundColor3 = T.header
-hdr.BorderSizePixel = 0
-hdr.Parent = win
-Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 14)
+-- Sidebar Separator
+local SideSepTop = Instance.new("Frame")
+SideSepTop.Size = UDim2.new(0.6, 0, 0, 1)
+SideSepTop.Position = UDim2.new(0.2, 0, 0, 60)
+SideSepTop.BackgroundColor3 = T.sep
+SideSepTop.BorderSizePixel = 0
+SideSepTop.ZIndex = 4
+SideSepTop.Parent = Sidebar
 
-local hdrTitle = Instance.new("TextLabel")
-hdrTitle.Size = UDim2.new(1, -120, 1, 0)
-hdrTitle.Position = UDim2.new(0, 14, 0, 0)
-hdrTitle.Text = "HOME"
-hdrTitle.Font = Enum.Font.GothamBold
-hdrTitle.TextSize = 14
-hdrTitle.TextColor3 = T.text
-hdrTitle.BackgroundTransparency = 1
-hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
-hdrTitle.Parent = hdr
+-- Navigation Container
+local NavContainer = Instance.new("Frame")
+NavContainer.Size = UDim2.new(1, 0, 1, -140)
+NavContainer.Position = UDim2.new(0, 0, 0, 68)
+NavContainer.BackgroundTransparency = 1
+NavContainer.ZIndex = 4
+NavContainer.Parent = Sidebar
 
-local hdrBadge = Instance.new("Frame")
-hdrBadge.Size = UDim2.new(0, 44, 0, 18)
-hdrBadge.Position = UDim2.new(0, 180, 0.5, -9)
-hdrBadge.BackgroundColor3 = T.accentDim
-hdrBadge.BorderSizePixel = 0
-hdrBadge.Parent = hdr
-Instance.new("UICorner", hdrBadge).CornerRadius = UDim.new(0, 6)
-local hdrBadgeLbl = Instance.new("TextLabel")
-hdrBadgeLbl.Size = UDim2.new(1, 0, 1, 0)
-hdrBadgeLbl.Text = "FREE"
-hdrBadgeLbl.Font = Enum.Font.GothamBold
-hdrBadgeLbl.TextSize = 7
-hdrBadgeLbl.TextColor3 = T.text
-hdrBadgeLbl.BackgroundTransparency = 1
-hdrBadgeLbl.Parent = hdrBadge
+local NavList = Instance.new("UIListLayout", NavContainer)
+NavList.SortOrder = Enum.SortOrder.LayoutOrder
+NavList.VerticalAlignment = Enum.VerticalAlignment.Top
+NavList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+NavList.Padding = UDim.new(0, 4)
 
-local function makeHdrBtn(xPos, symbol)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0, 24, 0, 24)
-    b.Position = UDim2.new(1, xPos, 0.5, -12)
-    b.Text = symbol
-    b.Font = Enum.Font.GothamBold
-    b.TextSize = 14
-    b.TextColor3 = T.muted
-    b.BackgroundColor3 = T.dim
-    b.BorderSizePixel = 0
-    b.AutoButtonColor = false
-    b.Parent = hdr
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-    return b
+-- Sidebar Bottom Separator
+local SideSepBot = Instance.new("Frame")
+SideSepBot.Size = UDim2.new(0.6, 0, 0, 1)
+SideSepBot.Position = UDim2.new(0.2, 0, 1, -50)
+SideSepBot.BackgroundColor3 = T.sep
+SideSepBot.BorderSizePixel = 0
+SideSepBot.ZIndex = 4
+SideSepBot.Parent = Sidebar
+
+-- Version Label
+local VersionLabel = Instance.new("TextLabel")
+VersionLabel.Size = UDim2.new(1, 0, 0, 12)
+VersionLabel.Position = UDim2.new(0, 0, 1, -38)
+VersionLabel.Text = "v5.8.6 • muscle"
+VersionLabel.Font = Enum.Font.Gotham
+VersionLabel.TextSize = 7
+VersionLabel.TextColor3 = T.muted
+VersionLabel.BackgroundTransparency = 1
+VersionLabel.TextXAlignment = Enum.TextXAlignment.Center
+VersionLabel.ZIndex = 5
+VersionLabel.Parent = Sidebar
+
+-- Header
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+Header.Position = UDim2.new(0, SIDE_W, 0, 0)
+Header.BackgroundColor3 = T.header
+Header.BorderSizePixel = 0
+Header.ZIndex = 3
+Header.Parent = Win
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 16)
+
+local HeaderLeftCover = Instance.new("Frame")
+HeaderLeftCover.Size = UDim2.new(0, 16, 1, 0)
+HeaderLeftCover.BackgroundColor3 = T.header
+HeaderLeftCover.BorderSizePixel = 0
+HeaderLeftCover.ZIndex = 3
+HeaderLeftCover.Parent = Header
+
+local HeaderBotCover = Instance.new("Frame")
+HeaderBotCover.Size = UDim2.new(0, 16, 0, 16)
+HeaderBotCover.Position = UDim2.new(1, -16, 1, -16)
+HeaderBotCover.BackgroundColor3 = T.header
+HeaderBotCover.BorderSizePixel = 0
+HeaderBotCover.ZIndex = 3
+HeaderBotCover.Parent = Header
+
+local HeaderLine = Instance.new("Frame")
+HeaderLine.Size = UDim2.new(1, -10, 0, 1)
+HeaderLine.Position = UDim2.new(0, 5, 1, -1)
+HeaderLine.BackgroundColor3 = T.sep
+HeaderLine.BorderSizePixel = 0
+HeaderLine.ZIndex = 4
+HeaderLine.Parent = Header
+
+local HeaderTitle = Instance.new("TextLabel")
+HeaderTitle.Size = UDim2.new(1, -140, 1, 0)
+HeaderTitle.Position = UDim2.new(0, 16, 0, 0)
+HeaderTitle.Text = "Home"
+HeaderTitle.Font = Enum.Font.GothamBold
+HeaderTitle.TextSize = 13
+HeaderTitle.TextColor3 = T.text
+HeaderTitle.BackgroundTransparency = 1
+HeaderTitle.TextXAlignment = Enum.TextXAlignment.Left
+HeaderTitle.ZIndex = 5
+HeaderTitle.Parent = Header
+
+-- Header Buttons
+local function makeHeaderButton(xOffset, symbol)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 28, 0, 28)
+    btn.Position = UDim2.new(1, xOffset, 0.5, -14)
+    btn.Text = symbol
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 16
+    btn.TextColor3 = T.muted
+    btn.BackgroundColor3 = T.dim
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    btn.Parent = Header
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+    return btn
 end
-local minBtn = makeHdrBtn(-56, "–")
-local closeBtn = makeHdrBtn(-28, "×")
-closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
 
+local MinimizeBtn = makeHeaderButton(-66, "–")
+local CloseBtn = makeHeaderButton(-34, "×")
+
+CloseBtn.MouseEnter:Connect(function()
+    createTween(CloseBtn, {BackgroundColor3 = T.red, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+CloseBtn.MouseLeave:Connect(function()
+    createTween(CloseBtn, {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play()
+end)
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Content Area (declared before toggleMinimize so it can reference it)
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+Content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+Content.BackgroundTransparency = 1
+Content.BorderSizePixel = 0
+Content.ZIndex = 2
+Content.ClipsDescendants = true
+Content.Parent = Win
+
+-- Minimize functionality
 local isMinimized = false
 local function toggleMinimize()
     isMinimized = not isMinimized
     if isMinimized then
-        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
-        sidebar.Visible = false
-        content.Visible = false
-        minBtn.Text = "+"
+        createTween(Win, {Size = UDim2.new(0, WIN_W, 0, HDR_H)}, 0.3):Play()
+        Sidebar.Visible = false
+        Content.Visible = false
+        createTween(Header, {Size = UDim2.new(1, 0, 0, HDR_H), Position = UDim2.new(0, 0, 0, 0)}, 0.3):Play()
+        HeaderLeftCover.Visible = false
+        HeaderBotCover.Visible = false
+        HeaderLine.Visible = false
+        MinimizeBtn.Text = "+"
     else
-        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
-        sidebar.Visible = true
-        content.Visible = true
-        minBtn.Text = "–"
+        createTween(Win, {Size = UDim2.new(0, WIN_W, 0, WIN_H)}, 0.3):Play()
+        createTween(Header, {Size = UDim2.new(1, -SIDE_W, 0, HDR_H), Position = UDim2.new(0, SIDE_W, 0, 0)}, 0.3):Play()
+        HeaderLeftCover.Visible = true
+        HeaderBotCover.Visible = true
+        HeaderLine.Visible = true
+        task.delay(0.1, function()
+            Sidebar.Visible = true
+            Content.Visible = true
+        end)
+        MinimizeBtn.Text = "–"
     end
 end
-minBtn.MouseButton1Click:Connect(toggleMinimize)
+MinimizeBtn.MouseButton1Click:Connect(toggleMinimize)
+MinimizeBtn.MouseEnter:Connect(function()
+    createTween(MinimizeBtn, {BackgroundColor3 = T.accent, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+MinimizeBtn.MouseLeave:Connect(function()
+    createTween(MinimizeBtn, {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play()
+end)
 
--- Drag logic
-local dragging, dragStart, startPos = false
-hdr.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+-- Dragging
+local dragging, dragStart, startPos
+Header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
-        startPos = win.Position
+        startPos = Win.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
     end
 end)
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        local vp = workspace.CurrentCamera.ViewportSize
-        win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + delta.X, 0, vp.X - WIN_W), 0, math.clamp(startPos.Y.Offset + delta.Y, 0, vp.Y - WIN_H))
+        local viewport = workspace.CurrentCamera.ViewportSize
+        Win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + delta.X, 0, viewport.X - WIN_W), 0, math.clamp(startPos.Y.Offset + delta.Y, 0, viewport.Y - WIN_H))
     end
 end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-end)
 
-local content = Instance.new("Frame")
-content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
-content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
-content.BackgroundTransparency = 1
-content.ClipsDescendants = true
-content.Parent = win
+-- Tabs (Settings tab removed)
+local Tabs = {
+    {name = "Home"},
+    {name = "Main"},
+    {name = "Rocks"},
+    {name = "Rebirth"},
+    {name = "Auto Kill"},
+    {name = "Teleport"},
+    {name = "Status"},
+    {name = "Crystal"},
+    {name = "Misc"},
+}
+local Pages = {}
+local NavButtons = {}
+local ActiveTab = 1
 
--- Pages (tabs)
-local pages = {}
-local tabNames = {"HOME", "MAIN", "REBIRTH", "TELEPORT", "CRYSTAL"}
-local activeTab = 1
-
-local function makePage()
-    local pg = Instance.new("ScrollingFrame")
-    pg.Size = UDim2.new(1, 0, 1, 0)
-    pg.BackgroundTransparency = 1
-    pg.BorderSizePixel = 0
-    pg.ScrollBarThickness = 3
-    pg.ScrollBarImageColor3 = T.accent
-    pg.CanvasSize = UDim2.new(0, 0, 0, 0)
-    pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    pg.ScrollingDirection = Enum.ScrollingDirection.Y
-    pg.ElasticBehavior = Enum.ElasticBehavior.Never
-    pg.Visible = false
-    pg.Parent = content
-    local layout = Instance.new("UIListLayout", pg)
+local function createPage()
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = T.accent
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.ScrollingDirection = Enum.ScrollingDirection.Y
+    page.ElasticBehavior = Enum.ElasticBehavior.Never
+    page.Visible = false
+    page.ZIndex = 2
+    page.Parent = Content
+    local layout = Instance.new("UIListLayout", page)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    layout.Padding = UDim.new(0, 4)
-    local pad = Instance.new("UIPadding", pg)
-    pad.PaddingTop = UDim.new(0, 8)
-    pad.PaddingBottom = UDim.new(0, 8)
-    pad.PaddingLeft = UDim.new(0, 8)
-    pad.PaddingRight = UDim.new(0, 8)
-    return pg
+    layout.Padding = UDim.new(0, 7)
+    local padding = Instance.new("UIPadding", page)
+    padding.PaddingTop = UDim.new(0, 12)
+    padding.PaddingBottom = UDim.new(0, 12)
+    padding.PaddingLeft = UDim.new(0, 12)
+    padding.PaddingRight = UDim.new(0, 12)
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 24)
+    end)
+    return page
 end
 
-for i = 1, #tabNames do pages[i] = makePage() end
-
-local function setTab(idx)
-    activeTab = idx
-    hdrTitle.Text = tabNames[idx]
-    for i, pg in ipairs(pages) do pg.Visible = (i == idx) end
+for i = 1, #Tabs do
+    Pages[i] = createPage()
 end
 
--- Nav buttons
-for i, name in ipairs(tabNames) do
+local function setTab(index)
+    if isMinimized then toggleMinimize() end
+    local oldIndex = ActiveTab
+    ActiveTab = index
+    HeaderTitle.Text = Tabs[index].name
+    for i, btn in ipairs(NavButtons) do
+        local isActive = (i == index)
+        createTween(btn.bg, {BackgroundColor3 = isActive and T.accent or T.dim, BackgroundTransparency = isActive and 0.12 or 0}, 0.16):Play()
+        createTween(btn.lbl, {TextColor3 = isActive and Color3.new(1,1,1) or T.text}, 0.16):Play()
+        btn.bar.BackgroundTransparency = isActive and 0 or 1
+        btn.bar.BackgroundColor3 = T.accent
+    end
+    if oldIndex ~= index then
+        if Pages[oldIndex] then Pages[oldIndex].Visible = false end
+        if Pages[index] then
+            Pages[index].Position = UDim2.new(0, 0, 0, 0)
+            Pages[index].CanvasPosition = Vector2.new(0, 0)
+            Pages[index].Visible = true
+            local cover = Instance.new("Frame")
+            cover.Size = UDim2.new(1, 0, 1, 0)
+            cover.BackgroundColor3 = T.bg
+            cover.BackgroundTransparency = 0
+            cover.BorderSizePixel = 0
+            cover.ZIndex = 8
+            cover.Parent = Pages[index]
+            createTween(cover, {BackgroundTransparency = 1}, 0.18, Enum.EasingStyle.Quad):Play()
+            task.delay(0.2, function() if cover and cover.Parent then cover:Destroy() end end)
+        end
+    else
+        for i = 1, #Pages do Pages[i].Visible = (i == index) end
+    end
+end
+
+for i, tab in ipairs(Tabs) do
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -6, 0, 34)
+    row.Size = UDim2.new(1, -8, 0, 38)
     row.BackgroundTransparency = 1
     row.LayoutOrder = i
-    row.Parent = navCont
-    local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(0, 3, 0.4, 0)
-    bar.Position = UDim2.new(0, 0, 0.3, 0)
+    row.ZIndex = 4
+    row.Parent = NavContainer
+
+    local bar = Instance.new("Frame", row)
+    bar.Size = UDim2.new(0, 3, 0.45, 0)
+    bar.Position = UDim2.new(0, 0, 0.275, 0)
     bar.BackgroundColor3 = T.accent
     bar.BackgroundTransparency = 1
-    bar.Parent = row
+    bar.BorderSizePixel = 0
+    bar.ZIndex = 5
     Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-    local bg = Instance.new("Frame")
-    bg.Size = UDim2.new(1, -4, 1, -6)
-    bg.Position = UDim2.new(0, 4, 0, 3)
+
+    local bg = Instance.new("Frame", row)
+    bg.Size = UDim2.new(1, -5, 1, -6)
+    bg.Position = UDim2.new(0, 5, 0, 3)
     bg.BackgroundColor3 = T.dim
     bg.BackgroundTransparency = 0
-    bg.Parent = row
-    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 7)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -12, 1, 0)
-    lbl.Position = UDim2.new(0, 8, 0, 0)
-    lbl.Text = name
+    bg.BorderSizePixel = 0
+    bg.ZIndex = 4
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1, -14, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.Text = tab.name
     lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 10
+    lbl.TextSize = 9
     lbl.TextColor3 = T.text
     lbl.BackgroundTransparency = 1
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-    local hit = Instance.new("TextButton")
+    lbl.ZIndex = 5
+
+    local hit = Instance.new("TextButton", row)
     hit.Size = UDim2.new(1, 0, 1, 0)
     hit.BackgroundTransparency = 1
     hit.Text = ""
-    hit.Parent = row
-    hit.MouseButton1Click:Connect(function() setTab(i) end)
+    hit.ZIndex = 6
+    local idx = i
+    hit.MouseButton1Click:Connect(function() setTab(idx) end)
+
+    NavButtons[i] = {bg = bg, lbl = lbl, bar = bar}
 end
 
--- Helper UI functions
+-- UI Helper Functions
 local function makeCard(parent, order)
-    local c = Instance.new("Frame")
-    c.Size = UDim2.new(1, 0, 0, 0)
-    c.AutomaticSize = Enum.AutomaticSize.Y
-    c.BackgroundColor3 = T.card
-    c.BorderSizePixel = 0
-    c.LayoutOrder = order
-    c.Parent = parent
-    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 9)
-    local s = Instance.new("UIStroke")
-    s.Color = T.border
-    s.Thickness = 1
-    s.Parent = c
-    Instance.new("UIListLayout", c).SortOrder = Enum.SortOrder.LayoutOrder
-    c:FindFirstChildOfClass("UIListLayout").HorizontalAlignment = Enum.HorizontalAlignment.Center
-    return c
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 0, 0)
+    card.AutomaticSize = Enum.AutomaticSize.Y
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    card.LayoutOrder = order
+    card.ZIndex = 3
+    card.Parent = parent
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 11)
+    local stroke = Instance.new("UIStroke", card)
+    stroke.Color = T.border
+    stroke.Thickness = 1
+    local layout = Instance.new("UIListLayout", card)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return card
 end
 
 local function makeRow(card, order, isLast, height)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, height or 36)
+    row.Size = UDim2.new(1, 0, 0, height or 46)
     row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
     row.LayoutOrder = order
+    row.ZIndex = 4
     row.Parent = card
     if not isLast then
-        local sep = Instance.new("Frame")
-        sep.Size = UDim2.new(1, -24, 0, 1)
-        sep.Position = UDim2.new(0, 12, 1, -1)
+        local sep = Instance.new("Frame", row)
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
         sep.BackgroundColor3 = T.sep
         sep.BorderSizePixel = 0
-        sep.Parent = row
+        sep.ZIndex = 4
     end
     return row
 end
 
-local function makeLabel(parent, order, text, color)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 0, 20)
-    lbl.Text = text
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 10
-    lbl.TextColor3 = color or T.muted
+local function makeSection(parent, title, order)
+    local section = Instance.new("Frame")
+    section.Size = UDim2.new(1, 0, 0, 22)
+    section.BackgroundTransparency = 1
+    section.BorderSizePixel = 0
+    section.LayoutOrder = order
+    section.ZIndex = 3
+    section.Parent = parent
+    local lbl = Instance.new("TextLabel", section)
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = title
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = T.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.BackgroundTransparency = 1
-    lbl.LayoutOrder = order
-    lbl.Parent = parent
-    return lbl
+    lbl.ZIndex = 3
+    local line = Instance.new("Frame", section)
+    line.Size = UDim2.new(0, 28, 0, 2)
+    line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = T.accent
+    line.BorderSizePixel = 0
+    line.ZIndex = 3
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return section
 end
 
-local function makeButton(card, order, text, callback, small)
-    local row = makeRow(card, order, true, small and 36 or 40)
-    local btn = Instance.new("TextButton")
-    if small then
-        btn.Size = UDim2.new(0, 110, 0, 28)
-        btn.Position = UDim2.new(0.5, -55, 0.5, -14)
-    else
-        btn.Size = UDim2.new(1, -24, 0, 32)
-        btn.Position = UDim2.new(0, 12, 0.5, -16)
-    end
-    btn.Text = text
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = small and 10 or 11
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.BackgroundColor3 = T.accent
-    btn.BorderSizePixel = 0
-    btn.AutoButtonColor = false
-    btn.Parent = row
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
-    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accentLt}):Play() end)
-    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accent}):Play() end)
-    btn.MouseButton1Click:Connect(callback)
-    return btn
-end
-
-local function makeToggle(card, order, text, initialState, onToggle)
-    local row = makeRow(card, order, false, 38)
-    local lbl = Instance.new("TextLabel")
+local function makeToggle(parent, order, title, default, callback)
+    local row = makeRow(parent, order, false, 44)
+    local lbl = Instance.new("TextLabel", row)
     lbl.Size = UDim2.new(0.65, 0, 1, 0)
-    lbl.Position = UDim2.new(0, 14, 0, 0)
-    lbl.Text = text
+    lbl.Position = UDim2.new(0, 16, 0, 0)
+    lbl.Text = title
     lbl.Font = Enum.Font.GothamSemibold
     lbl.TextSize = 10
     lbl.TextColor3 = T.text
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.BackgroundTransparency = 1
-    lbl.Parent = row
-    local track = Instance.new("TextButton")
-    track.Size = UDim2.new(0, 36, 0, 20)
-    track.Position = UDim2.new(1, -48, 0.5, -10)
-    track.BackgroundColor3 = initialState and T.accent or T.dim
+    lbl.ZIndex = 5
+
+    local track = Instance.new("TextButton", row)
+    track.Size = UDim2.new(0, 38, 0, 20)
+    track.Position = UDim2.new(1, -52, 0.5, -10)
+    track.BackgroundColor3 = default and T.accent or T.dim
     track.BorderSizePixel = 0
     track.AutoButtonColor = false
     track.Text = ""
-    track.Parent = row
+    track.ZIndex = 5
     Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-    local knob = Instance.new("Frame")
+
+    local knob = Instance.new("Frame", track)
     knob.Size = UDim2.new(0, 16, 0, 16)
-    knob.Position = initialState and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.new(1, 1, 1)
     knob.BorderSizePixel = 0
-    knob.Parent = track
+    knob.ZIndex = 6
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-    local state = initialState
+
+    local state = default
+    local function updateUI()
+        createTween(track, {BackgroundColor3 = state and T.accent or T.dim}, 0.15):Play()
+        createTween(knob, {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}, 0.15):Play()
+    end
     track.MouseButton1Click:Connect(function()
         state = not state
-        TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
-        TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
-        onToggle(state)
+        updateUI()
+        callback(state)
     end)
-    return row
+    return {
+        SetValue = function(self, val)
+            if state ~= val then
+                state = val
+                updateUI()
+                callback(val)
+            end
+        end,
+        Value = state
+    }
 end
 
--- Dropdown System (Polished, opens lower)
-local activeDropdown = nil  -- { menu, button, updateConn }
-
-local function closeActiveDropdown()
-    if activeDropdown then
-        activeDropdown.menu.Visible = false
-        if activeDropdown.updateConn then
-            activeDropdown.updateConn:Disconnect()
-        end
-        activeDropdown = nil
-    end
+local function makeButton(parent, order, title, callback)
+    local row = makeRow(parent, order, true, 48)
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(1, -28, 0, 34)
+    btn.Position = UDim2.new(0, 14, 0.5, -17)
+    btn.Text = title
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    btn.MouseButton1Click:Connect(callback)
+    btn.MouseEnter:Connect(function()
+        createTween(btn, {BackgroundColor3 = T.accentLt}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        createTween(btn, {BackgroundColor3 = T.accent}):Play()
+    end)
+    return btn
 end
 
--- Close dropdown when clicking outside
-UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 and activeDropdown then
-        local mousePos = UserInputService:GetMouseLocation()
-        local menuAbs = activeDropdown.menu.AbsolutePosition
-        local menuSize = activeDropdown.menu.AbsoluteSize
-        local btnAbs = activeDropdown.button.AbsolutePosition
-        local btnSize = activeDropdown.button.AbsoluteSize
-        -- Check if click is outside both menu and button
-        if not ((mousePos.X >= menuAbs.X and mousePos.X <= menuAbs.X + menuSize.X and mousePos.Y >= menuAbs.Y and mousePos.Y <= menuAbs.Y + menuSize.Y) or
-                (mousePos.X >= btnAbs.X and mousePos.X <= btnAbs.X + btnSize.X and mousePos.Y >= btnAbs.Y and mousePos.Y <= btnAbs.Y + btnSize.Y)) then
-            closeActiveDropdown()
-        end
-    end
-end)
-
-local function makeDropdown(card, order, text, options, default, callback)
-    local row = makeRow(card, order, false, 44)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0.5, 0, 1, 0)
-    lbl.Position = UDim2.new(0, 14, 0, 0)
-    lbl.Text = text
+local function makeInput(parent, order, title, placeholder, default, numeric, callback)
+    local row = makeRow(parent, order, false, 52)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.4, 0, 0, 20)
+    lbl.Position = UDim2.new(0, 16, 0, 8)
+    lbl.Text = title
     lbl.Font = Enum.Font.GothamSemibold
     lbl.TextSize = 10
     lbl.TextColor3 = T.text
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.BackgroundTransparency = 1
-    lbl.Parent = row
+    lbl.ZIndex = 5
 
-    local dropdownBtn = Instance.new("TextButton")
-    dropdownBtn.Size = UDim2.new(0, 130, 0, 28)
-    dropdownBtn.Position = UDim2.new(1, -140, 0.5, -14)
-    dropdownBtn.Text = default
-    dropdownBtn.Font = Enum.Font.GothamMedium
-    dropdownBtn.TextSize = 10
-    dropdownBtn.TextColor3 = T.text
-    dropdownBtn.BackgroundColor3 = T.inputBg or T.dim
-    dropdownBtn.BorderSizePixel = 0
-    dropdownBtn.AutoButtonColor = false
-    dropdownBtn.Parent = row
-    Instance.new("UICorner", dropdownBtn).CornerRadius = UDim.new(0, 6)
-
-    -- Create dropdown menu
-    local menu = Instance.new("Frame")
-    menu.Size = UDim2.new(0, 130, 0, 0)
-    menu.BackgroundColor3 = T.card
-    menu.BorderSizePixel = 0
-    menu.Visible = false
-    menu.ZIndex = 100
-    menu.ClipsDescendants = true
-    menu.Parent = sg
-    Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 6)
-    local menuStroke = Instance.new("UIStroke", menu)
-    menuStroke.Color = T.border
-    menuStroke.Thickness = 1
-
-    -- Scrolling frame for options
-    local scroll = Instance.new("ScrollingFrame", menu)
-    scroll.Size = UDim2.new(1, 0, 1, 0)
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel = 0
-    scroll.ScrollBarThickness = 2
-    scroll.ScrollBarImageColor3 = T.accent
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    scroll.ElasticBehavior = Enum.ElasticBehavior.Never
-    local scrollLayout = Instance.new("UIListLayout", scroll)
-    scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    scrollLayout.Padding = UDim.new(0, 2)
-
-    local function buildMenu()
-        -- Clear existing
-        for _, child in pairs(scroll:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
-        end
-        for _, opt in ipairs(options) do
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1, -4, 0, 26)
-            btn.Position = UDim2.new(0, 2, 0, 0)
-            btn.Text = opt
-            btn.Font = Enum.Font.GothamMedium
-            btn.TextSize = 10
-            btn.TextColor3 = T.text
-            btn.BackgroundColor3 = T.dim
-            btn.BorderSizePixel = 0
-            btn.AutoButtonColor = false
-            btn.ZIndex = 101
-            btn.Parent = scroll
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-            btn.MouseButton1Click:Connect(function()
-                dropdownBtn.Text = opt
-                closeActiveDropdown()
-                callback(opt)
-            end)
-            btn.MouseEnter:Connect(function() btn.BackgroundColor3 = T.accentDim end)
-            btn.MouseLeave:Connect(function() btn.BackgroundColor3 = T.dim end)
-        end
-        -- Set menu height (max 5 items visible then scroll)
-        local itemCount = #options
-        local itemHeight = 28  -- 26 + 2 padding
-        local maxVisible = 5
-        local menuHeight = math.min(itemCount, maxVisible) * itemHeight + 4
-        menu.Size = UDim2.new(0, 130, 0, menuHeight)
-    end
-
-    buildMenu()
-
-    local function updateMenuPosition()
-        if not menu.Visible then return end
-        local btnAbs = dropdownBtn.AbsolutePosition
-        local btnSize = dropdownBtn.AbsoluteSize
-        local menuHeight = menu.AbsoluteSize.Y
-        local screenSize = workspace.CurrentCamera.ViewportSize
-
-        local posX = btnAbs.X
-        local posY = btnAbs.Y + btnSize.Y + 8  -- Increased offset to open lower
-
-        -- Prevent going off bottom
-        if posY + menuHeight > screenSize.Y - 20 then
-            posY = btnAbs.Y - menuHeight - 8  -- Flip above with same offset
-        end
-        -- Prevent going off right side
-        if posX + 130 > screenSize.X then
-            posX = screenSize.X - 130 - 5
-        end
-
-        menu.Position = UDim2.new(0, posX, 0, posY)
-    end
-
-    local updateConn
-    dropdownBtn.MouseButton1Click:Connect(function()
-        if activeDropdown and activeDropdown.menu == menu then
-            closeActiveDropdown()
-        else
-            closeActiveDropdown()  -- close any other
-            menu.Visible = true
-            updateMenuPosition()
-            -- Continuously update position while open (for window dragging)
-            updateConn = RunService.RenderStepped:Connect(updateMenuPosition)
-            activeDropdown = { menu = menu, button = dropdownBtn, updateConn = updateConn }
-        end
-    end)
-
-    -- When menu closed, disconnect update
-    local originalVisibleChanged = menu:GetPropertyChangedSignal("Visible"):Connect(function()
-        if not menu.Visible and activeDropdown and activeDropdown.menu == menu then
-            if activeDropdown.updateConn then
-                activeDropdown.updateConn:Disconnect()
-            end
-            activeDropdown = nil
-        end
-    end)
-
-    return row
-end
-
-local function makeTextBox(card, order, placeholder, callback)
-    local row = makeRow(card, order, true, 40)
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(1, -24, 0, 32)
-    box.Position = UDim2.new(0, 12, 0.5, -16)
+    local box = Instance.new("TextBox", row)
+    box.Size = UDim2.new(0.55, -20, 0, 30)
+    box.Position = UDim2.new(1, -box.Size.X.Offset - 16, 0.5, -15)
     box.PlaceholderText = placeholder
-    box.Text = ""
+    box.Text = default or ""
     box.Font = Enum.Font.GothamMedium
     box.TextSize = 10
     box.TextColor3 = T.text
     box.PlaceholderColor3 = T.muted
-    box.BackgroundColor3 = T.inputBg or T.dim
+    box.BackgroundColor3 = T.inputBg
     box.BorderSizePixel = 0
     box.ClearTextOnFocus = false
-    box.Parent = row
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 7)
+    box.ZIndex = 5
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+    local stroke = Instance.new("UIStroke", box)
+    stroke.Color = T.border
+    stroke.Thickness = 1
+
+    box.Focused:Connect(function()
+        createTween(stroke, {Color = T.accent, Thickness = 1.5}):Play()
+    end)
     box.FocusLost:Connect(function(enterPressed)
+        createTween(stroke, {Color = T.border, Thickness = 1}):Play()
         if enterPressed then
-            callback(box.Text)
+            local val = box.Text
+            if numeric then val = tonumber(val) or default end
+            callback(val)
         end
     end)
-    return row
+    return box
 end
 
--- ═══════════════════════════════════════════════════════════════
--- NOTIFICATION SYSTEM
--- ═══════════════════════════════════════════════════════════════
-local function notify(title, msg, nType)
-    local col = nType == "success" and T.green or nType == "error" and T.red or T.accent
-    local n = Instance.new("Frame")
-    n.Size = UDim2.new(0, 0, 0, 56)
-    n.Position = UDim2.new(1, -10, 1, -66)
-    n.AnchorPoint = Vector2.new(1, 1)
-    n.BackgroundColor3 = T.card
-    n.BorderSizePixel = 0
-    n.ZIndex = 200
-    n.Parent = sg
-    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 9)
-    local ns = Instance.new("UIStroke", n); ns.Color = col; ns.Thickness = 1
-    local bar = Instance.new("Frame", n); bar.Size = UDim2.new(0, 3, 0.65, 0); bar.Position = UDim2.new(0, 0, 0.175, 0); bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-    local t1 = Instance.new("TextLabel", n); t1.Size = UDim2.new(1, -16, 0, 18); t1.Position = UDim2.new(0, 12, 0, 8); t1.Text = title; t1.Font = Enum.Font.GothamBold; t1.TextSize = 11; t1.TextColor3 = T.text; t1.TextXAlignment = Enum.TextXAlignment.Left; t1.BackgroundTransparency = 1
-    local t2 = Instance.new("TextLabel", n); t2.Size = UDim2.new(1, -16, 0, 18); t2.Position = UDim2.new(0, 12, 0, 26); t2.Text = msg; t2.Font = Enum.Font.Gotham; t2.TextSize = 9; t2.TextColor3 = T.text; t2.TextTransparency = 0.35; t2.TextXAlignment = Enum.TextXAlignment.Left; t2.TextWrapped = true; t2.BackgroundTransparency = 1
-    TweenService:Create(n, tw(0.25), {Size = UDim2.new(0, 190, 0, 56)}):Play()
-    task.delay(3.5, function() if n and n.Parent then TweenService:Create(n, tw(0.25), {Position = UDim2.new(1, 10, 1, -66)}):Play(); task.delay(0.3, function() n:Destroy() end) end end)
-end
+-- ==================== FIXED DROPDOWN ====================
+-- The original bug: btn.AbsolutePosition was read at creation time (always 0,0)
+-- Fix: read AbsolutePosition inside the click handler, after the button is rendered,
+--      and also account for the ScreenGui IgnoreGuiInset offset.
 
--- ═══════════════════════════════════════════════════════════════
--- FEATURE GLOBALS & LOOPS (unchanged)
--- ═══════════════════════════════════════════════════════════════
-local walkspeedValue = 500
-local working = false
-local selectedLocation = "StarterIsland"
-local selectedWorkout = "BenchPress"
-local autoRep = false
-local weightOn = false
-local pushupsOn = false
-local handstandOn = false
-local situpsOn = false
-local autoRebirth = false
-local rebirthTarget = 0
-local rebirthTargetRunning = false
-local muscleKingCombo = false
-local posLock = nil
-local autoCrystal = false
-local selectedCrystal = "Galaxy Oracle Crystal"
+local function makeDropdown(parent, order, title, values, defaultIndex, callback)
+    local row = makeRow(parent, order, false, 52)
 
-local crystalOptions = {
-    "Blue Crystal", "Green Crystal", "Frozen Crystal", "Mythical Crystal",
-    "Inferno Crystal", "Legends Crystal", "Muscle Elite Crystal",
-    "Galaxy Oracle Crystal", "Sky Eclipse Crystal", "Jungle Crystal"
-}
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.4, 0, 0, 20)
+    lbl.Position = UDim2.new(0, 16, 0, 8)
+    lbl.Text = title
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 5
 
-local workoutPositions = {
-    StarterIsland = {
-        BenchPress = CFrame.new(-17.0609932, 3.31417918, -2.48164988),
-        Squat = CFrame.new(-48.8711243, 3.31417918, -11.8831778),
-        Deadlift = CFrame.new(-48.8711243, 3.31417918, -11.8831778),
-        PullUp = CFrame.new(-33.3047485, 3.31417918, -11.8831778),
-        Boulder = CFrame.new(-33.3047485, 3.31417918, -11.8831778),
-    },
-    LegendBeach = {
-        BenchPress = CFrame.new(470.334656, 3.31417966, -321.053925),
-        Squat = CFrame.new(470.334656, 3.31417966, -321.053925),
-        Deadlift = CFrame.new(470.334656, 3.31417966, -321.053925),
-        PullUp = CFrame.new(470.334656, 3.31417966, -321.053925),
-        Boulder = CFrame.new(470.334656, 3.31417966, -321.053925),
-    },
-    FrostGym = {
-        BenchPress = CFrame.new(-3013.24194, 39.2158546, -335.036926),
-        Squat = CFrame.new(-2933.47998, 29.6399612, -579.946045),
-        Deadlift = CFrame.new(-2933.47998, 29.6399612, -579.946045),
-        PullUp = CFrame.new(-2933.47998, 29.6399612, -579.946045),
-        Boulder = CFrame.new(-2933.47998, 29.6399612, -579.946045),
-    },
-    MythicalGym = {
-        BenchPress = CFrame.new(2371.7356, 39.2158546, 1246.31555),
-        Squat = CFrame.new(2489.21484, 3.67686629, 849.051025),
-        Deadlift = CFrame.new(2489.21484, 3.67686629, 849.051025),
-        PullUp = CFrame.new(2489.21484, 3.67686629, 849.051025),
-        Boulder = CFrame.new(2489.21484, 3.67686629, 849.051025),
-    },
-    EternalGym = {
-        BenchPress = CFrame.new(-7176.19141, 45.394104, -1106.31421),
-        Squat = CFrame.new(-7176.19141, 45.394104, -1106.31421),
-        Deadlift = CFrame.new(-7176.19141, 45.394104, -1106.31421),
-        PullUp = CFrame.new(-7176.19141, 45.394104, -1106.31421),
-        Boulder = CFrame.new(-7176.19141, 45.394104, -1106.31421),
-    },
-    LegendGym = {
-        BenchPress = CFrame.new(4111.91748, 1020.46674, -3799.97217),
-        Squat = CFrame.new(4304.99023, 987.829956, -4124.2334),
-        Deadlift = CFrame.new(4304.99023, 987.829956, -4124.2334),
-        PullUp = CFrame.new(4304.99023, 987.829956, -4124.2334),
-        Boulder = CFrame.new(4304.99023, 987.829956, -4124.2334),
-    },
-    MuscleKingGym = {
-        BenchPress = CFrame.new(-8590.06152, 46.0167427, -6043.34717),
-        Squat = CFrame.new(-8940.12402, 13.1642084, -5699.13477),
-        Deadlift = CFrame.new(-8940.12402, 13.1642084, -5699.13477),
-        PullUp = CFrame.new(-8940.12402, 13.1642084, -5699.13477),
-        Boulder = CFrame.new(-8940.12402, 13.1642084, -5699.13477),
-    },
-    JungleGym = {
-        BenchPress = CFrame.new(-8173, 64, 1898),
-        Squat = CFrame.new(-8352, 34, 2878),
-        Deadlift = CFrame.new(-8352, 34, 2878),
-        PullUp = CFrame.new(-8666, 34, 2070),
-        Boulder = CFrame.new(-8621, 34, 2684),
-    },
-}
+    local selected = values[defaultIndex] or values[1]
 
-local function sendKeyE()
-    VirtualInputManager:SendKeyEvent(true, "E", false, game)
-    task.wait(0.1)
-    VirtualInputManager:SendKeyEvent(false, "E", false, game)
-end
+    local btnWidth = 140
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, btnWidth, 0, 30)
+    btn.Position = UDim2.new(1, -(btnWidth + 16), 0.5, -15)
+    btn.Text = selected .. " ▾"
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 10
+    btn.TextColor3 = T.text
+    btn.BackgroundColor3 = T.inputBg
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color = T.border
+    stroke.Thickness = 1
 
-local function doRebirth()
-    REvents.rebirthRemote:InvokeServer("rebirthRequest")
-end
+    local dropdownOpen = false
+    local dropdownFrame = nil
+    local closeConnection = nil
 
-local function openCrystal()
-    REvents.openCrystalRemote:InvokeServer("openCrystal", selectedCrystal)
-end
+    local function closeDropdown()
+        if dropdownFrame then
+            dropdownFrame:Destroy()
+            dropdownFrame = nil
+        end
+        if closeConnection then
+            closeConnection:Disconnect()
+            closeConnection = nil
+        end
+        dropdownOpen = false
+        stroke.Color = T.border
+    end
 
-local workoutLoop
-local function startWorkout()
-    if workoutLoop then return end
-    workoutLoop = task.spawn(function()
-        while working do
-            local char = Player.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                local pos = workoutPositions[selectedLocation] and workoutPositions[selectedLocation][selectedWorkout]
-                if pos then
-                    char.HumanoidRootPart.CFrame = pos
+    btn.MouseButton1Click:Connect(function()
+        if dropdownOpen then
+            closeDropdown()
+            return
+        end
+        dropdownOpen = true
+        stroke.Color = T.accent
+
+        -- Read AbsolutePosition HERE (after render), not at creation time
+        local absPos = btn.AbsolutePosition
+        local absSize = btn.AbsoluteSize
+
+        -- Account for IgnoreGuiInset (top bar offset is usually 36px on PC)
+        local inset = game:GetService("GuiService"):GetGuiInset()
+
+        local dropH = math.min(#values * 30, 180) -- cap height so it doesn't go off screen
+
+        dropdownFrame = Instance.new("Frame")
+        dropdownFrame.Size = UDim2.new(0, absSize.X, 0, dropH)
+        dropdownFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y - inset.Y)
+        dropdownFrame.BackgroundColor3 = T.card
+        dropdownFrame.BorderSizePixel = 0
+        dropdownFrame.ZIndex = 200
+        dropdownFrame.ClipsDescendants = true
+        dropdownFrame.Parent = ScreenGui
+        Instance.new("UICorner", dropdownFrame).CornerRadius = UDim.new(0, 6)
+        local ddStroke = Instance.new("UIStroke", dropdownFrame)
+        ddStroke.Color = T.accent
+        ddStroke.Thickness = 1
+
+        -- Scrolling support for long lists
+        local scroll = Instance.new("ScrollingFrame", dropdownFrame)
+        scroll.Size = UDim2.new(1, 0, 1, 0)
+        scroll.BackgroundTransparency = 1
+        scroll.BorderSizePixel = 0
+        scroll.ScrollBarThickness = 3
+        scroll.ScrollBarImageColor3 = T.accent
+        scroll.CanvasSize = UDim2.new(0, 0, 0, #values * 30)
+        scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+        scroll.ZIndex = 201
+
+        local ddLayout = Instance.new("UIListLayout", scroll)
+        ddLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        for idx, v in ipairs(values) do
+            local opt = Instance.new("TextButton", scroll)
+            opt.Size = UDim2.new(1, 0, 0, 30)
+            opt.Text = v
+            opt.Font = Enum.Font.GothamMedium
+            opt.TextSize = 10
+            opt.TextColor3 = (v == selected) and T.accentLt or T.text
+            opt.BackgroundColor3 = T.card
+            opt.BorderSizePixel = 0
+            opt.ZIndex = 202
+            opt.AutoButtonColor = false
+            opt.LayoutOrder = idx
+            opt.MouseEnter:Connect(function()
+                createTween(opt, {BackgroundColor3 = T.dim}):Play()
+            end)
+            opt.MouseLeave:Connect(function()
+                createTween(opt, {BackgroundColor3 = T.card}):Play()
+            end)
+            opt.MouseButton1Click:Connect(function()
+                selected = v
+                btn.Text = v .. " ▾"
+                closeDropdown()
+                callback(v)
+            end)
+        end
+
+        -- Close when clicking outside
+        task.wait(0.05)
+        closeConnection = UserInputService.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                local mousePos = UserInputService:GetMouseLocation()
+                local inDropdown = false
+                if dropdownFrame and dropdownFrame.Parent then
+                    local dfPos = dropdownFrame.AbsolutePosition
+                    local dfSize = dropdownFrame.AbsoluteSize
+                    if mousePos.X >= dfPos.X and mousePos.X <= dfPos.X + dfSize.X and
+                       mousePos.Y >= dfPos.Y and mousePos.Y <= dfPos.Y + dfSize.Y then
+                        inDropdown = true
+                    end
                 end
-                sendKeyE()
-                muscleEvent:FireServer()
+                local btnPos2 = btn.AbsolutePosition
+                local btnSize2 = btn.AbsoluteSize
+                if mousePos.X >= btnPos2.X and mousePos.X <= btnPos2.X + btnSize2.X and
+                   mousePos.Y >= btnPos2.Y and mousePos.Y <= btnPos2.Y + btnSize2.Y then
+                    inDropdown = true
+                end
+                if not inDropdown then
+                    closeDropdown()
+                end
             end
-            task.wait(0.25)
-        end
-        workoutLoop = nil
+        end)
     end)
+
+    return {
+        SetValues = function(self, newValues)
+            values = newValues
+            selected = newValues[1] or ""
+            btn.Text = selected .. " ▾"
+            if dropdownOpen then closeDropdown() end
+        end,
+        SetValue = function(self, val)
+            selected = val
+            btn.Text = val .. " ▾"
+        end,
+        GetValue = function(self)
+            return selected
+        end,
+        Value = selected
+    }
 end
 
-local repLoop
-local function startAutoRep()
-    if repLoop then return end
-    repLoop = task.spawn(function()
-        while autoRep do
-            muscleEvent:FireServer("rep")
-            task.wait(0.2)
-        end
-        repLoop = nil
-    end)
+local function makeParagraph(parent, order, title, content)
+    local card = makeCard(parent, order)
+    local row = makeRow(card, 1, true, 80)
+    local titleLabel = Instance.new("TextLabel", row)
+    titleLabel.Size = UDim2.new(1, -28, 0, 20)
+    titleLabel.Position = UDim2.new(0, 14, 0, 8)
+    titleLabel.Text = title
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextSize = 11
+    titleLabel.TextColor3 = T.text
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.ZIndex = 5
+    local contentLabel = Instance.new("TextLabel", row)
+    contentLabel.Size = UDim2.new(1, -28, 0, 40)
+    contentLabel.Position = UDim2.new(0, 14, 0, 30)
+    contentLabel.Text = content
+    contentLabel.Font = Enum.Font.Gotham
+    contentLabel.TextSize = 9
+    contentLabel.TextColor3 = T.muted
+    contentLabel.TextXAlignment = Enum.TextXAlignment.Left
+    contentLabel.TextWrapped = true
+    contentLabel.BackgroundTransparency = 1
+    contentLabel.ZIndex = 5
+    return contentLabel
 end
 
-local function startToolEquip(toolName, enabledVar)
-    task.spawn(function()
-        while getgenv()[enabledVar] do
-            local tool = Player.Backpack:FindFirstChild(toolName)
-            if tool and tool.Parent ~= Player.Character then
-                tool.Parent = Player.Character
-            end
-            task.wait(0.1)
-        end
-    end)
-end
+-- ==================== Global State ====================
+local Options = {}
 
-local rebirthTargetLoop
-local function startRebirthTarget()
-    if rebirthTargetLoop then return end
-    rebirthTargetLoop = task.spawn(function()
-        while rebirthTargetRunning do
-            local stats = Player:FindFirstChild("leaderstats")
-            local rebirths = stats and stats:FindFirstChild("Rebirths") and stats.Rebirths.Value or 0
-            if rebirths >= rebirthTarget then
-                rebirthTargetRunning = false
-                break
-            end
-            doRebirth()
-            task.wait(0.1)
-        end
-        rebirthTargetLoop = nil
-    end)
-end
-
-local muscleKingLoop1, muscleKingLoop2, muscleKingLoop3, muscleKingLoop4
-local function startMuscleKing()
-    if posLock then posLock:Disconnect() end
-    local char = Player.Character or Player.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    local lockCF = CFrame.new(-8745.51855, 29.7460375, -5853.76807, -0.819156051, 0, -0.573571265, 0, 1, 0, 0.573571265, 0, -0.819156051)
-    hrp.CFrame = lockCF
-    posLock = RunService.Heartbeat:Connect(function()
-        if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-            Player.Character.HumanoidRootPart.CFrame = lockCF
-        end
+-- ==================== Build Tabs ====================
+-- Home Tab
+do
+    local page = Pages[1]
+    makeSection(page, "Discord Server Link", 1)
+    makeButton(page, 2, "Click to Copy Link", function()
+        setclipboard("https://discord.gg/G6q7FJCyc8")
+        notify("Discord", "Invite link copied to clipboard.", "success")
     end)
 
-    muscleKingLoop1 = task.spawn(function()
-        while muscleKingCombo do
-            local weight = Player.Backpack:FindFirstChild("Weight") or Player.Character:FindFirstChild("Weight")
-            if weight and weight.Parent ~= Player.Character then
-                weight.Parent = Player.Character
-            end
-            task.wait(0.1)
-        end
-    end)
-    muscleKingLoop2 = task.spawn(function()
-        while muscleKingCombo do
-            muscleEvent:FireServer("rep")
-            task.wait(0.001)
-        end
-    end)
-    muscleKingLoop3 = task.spawn(function()
-        while muscleKingCombo do
-            doRebirth()
-            task.wait(0.01)
-        end
-    end)
-    muscleKingLoop4 = task.spawn(function()
-        while muscleKingCombo do
-            REvents.changeSpeedSizeRemote:InvokeServer("changeSize", 2)
-            task.wait(0.1)
-        end
-    end)
-end
+    makeSection(page, "Local Player Configurations", 3)
+    local speedValue = 16
 
-local function stopMuscleKing()
-    if posLock then posLock:Disconnect(); posLock = nil end
-    if muscleKingLoop1 then task.cancel(muscleKingLoop1); muscleKingLoop1 = nil end
-    if muscleKingLoop2 then task.cancel(muscleKingLoop2); muscleKingLoop2 = nil end
-    if muscleKingLoop3 then task.cancel(muscleKingLoop3); muscleKingLoop3 = nil end
-    if muscleKingLoop4 then task.cancel(muscleKingLoop4); muscleKingLoop4 = nil end
-end
-
-local crystalLoop
-local function startCrystal()
-    if crystalLoop then return end
-    crystalLoop = task.spawn(function()
-        while autoCrystal do
-            openCrystal()
-            task.wait(0.1)
+    local function applySpeed()
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = speedValue end
         end
-        crystalLoop = nil
-    end)
-end
-
-Player.CharacterAdded:Connect(function(char)
-    char:WaitForChild("Humanoid").WalkSpeed = walkspeedValue
-end)
-if Player.Character then
-    Player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = walkspeedValue
-end
-
--- ═══════════════════════════════════════════════════════════════
--- BUILD UI PAGES
--- ═══════════════════════════════════════════════════════════════
-
--- PAGE 1: HOME
-local pg_home = pages[1]
-makeLabel(pg_home, 1, "Discord", T.accent)
-makeButton(pg_home, 2, "Copy Discord Invite", function()
-    setclipboard("https://discord.gg/45KAmZVVk2")
-    notify("Discord", "Invite copied", "success")
-end, true)
-makeLabel(pg_home, 3, "Local Player", T.accent)
-makeTextBox(pg_home, 4, "Enter WalkSpeed", function(val)
-    local num = tonumber(val)
-    if num then
-        walkspeedValue = num
-        if Player.Character and Player.Character:FindFirstChildOfClass("Humanoid") then
-            Player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = walkspeedValue
-        end
-        notify("Speed", "WalkSpeed set to " .. walkspeedValue, "success")
     end
-end)
 
--- PAGE 2: MAIN
-local pg_main = pages[2]
-local locations = {"StarterIsland", "LegendBeach", "FrostGym", "MythicalGym", "EternalGym", "LegendGym", "MuscleKingGym", "JungleGym"}
-makeDropdown(pg_main, 1, "Select Location", locations, "StarterIsland", function(v) selectedLocation = v end)
-local workouts = {"BenchPress", "Squat", "Deadlift", "PullUp", "Boulder"}
-makeDropdown(pg_main, 2, "Select Workout", workouts, "BenchPress", function(v) selectedWorkout = v end)
-makeToggle(pg_main, 3, "Start Workout", false, function(state)
-    working = state
-    if state then startWorkout() end
-end)
-makeToggle(pg_main, 4, "Auto Farm Reps", false, function(state)
-    autoRep = state
-    if state then startAutoRep() end
-end)
-makeLabel(pg_main, 5, "Tools", T.accent)
-makeToggle(pg_main, 6, "Auto Equip Weight", false, function(state)
-    weightOn = state
-    if state then startToolEquip("Weight", "weightOn") end
-end)
-makeToggle(pg_main, 7, "Auto Equip Pushups", false, function(state)
-    pushupsOn = state
-    if state then startToolEquip("Pushups", "pushupsOn") end
-end)
-makeToggle(pg_main, 8, "Auto Equip Handstand", false, function(state)
-    handstandOn = state
-    if state then startToolEquip("Handstands", "handstandOn") end
-end)
-makeToggle(pg_main, 9, "Auto Equip Situps", false, function(state)
-    situpsOn = state
-    if state then startToolEquip("Situps", "situpsOn") end
-end)
+    local speedToggle = makeToggle(page, 4, "Enable Speed", false, function(v)
+        Options.SpeedEnabled = v
+        if v then applySpeed() end
+    end)
+    Options.SpeedToggle = speedToggle
 
--- PAGE 3: REBIRTH
-local pg_rebirth = pages[3]
-makeToggle(pg_rebirth, 1, "Auto Rebirth Infinitely", false, function(state)
-    autoRebirth = state
-    task.spawn(function()
-        while autoRebirth do
-            doRebirth()
+    makeInput(page, 5, "Speed Input", "Enter Speed", "16", true, function(val)
+        speedValue = val
+        if Options.SpeedEnabled then applySpeed() end
+    end)
+
+    LocalPlayer.CharacterAdded:Connect(function(char)
+        char:WaitForChild("Humanoid")
+        if Options.SpeedEnabled then
             task.wait(0.1)
+            applySpeed()
         end
     end)
-end)
-makeTextBox(pg_rebirth, 2, "Enter Rebirth Target", function(val)
-    rebirthTarget = tonumber(val) or 0
-end)
-makeToggle(pg_rebirth, 3, "Rebirth Until Target", false, function(state)
-    rebirthTargetRunning = state
-    if state then startRebirthTarget() end
-end)
-makeToggle(pg_rebirth, 4, "Auto Rebirth + Muscle King", false, function(state)
-    if muscleKingCombo and not state then
-        stopMuscleKing()
+
+    local infJumpToggle = makeToggle(page, 6, "Infinite Jump", false, function(v)
+        if v then
+            local hum = (LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()):WaitForChild("Humanoid")
+            _G.InfJumpConn = UserInputService.JumpRequest:Connect(function()
+                if Options.InfJumpEnabled then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+            end)
+        else
+            if _G.InfJumpConn then _G.InfJumpConn:Disconnect() _G.InfJumpConn = nil end
+        end
+        Options.InfJumpEnabled = v
+    end)
+
+    local noclipToggle = makeToggle(page, 7, "No Clip", false, function(v)
+        Options.NoClipEnabled = v
+        if v then
+            _G.NoclipConn = RunService.Stepped:Connect(function()
+                local char = LocalPlayer.Character
+                if char then
+                    for _, part in ipairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
+                    end
+                end
+            end)
+        else
+            if _G.NoclipConn then _G.NoclipConn:Disconnect() _G.NoclipConn = nil end
+        end
+    end)
+end
+
+-- Main Tab
+do
+    local page = Pages[2]
+    makeSection(page, "Auto Farm", 1)
+    local autoLift = makeToggle(page, 2, "Auto Lift", false, function(v)
+        Options.AutoLift = v
+        if v then
+            task.spawn(function()
+                while Options.AutoLift do
+                    LocalPlayer:WaitForChild("muscleEvent"):FireServer("rep")
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+
+    local fastPunch = makeToggle(page, 3, "Auto Fast Punch", false, function(v)
+        Options.FastPunch = v
+        if v then
+            task.spawn(function()
+                while Options.FastPunch do
+                    local char = LocalPlayer.Character or workspace:FindFirstChild(LocalPlayer.Name)
+                    local punch = LocalPlayer.Backpack:FindFirstChild("Punch") or (char and char:FindFirstChild("Punch"))
+                    if punch then
+                        if punch.Parent ~= char then punch.Parent = char; task.wait(0.1) end
+                        local attackTime = punch:FindFirstChild("attackTime")
+                        if attackTime then attackTime.Value = 0 end
+                        punch:Activate()
+                    end
+                    task.wait()
+                end
+            end)
+        end
+    end)
+
+    local normalPunch = makeToggle(page, 4, "Auto Normal Punch", false, function(v)
+        Options.NormalPunch = v
+        if v then
+            task.spawn(function()
+                while Options.NormalPunch do
+                    local char = LocalPlayer.Character or workspace:FindFirstChild(LocalPlayer.Name)
+                    local punch = LocalPlayer.Backpack:FindFirstChild("Punch") or (char and char:FindFirstChild("Punch"))
+                    if punch then
+                        if punch.Parent ~= char then punch.Parent = char; task.wait(0.1) end
+                        local attackTime = punch:FindFirstChild("attackTime")
+                        if attackTime then attackTime.Value = 0.35 end
+                        punch:Activate()
+                    end
+                    task.wait()
+                end
+            end)
+        end
+    end)
+
+    makeSection(page, "Auto Gym [BETA]", 5)
+    local gymData = {
+        Jungle = {"Boulder", "Bench", "Squat", "Bar Lift"},
+        ["Muscle King"] = {"Boulder", "Bench", "Squat", "Dead Lift"}
+    }
+    local gymPositions = {
+        Jungle = {
+            Boulder = {cf = CFrame.new(-8617, 37, 2677), rName = "Jungle Boulder"},
+            Bench = {cf = CFrame.new(-8629.88, 64.88, 1855.03), rName = "Jungle Bench"},
+            Squat = {cf = CFrame.new(-8374.26, 34.59, 2932.45), rName = "Jungle Squat"},
+            ["Bar Lift"] = {cf = CFrame.new(-8678.06, 14.5, 2089.26), rName = "Jungle Bar Lift"}
+        },
+        ["Muscle King"] = {
+            Boulder = {cf = CFrame.new(-8940.12, 13.16, -5699.13), rName = "King Boulder"},
+            Bench = {cf = CFrame.new(-8590.06, 46.02, -6043.35), rName = "Muscle King Bench"},
+            Squat = {cf = CFrame.new(-8759, 44, -6044), rName = "Muscle King Squat"},
+            ["Dead Lift"] = {cf = CFrame.new(-8773, 50, -5664), rName = "Muscle King Lift"}
+        }
+    }
+
+    Options.SelectedGym = "Jungle"
+    Options.SelectedTool = "Boulder"
+
+    local toolDropdown -- forward declare
+    local gymDropdown = makeDropdown(page, 6, "Select Gym", {"Jungle", "Muscle King"}, 1, function(v)
+        Options.SelectedGym = v
+        local newTools = gymData[v] or {}
+        toolDropdown:SetValues(newTools)
+        Options.SelectedTool = newTools[1] or ""
+    end)
+    toolDropdown = makeDropdown(page, 7, "Select Tool", gymData.Jungle, 1, function(v)
+        Options.SelectedTool = v
+    end)
+
+    local autoGymToggle = makeToggle(page, 8, "Auto Gym (choose both dropdowns first)", false, function(v)
+        Options.AutoGym = v
+        if _G.GymConn then _G.GymConn:Disconnect(); _G.GymConn = nil end
+        if v then
+            _G.GymConn = RunService.Heartbeat:Connect(function()
+                local gym = Options.SelectedGym or "Jungle"
+                local tool = Options.SelectedTool or "Boulder"
+                local data = gymPositions[gym] and gymPositions[gym][tool]
+                if data then
+                    local char = LocalPlayer.Character
+                    if char and char.PrimaryPart then
+                        char:SetPrimaryPartCFrame(data.cf)
+                        ReplicatedStorage.rEvents.machineInteractRemote:InvokeServer("useMachine", workspace.machinesFolder[data.rName].interactSeat)
+                    end
+                end
+            end)
+        end
+    end)
+
+    makeSection(page, "Auto Equip", 9)
+    makeToggle(page, 10, "Auto Equip Weight", false, function(v)
+        Options.AutoWeight = v
+        if v then
+            task.spawn(function()
+                while Options.AutoWeight do
+                    local tool = LocalPlayer.Backpack:FindFirstChild("Weight")
+                    if tool then tool.Parent = LocalPlayer.Character end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+    makeToggle(page, 11, "Auto Equip Pushups", false, function(v)
+        Options.AutoPushups = v
+        if v then
+            task.spawn(function()
+                while Options.AutoPushups do
+                    local tool = LocalPlayer.Backpack:FindFirstChild("Pushups")
+                    if tool then tool.Parent = LocalPlayer.Character end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+    makeToggle(page, 12, "Auto Equip Situps", false, function(v)
+        Options.AutoSitups = v
+        if v then
+            task.spawn(function()
+                while Options.AutoSitups do
+                    local tool = LocalPlayer.Backpack:FindFirstChild("Situps")
+                    if tool then tool.Parent = LocalPlayer.Character end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+    makeToggle(page, 13, "Auto Equip Handstands", false, function(v)
+        Options.AutoHandstands = v
+        if v then
+            task.spawn(function()
+                while Options.AutoHandstands do
+                    local tool = LocalPlayer.Backpack:FindFirstChild("Handstands")
+                    if tool then tool.Parent = LocalPlayer.Character end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+
+    makeSection(page, "Brawl", 14)
+    makeToggle(page, 15, "God Mode (Brawl)", false, function(v)
+        Options.GodModeBrawl = v
+        if v then
+            task.spawn(function()
+                while Options.GodModeBrawl do
+                    ReplicatedStorage.rEvents.brawlEvent:FireServer("joinBrawl")
+                    task.wait(0)
+                end
+            end)
+        end
+    end)
+    makeToggle(page, 16, "Auto Join Brawl", false, function(v)
+        Options.AutoJoinBrawl = v
+        if v then
+            task.spawn(function()
+                while Options.AutoJoinBrawl do
+                    ReplicatedStorage.rEvents.brawlEvent:FireServer("joinBrawl")
+                    task.wait(2)
+                end
+            end)
+        end
+    end)
+end
+
+-- Rocks Tab
+do
+    local page = Pages[3]
+    makeSection(page, "Auto Punch Rocks", 1)
+    local function getPunch()
+        local punch = LocalPlayer.Backpack:FindFirstChild("Punch") or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Punch"))
+        if punch and punch.Parent ~= LocalPlayer.Character then
+            punch.Parent = LocalPlayer.Character
+            task.wait(0.1)
+        end
+        return punch
     end
-    muscleKingCombo = state
-    if state then startMuscleKing() end
-end)
+    local function processRock(durabilityNeeded)
+        while getgenv().autoFarm do
+            task.wait()
+            local char = LocalPlayer.Character
+            local machines = workspace:FindFirstChild("machinesFolder")
+            if not (char and machines) then return end
+            if durabilityNeeded <= LocalPlayer.Durability.Value then
+                for _, obj in ipairs(machines:GetDescendants()) do
+                    if obj.Name == "neededDurability" and obj.Value == durabilityNeeded then
+                        local rock = obj.Parent:FindFirstChild("Rock")
+                        if rock and char:FindFirstChild("LeftHand") and char:FindFirstChild("RightHand") and getPunch() then
+                            LocalPlayer.muscleEvent:FireServer("punch", "rightHand")
+                            LocalPlayer.muscleEvent:FireServer("punch", "leftHand")
+                            firetouchinterest(rock, char.RightHand, 0)
+                            firetouchinterest(rock, char.RightHand, 1)
+                            firetouchinterest(rock, char.LeftHand, 0)
+                            firetouchinterest(rock, char.LeftHand, 1)
+                            rock.Size = rock.Size * 0.1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local rockConfigs = {
+        {title = "Jungle Rock (10M)", dura = 10000000},
+        {title = "Muscle King Rock (5M)", dura = 5000000},
+        {title = "Legend Rock (1M)", dura = 1000000},
+        {title = "Inferno Rock (750K)", dura = 750000},
+        {title = "Mystic Rock (400K)", dura = 400000},
+        {title = "Frozen Rock (150K)", dura = 150000},
+        {title = "Golden Rock (5K)", dura = 5000},
+        {title = "Large Rock (100)", dura = 100},
+        {title = "Punching Rock (10)", dura = 10},
+        {title = "Tiny Rock (0)", dura = 0},
+    }
+    local order = 2
+    for _, cfg in ipairs(rockConfigs) do
+        makeToggle(page, order, cfg.title, false, function(v)
+            getgenv().autoFarm = v
+            if v then
+                coroutine.wrap(function()
+                    while getgenv().autoFarm do
+                        if LocalPlayer.Character then
+                            for _ = 1, 10 do
+                                getPunch()
+                                processRock(cfg.dura)
+                            end
+                        end
+                        task.wait(0.1)
+                    end
+                end)()
+            else
+                local punch = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Punch")
+                if punch then punch.Parent = LocalPlayer.Backpack end
+            end
+        end)
+        order = order + 1
+    end
+end
 
--- PAGE 4: TELEPORT
-local pg_tp = pages[4]
-makeButton(pg_tp, 1, "Tiny Island", function()
-    if Player.Character and HRP then HRP.CFrame = CFrame.new(-31.8626194, 6.0588026, 2087.88672) end
-end, true)
-makeButton(pg_tp, 2, "Starter Island", function()
-    if Player.Character and HRP then HRP.CFrame = CFrame.new(226.252472, 8.1526947, 219.366516) end
-end, true)
-makeButton(pg_tp, 3, "Legend Beach", function()
-    if Player.Character and HRP then HRP.CFrame = CFrame.new(-365.798309, 44.5082932, -501.618591) end
-end, true)
-makeButton(pg_tp, 4, "Frost Gym", function()
-    if Player.Character and HRP then HRP.CFrame = CFrame.new(-2933.47998, 29.6399612, -579.946045) end
-end, true)
-makeButton(pg_tp, 5, "Mythical Gym", function()
-    if Player.Character and HRP then HRP.CFrame = CFrame.new(2659.50635, 21.6095238, 934.690613) end
-end, true)
-makeButton(pg_tp, 6, "Eternal Gym", function()
-    if Player.Character and HRP then HRP.CFrame = CFrame.new(-7176.19141, 45.394104, -1106.31421) end
-end, true)
-makeButton(pg_tp, 7, "Legend Gym", function()
-    if Player.Character and HRP then HRP.CFrame = CFrame.new(4446.91699, 1004.46698, -3983.76074) end
-end, true)
-makeButton(pg_tp, 8, "Jungle Gym", function()
-    if Player.Character and HRP then HRP.CFrame = CFrame.new(-8137, 28, 2820) end
-end, true)
+-- Rebirth Tab
+do
+    local page = Pages[4]
+    makeToggle(page, 1, "Auto Rebirth (Normal)", false, function(v)
+        Options.AutoRebirth = v
+        if v then
+            task.spawn(function()
+                while Options.AutoRebirth do
+                    ReplicatedStorage.rEvents.rebirthRemote:InvokeServer("rebirthRequest")
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+    makeToggle(page, 2, "Auto Size 2", false, function(v)
+        Options.AutoSize2 = v
+        if v then
+            _G.size2Loop = task.spawn(function()
+                while Options.AutoSize2 do
+                    ReplicatedStorage.rEvents.changeSpeedSizeRemote:InvokeServer("changeSize", 2)
+                    task.wait()
+                end
+            end)
+        elseif _G.size2Loop then
+            task.cancel(_G.size2Loop)
+            _G.size2Loop = nil
+        end
+    end)
+    makeToggle(page, 3, "Hide All Frames", false, function(v)
+        for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
+            if obj:IsA("Instance") and obj.Name:match("Frame$") then
+                obj.Visible = not v
+            end
+        end
+    end)
+    makeSection(page, "Pack Farm [Only packs farm recommended is 7]", 4)
+    makeButton(page, 5, "Fast Rebirths", function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/ttvkaiser/Nebula-Hub/refs/heads/main/Muscle-Legends/Ddd.txt"))()
+    end)
+    makeToggle(page, 6, "Fast Grind (No Rebirth)", false, function(v)
+        Options.FastGrind = v
+        if v then
+            for _ = 1, 12 do
+                task.spawn(function()
+                    while Options.FastGrind do
+                        LocalPlayer.muscleEvent:FireServer("rep")
+                        task.wait(0.083)
+                    end
+                end)
+            end
+        end
+    end)
+end
 
--- PAGE 5: CRYSTAL
-local pg_crystal = pages[5]
-makeDropdown(pg_crystal, 1, "Select Crystal", crystalOptions, "Galaxy Oracle Crystal", function(v)
-    selectedCrystal = v
-end)
-makeToggle(pg_crystal, 2, "Auto Open Crystal", false, function(state)
-    autoCrystal = state
-    if state then startCrystal() end
-end)
+-- Auto Kill Tab
+do
+    local page = Pages[5]
+    local whitelist = {}
+    makeInput(page, 1, "Whitelist Player", "Enter username...", "", false, function(val)
+        local plr = Players:FindFirstChild(val)
+        if plr then whitelist[plr.Name] = true end
+    end)
+    makeToggle(page, 2, "Auto Kill", false, function(v)
+        Options.AutoKill = v
+        if v then
+            task.spawn(function()
+                while Options.AutoKill do
+                    local char = LocalPlayer.Character or workspace:FindFirstChild(LocalPlayer.Name)
+                    local punch = LocalPlayer.Backpack:FindFirstChild("Punch") or (char and char:FindFirstChild("Punch"))
+                    if punch then
+                        if punch.Parent ~= char then punch.Parent = char; task.wait(0.1) end
+                        local attackTime = punch:FindFirstChild("attackTime")
+                        if attackTime then attackTime.Value = 0 end
+                        punch:Activate()
+                        for _, plr in ipairs(Players:GetPlayers()) do
+                            if plr ~= LocalPlayer and not whitelist[plr.Name] then
+                                local targetChar = plr.Character
+                                if targetChar then
+                                    local hrp = targetChar:FindFirstChild("HumanoidRootPart")
+                                    local right = char and char:FindFirstChild("RightHand")
+                                    local left = char and char:FindFirstChild("LeftHand")
+                                    if hrp and right and left then
+                                        firetouchinterest(right, hrp, 1)
+                                        firetouchinterest(left, hrp, 1)
+                                        firetouchinterest(right, hrp, 0)
+                                        firetouchinterest(left, hrp, 0)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+    local targetName = ""
+    makeInput(page, 3, "Player Username", "Enter exact username...", "", false, function(val)
+        targetName = val
+    end)
+    makeToggle(page, 4, "Auto Kill Player", false, function(v)
+        Options.AutoKillTarget = v
+        if v then
+            task.spawn(function()
+                while Options.AutoKillTarget do
+                    local plr = Players:FindFirstChild(targetName)
+                    if plr and plr ~= LocalPlayer then
+                        local targetChar = plr.Character
+                        local myChar = LocalPlayer.Character
+                        if targetChar and myChar then
+                            local hrp = targetChar:FindFirstChild("HumanoidRootPart")
+                            local right = myChar:FindFirstChild("RightHand")
+                            local left = myChar:FindFirstChild("LeftHand")
+                            if hrp and right and left then
+                                firetouchinterest(right, hrp, 1)
+                                firetouchinterest(left, hrp, 1)
+                                firetouchinterest(right, hrp, 0)
+                                firetouchinterest(left, hrp, 0)
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+end
 
--- ═══════════════════════════════════════════════════════════════
--- FINALIZE & SHOW
--- ═══════════════════════════════════════════════════════════════
-local vp = workspace.CurrentCamera.ViewportSize
-win.Position = UDim2.new(0, (vp.X - WIN_W)/2, 0, (vp.Y - WIN_H)/2)
-win.Visible = true
-win.Size = UDim2.new(0, 0, 0, 0)
-win.BackgroundTransparency = 1
-TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
-task.delay(0.45, function() win.BackgroundTransparency = 0 end)
+-- Teleport Tab
+do
+    local page = Pages[6]
+    local locations = {
+        {"Tiny Island", CFrame.new(-31.86, 6.06, 2087.89)},
+        {"Starter Island", CFrame.new(226.25, 8.15, 219.37)},
+        {"Beach", CFrame.new(-365.80, 44.51, -501.62)},
+        {"Frost Gym", CFrame.new(-2933.48, 29.64, -579.95)},
+        {"Mythical Gym", CFrame.new(2659.51, 21.61, 934.69)},
+        {"Eternal Gym", CFrame.new(-7176.19, 45.39, -1106.31)},
+        {"Legend Gym", CFrame.new(4446.92, 1004.47, -3983.76)},
+        {"Muscle King", CFrame.new(-8626, 15, -5730)},
+        {"Jungle Gym", CFrame.new(-8137, 28, 2820)},
+    }
+    local order = 1
+    for _, loc in ipairs(locations) do
+        makeButton(page, order, loc[1], function()
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.CFrame = loc[2]
+            end
+        end)
+        order = order + 1
+    end
+end
 
+-- Status Tab
+do
+    local page = Pages[7]
+    makeSection(page, "Stats Gained", 1)
+    local para = makeParagraph(page, 2, "Session Stats", "Loading...")
+    local function format(num)
+        if num >= 1e15 then return string.format("%.1fQa", num / 1e15)
+        elseif num >= 1e12 then return string.format("%.1fT", num / 1e12)
+        elseif num >= 1e9 then return string.format("%.1fB", num / 1e9)
+        elseif num >= 1e6 then return string.format("%.1fM", num / 1e6)
+        elseif num >= 1e3 then return string.format("%.1fK", num / 1e3)
+        else return tostring(num) end
+    end
+    task.spawn(function()
+        local leaderstats = LocalPlayer:WaitForChild("leaderstats")
+        local strength = leaderstats:WaitForChild("Strength")
+        local durability = LocalPlayer:WaitForChild("Durability")
+        local agility = LocalPlayer:WaitForChild("Agility")
+        local kills = leaderstats:WaitForChild("Kills")
+        local evilKarma = LocalPlayer:WaitForChild("evilKarma")
+        local goodKarma = LocalPlayer:WaitForChild("goodKarma")
+        local startVals = {
+            Strength = strength.Value,
+            Durability = durability.Value,
+            Agility = agility.Value,
+            Kills = kills.Value,
+            Evil = evilKarma.Value,
+            Good = goodKarma.Value,
+        }
+        local startTime = tick()
+        local function update()
+            local elapsed = tick() - startTime
+            local mins = math.floor(elapsed / 60)
+            local secs = math.floor(elapsed % 60)
+            para.Text = string.format([[
+Time spent in this server: %02d:%02d
+
+Strength gained: %s
+Durability gained: %s
+Agility gained: %s
+Kills gained: %s
+Evil Karma gained: %s
+Good Karma gained: %s
+            ]], mins, secs,
+                format(strength.Value - startVals.Strength),
+                format(durability.Value - startVals.Durability),
+                format(agility.Value - startVals.Agility),
+                format(kills.Value - startVals.Kills),
+                format(evilKarma.Value - startVals.Evil),
+                format(goodKarma.Value - startVals.Good))
+        end
+        strength.Changed:Connect(update)
+        durability.Changed:Connect(update)
+        agility.Changed:Connect(update)
+        kills.Changed:Connect(update)
+        evilKarma.Changed:Connect(update)
+        goodKarma.Changed:Connect(update)
+        RunService.Heartbeat:Connect(update)
+        update()
+    end)
+end
+
+-- Crystal Tab
+do
+    local page = Pages[8]
+    local crystals = {
+        "Blue Crystal", "Green Crystal", "Frozen Crystal", "Mythical Crystal",
+        "Inferno Crystal", "Legends Crystal", "Muscle Elite Crystal",
+        "Galaxy Oracle Crystal", "Sky Eclipse Crystal", "Jungle Crystal"
+    }
+    local selectedCrystal = "Galaxy Oracle Crystal"
+    makeDropdown(page, 1, "Select Crystal", crystals, 8, function(v)
+        selectedCrystal = v
+    end)
+    makeToggle(page, 2, "Auto Crystal", false, function(v)
+        Options.AutoCrystal = v
+        if v then
+            task.spawn(function()
+                while Options.AutoCrystal do
+                    pcall(function()
+                        ReplicatedStorage.rEvents.openCrystalRemote:InvokeServer("openCrystal", selectedCrystal)
+                    end)
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+end
+
+-- Misc Tab
+do
+    local page = Pages[9]
+    makeButton(page, 1, "Permanent Shift Lock", function()
+        loadstring(game:HttpGet("https://pastebin.com/raw/CjNsnSDy"))()
+    end)
+    makeToggle(page, 2, "Lock Position", false, function(v)
+        if v then
+            local cf = LocalPlayer.Character.HumanoidRootPart.CFrame
+            _G.posLockConn = RunService.Heartbeat:Connect(function()
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    char.HumanoidRootPart.CFrame = cf
+                end
+            end)
+        elseif _G.posLockConn then
+            _G.posLockConn:Disconnect()
+            _G.posLockConn = nil
+        end
+    end)
+    makeToggle(page, 3, "Disable Trade", false, function(v)
+        if v then
+            ReplicatedStorage.rEvents.tradingEvent:FireServer("disableTrading")
+        else
+            ReplicatedStorage.rEvents.tradingEvent:FireServer("enableTrading")
+        end
+    end)
+    makeToggle(page, 4, "Hide Pets", false, function(v)
+        if v then
+            ReplicatedStorage.rEvents.showPetsEvent:FireServer("hidePets")
+        else
+            ReplicatedStorage.rEvents.showPetsEvent:FireServer("showPets")
+        end
+    end)
+    makeSection(page, "Game Enhancers", 5)
+    makeButton(page, 6, "Anti AFK", function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Moha-space/SPACE-HUB-/refs/heads/main/MAIN%20AINTI%20AFK%20.txt"))()
+    end)
+    makeButton(page, 7, "Instant FPS Boost", function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") then
+                obj.Enabled = false
+            elseif obj:IsA("Explosion") then
+                obj:Destroy()
+            end
+        end
+        for _, obj in ipairs(game:GetDescendants()) do
+            if obj:IsA("Decal") or obj:IsA("Texture") then obj:Destroy() end
+        end
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        if workspace:FindFirstChildOfClass("Terrain") then
+            workspace.Terrain.Decorations = false
+        end
+        collectgarbage("collect")
+        notify("Performance", "Boost applied.", "success")
+    end)
+    makeButton(page, 8, "No Lag", function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                obj.Enabled = false
+            elseif obj:IsA("Explosion") or obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("Lighting") then
+                obj:Destroy()
+            elseif obj:IsA("Sound") then
+                obj:Destroy()
+            end
+        end
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        if workspace:FindFirstChildOfClass("Terrain") then
+            workspace.Terrain.Decorations = false
+        end
+        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        for _, obj in ipairs(char:GetDescendants()) do
+            if obj:IsA("Accessory") or obj:IsA("Clothing") or obj:IsA("ShirtGraphic") then
+                obj:Destroy()
+            end
+        end
+        local lighting = game:GetService("Lighting")
+        lighting.GlobalShadows = false
+        lighting.FogEnd = 100000
+        lighting.Blur = nil
+        collectgarbage("collect")
+        notify("No Lag", "Mode activated.", "success")
+    end)
+end
+
+-- ==================== Startup ====================
 setTab(1)
-notify("FeatherHub v2", "Loaded for Muscle Legends", "success")
+notify("Muscle Legends Hub", "Script loaded successfully. Enjoy!", "success")
 
-UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.RightBracket then
-        sg.Enabled = not sg.Enabled
+-- Cleanup on respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    if Options.SpeedEnabled then
+        task.wait(0.1)
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = 16 end
     end
 end)
