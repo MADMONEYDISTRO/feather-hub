@@ -1,0 +1,541 @@
+--[[
+    Feather Hub - Anime Slap Tower Edition
+    - Auto Win (toggle)
+    - Get Free Tools
+    - Get Gamepass Tools
+    - Feather Hub purple theme
+    - Draggable, minimizable, clean UI
+]]
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- ================== THEME (Feather Hub Purple) ==================
+local T = {
+    bg = Color3.fromRGB(13, 13, 18),
+    sidebar = Color3.fromRGB(18, 18, 25),
+    card = Color3.fromRGB(23, 23, 32),
+    border = Color3.fromRGB(42, 42, 58),
+    text = Color3.fromRGB(228, 228, 240),
+    muted = Color3.fromRGB(95, 95, 118),
+    dim = Color3.fromRGB(30, 30, 44),
+    sep = Color3.fromRGB(34, 34, 50),
+    header = Color3.fromRGB(16, 16, 22),
+    inputBg = Color3.fromRGB(9, 9, 15),
+    accent = Color3.fromRGB(110, 95, 210),
+    accentLt = Color3.fromRGB(135, 115, 235),
+    accentDim = Color3.fromRGB(65, 55, 130),
+    green = Color3.fromRGB(90, 195, 145),
+    red = Color3.fromRGB(210, 75, 95),
+    gold = Color3.fromRGB(185, 150, 60)
+}
+
+local WIN_W, WIN_H = 360, 260
+local HDR_H = 48
+
+-- ================== UTILITY ==================
+local function tw(t, s, d)
+    return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out)
+end
+
+local function notify(title, msg, nType)
+    local col = T.accent
+    if nType == "success" then col = T.green
+    elseif nType == "error" then col = T.red
+    elseif nType == "warning" then col = T.gold end
+
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0, 0, 0, 62)
+    n.Position = UDim2.new(1, -12, 1, -76)
+    n.AnchorPoint = Vector2.new(1, 1)
+    n.BackgroundColor3 = T.card
+    n.BorderSizePixel = 0
+    n.ZIndex = 100
+    n.Parent = sg
+
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 10)
+    local ns = Instance.new("UIStroke")
+    ns.Color = col
+    ns.Thickness = 1
+    ns.Parent = n
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(0, 3, 0.65, 0)
+    bar.Position = UDim2.new(0, 0, 0.175, 0)
+    bar.BackgroundColor3 = col
+    bar.BorderSizePixel = 0
+    bar.Parent = n
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+
+    local t1 = Instance.new("TextLabel")
+    t1.Size = UDim2.new(1, -18, 0, 20)
+    t1.Position = UDim2.new(0, 14, 0, 9)
+    t1.Text = title
+    t1.Font = Enum.Font.GothamBold
+    t1.TextSize = 11
+    t1.TextColor3 = T.text
+    t1.TextXAlignment = Enum.TextXAlignment.Left
+    t1.BackgroundTransparency = 1
+    t1.ZIndex = 101
+    t1.Parent = n
+
+    local t2 = Instance.new("TextLabel")
+    t2.Size = UDim2.new(1, -18, 0, 20)
+    t2.Position = UDim2.new(0, 14, 0, 29)
+    t2.Text = msg
+    t2.Font = Enum.Font.Gotham
+    t2.TextSize = 9
+    t2.TextColor3 = T.text
+    t2.TextTransparency = 0.35
+    t2.TextXAlignment = Enum.TextXAlignment.Left
+    t2.TextWrapped = true
+    t2.BackgroundTransparency = 1
+    t2.ZIndex = 101
+    t2.Parent = n
+
+    n.Size = UDim2.new(0, 0, 0, 62)
+    TweenService:Create(n, tw(0.25), {Size = UDim2.new(0, 210, 0, 62)}):Play()
+    task.delay(3.5, function()
+        if n and n.Parent then
+            TweenService:Create(n, tw(0.25), {Position = UDim2.new(1, 12, 1, -76)}):Play()
+            task.delay(0.3, function() n:Destroy() end)
+        end
+    end)
+end
+
+-- ================== GUI BUILD ==================
+local sg = Instance.new("ScreenGui")
+sg.Name = "FeatherSlapTower"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 999
+sg.IgnoreGuiInset = true
+pcall(function() sg.Parent = CoreGui end)
+if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local win = Instance.new("Frame")
+win.Name = "Win"
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.BackgroundColor3 = T.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 1
+win.BackgroundTransparency = 0
+win.Parent = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 16)
+
+local winStroke = Instance.new("UIStroke")
+winStroke.Color = T.border
+winStroke.Thickness = 1
+winStroke.Parent = win
+
+-- Header
+local hdr = Instance.new("Frame")
+hdr.Size = UDim2.new(1, 0, 0, HDR_H)
+hdr.Position = UDim2.new(0, 0, 0, 0)
+hdr.BackgroundColor3 = T.header
+hdr.BorderSizePixel = 0
+hdr.ZIndex = 3
+hdr.Parent = win
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 16)
+
+local hdrLC = Instance.new("Frame")
+hdrLC.Size = UDim2.new(0, 16, 1, 0)
+hdrLC.BackgroundColor3 = T.header
+hdrLC.BorderSizePixel = 0
+hdrLC.ZIndex = 3
+hdrLC.Parent = hdr
+
+local hdrBC = Instance.new("Frame")
+hdrBC.Size = UDim2.new(0, 16, 0, 16)
+hdrBC.Position = UDim2.new(1, -16, 1, -16)
+hdrBC.BackgroundColor3 = T.header
+hdrBC.BorderSizePixel = 0
+hdrBC.ZIndex = 3
+hdrBC.Parent = hdr
+
+local hdrLine = Instance.new("Frame")
+hdrLine.Size = UDim2.new(1, -10, 0, 1)
+hdrLine.Position = UDim2.new(0, 5, 1, -1)
+hdrLine.BackgroundColor3 = T.sep
+hdrLine.BorderSizePixel = 0
+hdrLine.ZIndex = 4
+hdrLine.Parent = hdr
+
+local hdrTitle = Instance.new("TextLabel")
+hdrTitle.Size = UDim2.new(1, -100, 1, 0)
+hdrTitle.Position = UDim2.new(0, 16, 0, 0)
+hdrTitle.Text = "ANIME SLAP TOWER"
+hdrTitle.Font = Enum.Font.GothamBold
+hdrTitle.TextSize = 13
+hdrTitle.TextColor3 = T.text
+hdrTitle.BackgroundTransparency = 1
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+hdrTitle.ZIndex = 5
+hdrTitle.Parent = hdr
+
+-- Header buttons
+local function makeHdrBtn(xPos, symbol)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 28, 0, 28)
+    b.Position = UDim2.new(1, xPos, 0.5, -14)
+    b.Text = symbol
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 16
+    b.TextColor3 = T.muted
+    b.BackgroundColor3 = T.dim
+    b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    b.ZIndex = 5
+    b.Parent = hdr
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+    return b
+end
+
+local minBtn = makeHdrBtn(-66, "–")
+local closeBtn = makeHdrBtn(-34, "×")
+
+closeBtn.MouseEnter:Connect(function()
+    TweenService:Create(closeBtn, tw(), {BackgroundColor3 = T.red, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+closeBtn.MouseLeave:Connect(function()
+    TweenService:Create(closeBtn, tw(), {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play()
+end)
+closeBtn.MouseButton1Click:Connect(function()
+    sg:Destroy()
+end)
+
+-- Content area
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, 0, 1, -HDR_H)
+content.Position = UDim2.new(0, 0, 0, HDR_H)
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.ZIndex = 2
+content.ClipsDescendants = true
+content.Parent = win
+
+-- Minimize functionality
+local isMinimized = false
+function _G.toggleMinimize()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
+        content.Visible = false
+        hdrLC.Visible = false
+        hdrBC.Visible = false
+        hdrLine.Visible = false
+        minBtn.Text = "+"
+    else
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+        hdrLC.Visible = true
+        hdrBC.Visible = true
+        hdrLine.Visible = true
+        task.delay(0.1, function()
+            content.Visible = true
+        end)
+        minBtn.Text = "–"
+    end
+end
+minBtn.MouseButton1Click:Connect(_G.toggleMinimize)
+minBtn.MouseEnter:Connect(function()
+    TweenService:Create(minBtn, tw(), {BackgroundColor3 = T.accent, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+minBtn.MouseLeave:Connect(function()
+    TweenService:Create(minBtn, tw(), {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play()
+end)
+
+-- Dragging
+do
+    local dragging, dragReady, dragInput, dragStart, startPos, holdThread = false, false, nil, nil, nil, nil
+    hdr.InputBegan:Connect(function(i)
+        local t = i.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+            dragStart = i.Position
+            startPos = win.Position
+            dragReady = false
+            dragging = false
+            holdThread = task.delay(0.14, function() dragReady = true end)
+        end
+    end)
+    hdr.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
+            dragInput = i
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i == dragInput and dragReady then
+            dragging = true
+            local d = i.Position - dragStart
+            local vp = workspace.CurrentCamera.ViewportSize
+            win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + d.X, 0, vp.X - WIN_W), 0, math.clamp(startPos.Y.Offset + d.Y, 0, vp.Y - WIN_H))
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+            dragReady = false
+            if holdThread then
+                task.cancel(holdThread)
+                holdThread = nil
+            end
+        end
+    end)
+end
+
+-- ================== CONTENT ==================
+local page = Instance.new("ScrollingFrame")
+page.Size = UDim2.new(1, 0, 1, 0)
+page.BackgroundTransparency = 1
+page.BorderSizePixel = 0
+page.ScrollBarThickness = 3
+page.ScrollBarImageColor3 = T.accent
+page.CanvasSize = UDim2.new(0, 0, 0, 0)
+page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+page.ScrollingDirection = Enum.ScrollingDirection.Y
+page.ElasticBehavior = Enum.ElasticBehavior.Never
+page.ZIndex = 2
+page.Parent = content
+
+local layout = Instance.new("UIListLayout")
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+layout.Padding = UDim.new(0, 10)
+layout.Parent = page
+
+local pad = Instance.new("UIPadding")
+pad.PaddingTop = UDim.new(0, 16)
+pad.PaddingBottom = UDim.new(0, 16)
+pad.PaddingLeft = UDim.new(0, 16)
+pad.PaddingRight = UDim.new(0, 16)
+pad.Parent = page
+
+layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 32)
+end)
+
+-- Helper to make cards
+local function makeCard(order)
+    local c = Instance.new("Frame")
+    c.Size = UDim2.new(1, 0, 0, 0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.ZIndex = 3
+    c.Parent = page
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 11)
+
+    local s = Instance.new("UIStroke")
+    s.Color = T.border
+    s.Thickness = 1
+    s.Parent = c
+
+    local ll = Instance.new("UIListLayout")
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    ll.Parent = c
+
+    return c
+end
+
+local function makeRow(card, order, isLast, h)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, h or 46)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.ZIndex = 4
+    row.Parent = card
+
+    if not isLast then
+        local sep = Instance.new("Frame")
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+        sep.ZIndex = 4
+        sep.Parent = row
+    end
+    return row
+end
+
+-- ================== FEATURES ==================
+local autoWinEnabled = false
+local autoWinLoop = nil
+
+local function startAutoWin()
+    if autoWinLoop then return end
+    autoWinLoop = task.spawn(function()
+        while autoWinEnabled and sg.Parent do
+            local char = LocalPlayer.Character
+            local fin = workspace:FindFirstChild("Fin")
+            if char and char:FindFirstChild("HumanoidRootPart") and fin then
+                char:MoveTo(fin.Position + Vector3.new(0, 3, 0))
+            end
+            task.wait(0.2)
+        end
+        autoWinLoop = nil
+    end)
+end
+
+local function stopAutoWin()
+    autoWinEnabled = false
+end
+
+-- Free tools list
+local freeTools = {
+    "Big Glove",
+    "Long Glove",
+    "MetallGlove",
+}
+
+-- Gamepass tools list
+local gamepassTools = {
+    "Rainbow Carpet",
+    "Admin Hammer",
+    "Black Hole Slap Hand",
+    "Das Ist Depricated",
+    "Jump Coil",
+    "Speed Coil",
+    "Ultra Long Slap Hand",
+}
+
+local function giveTools(list)
+    task.spawn(function()
+        for _, toolName in ipairs(list) do
+            pcall(function()
+                ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("GiveFree"):FireServer(toolName)
+            end)
+            task.wait(0.15)
+        end
+        notify("Tools", "All tools requested!", "success")
+    end)
+end
+
+-- ================== BUILD UI ELEMENTS ==================
+
+-- Auto Win card (toggle only, no status text)
+local card1 = makeCard(1)
+local row1 = makeRow(card1, 1, true, 50)
+
+local autoWinLabel = Instance.new("TextLabel")
+autoWinLabel.Size = UDim2.new(0.7, 0, 1, 0)
+autoWinLabel.Position = UDim2.new(0, 16, 0, 0)
+autoWinLabel.Text = "Auto Win"
+autoWinLabel.Font = Enum.Font.GothamSemibold
+autoWinLabel.TextSize = 12
+autoWinLabel.TextColor3 = T.text
+autoWinLabel.TextXAlignment = Enum.TextXAlignment.Left
+autoWinLabel.BackgroundTransparency = 1
+autoWinLabel.ZIndex = 5
+autoWinLabel.Parent = row1
+
+local track = Instance.new("TextButton")
+track.Size = UDim2.new(0, 38, 0, 20)
+track.Position = UDim2.new(1, -52, 0.5, -10)
+track.BackgroundColor3 = T.dim
+track.BorderSizePixel = 0
+track.AutoButtonColor = false
+track.Text = ""
+track.ZIndex = 5
+track.Parent = row1
+Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+local knob = Instance.new("Frame")
+knob.Size = UDim2.new(0, 16, 0, 16)
+knob.Position = UDim2.new(0, 2, 0.5, -8)
+knob.BackgroundColor3 = Color3.new(1, 1, 1)
+knob.BorderSizePixel = 0
+knob.ZIndex = 6
+knob.Parent = track
+Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+track.MouseButton1Click:Connect(function()
+    autoWinEnabled = not autoWinEnabled
+    local on = autoWinEnabled
+    TweenService:Create(track, tw(0.15), {BackgroundColor3 = on and T.accent or T.dim}):Play()
+    TweenService:Create(knob, tw(0.15), {Position = on and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
+
+    if on then
+        startAutoWin()
+        notify("Auto Win", "Enabled", "success")
+    else
+        stopAutoWin()
+        notify("Auto Win", "Disabled", "warning")
+    end
+end)
+
+-- Get Free Tools button
+local card2 = makeCard(2)
+local row2 = makeRow(card2, 1, true, 50)
+
+local freeBtn = Instance.new("TextButton")
+freeBtn.Size = UDim2.new(1, -32, 0, 36)
+freeBtn.Position = UDim2.new(0, 16, 0.5, -18)
+freeBtn.Text = "Get Free Tools"
+freeBtn.Font = Enum.Font.GothamBold
+freeBtn.TextSize = 12
+freeBtn.TextColor3 = Color3.new(1, 1, 1)
+freeBtn.BackgroundColor3 = T.accent
+freeBtn.BorderSizePixel = 0
+freeBtn.AutoButtonColor = false
+freeBtn.ZIndex = 5
+freeBtn.Parent = row2
+Instance.new("UICorner", freeBtn).CornerRadius = UDim.new(0, 8)
+
+freeBtn.MouseEnter:Connect(function()
+    TweenService:Create(freeBtn, tw(), {BackgroundColor3 = T.accentLt}):Play()
+end)
+freeBtn.MouseLeave:Connect(function()
+    TweenService:Create(freeBtn, tw(), {BackgroundColor3 = T.accent}):Play()
+end)
+freeBtn.MouseButton1Click:Connect(function()
+    giveTools(freeTools)
+    notify("Free Tools", "Requesting free tools...", "success")
+end)
+
+-- Get Gamepass Tools button
+local card3 = makeCard(3)
+local row3 = makeRow(card3, 1, true, 50)
+
+local gamepassBtn = Instance.new("TextButton")
+gamepassBtn.Size = UDim2.new(1, -32, 0, 36)
+gamepassBtn.Position = UDim2.new(0, 16, 0.5, -18)
+gamepassBtn.Text = "Get Gamepass Tools"
+gamepassBtn.Font = Enum.Font.GothamBold
+gamepassBtn.TextSize = 12
+gamepassBtn.TextColor3 = Color3.new(1, 1, 1)
+gamepassBtn.BackgroundColor3 = T.accentDim
+gamepassBtn.BorderSizePixel = 0
+gamepassBtn.AutoButtonColor = false
+gamepassBtn.ZIndex = 5
+gamepassBtn.Parent = row3
+Instance.new("UICorner", gamepassBtn).CornerRadius = UDim.new(0, 8)
+
+gamepassBtn.MouseEnter:Connect(function()
+    TweenService:Create(gamepassBtn, tw(), {BackgroundColor3 = T.accent}):Play()
+end)
+gamepassBtn.MouseLeave:Connect(function()
+    TweenService:Create(gamepassBtn, tw(), {BackgroundColor3 = T.accentDim}):Play()
+end)
+gamepassBtn.MouseButton1Click:Connect(function()
+    giveTools(gamepassTools)
+    notify("Gamepass Tools", "Requesting gamepass tools...", "success")
+end)
+
+-- ================== STARTUP ==================
+local vp = workspace.CurrentCamera.ViewportSize
+win.Position = UDim2.new(0, (vp.X - WIN_W) / 2, 0, (vp.Y - WIN_H) / 2)
+win.Visible = true
+win.Size = UDim2.new(0, 0, 0, 0)
+win.BackgroundTransparency = 1
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, WIN_W, 0, WIN_H), BackgroundTransparency = 0}):Play()
+
+notify("Feather Hub", "Anime Slap Tower loaded", "success")
+print("[Feather Hub - Anime Slap Tower] Loaded.")
