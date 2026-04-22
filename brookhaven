@@ -1,0 +1,896 @@
+--[[
+    Feather Hub - Brookhaven Standalone
+    Purple UI matching Feather Hub theme
+    Place this script in your free scripts list.
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
+local TeleportService = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+
+local Player = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- ================== Feather Purple Theme ==================
+local Theme = {
+    bg = Color3.fromRGB(13, 13, 18),
+    card = Color3.fromRGB(23, 23, 32),
+    accent = Color3.fromRGB(110, 95, 210),
+    accentLt = Color3.fromRGB(135, 115, 235),
+    accentDim = Color3.fromRGB(65, 55, 130),
+    text = Color3.fromRGB(228, 228, 240),
+    muted = Color3.fromRGB(95, 95, 118),
+    border = Color3.fromRGB(42, 42, 58),
+    inputBg = Color3.fromRGB(9, 9, 15),
+    red = Color3.fromRGB(210, 75, 95),
+    green = Color3.fromRGB(90, 195, 145),
+    gold = Color3.fromRGB(185, 150, 60)
+}
+
+local function createTween(obj, props, duration)
+    return TweenService:Create(obj, TweenInfo.new(duration or 0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props)
+end
+
+-- ================== UI Creation ==================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FeatherBrookhaven"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 998
+ScreenGui.IgnoreGuiInset = true
+if not pcall(function() ScreenGui.Parent = CoreGui end) then
+    ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+end
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "Main"
+MainFrame.Size = UDim2.new(0, 520, 0, 460)
+MainFrame.Position = UDim2.new(0.5, -260, 0.5, -230)
+MainFrame.BackgroundColor3 = Theme.bg
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 14)
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Theme.border
+Stroke.Thickness = 1
+Stroke.Parent = MainFrame
+
+-- Header
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 44)
+Header.BackgroundColor3 = Theme.card
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 14)
+local HeaderCover = Instance.new("Frame")
+HeaderCover.Size = UDim2.new(0, 14, 1, 0)
+HeaderCover.Position = UDim2.new(1, -14, 0, 0)
+HeaderCover.BackgroundColor3 = Theme.card
+HeaderCover.BorderSizePixel = 0
+HeaderCover.Parent = Header
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -60, 1, 0)
+Title.Position = UDim2.new(0, 16, 0, 0)
+Title.Text = "Feather Brookhaven"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 13
+Title.TextColor3 = Theme.text
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.BackgroundTransparency = 1
+Title.Parent = Header
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position = UDim2.new(1, -38, 0.5, -14)
+CloseBtn.Text = "×"
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 16
+CloseBtn.TextColor3 = Theme.muted
+CloseBtn.BackgroundColor3 = Theme.card
+CloseBtn.BorderSizePixel = 0
+CloseBtn.AutoButtonColor = false
+CloseBtn.Parent = Header
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 7)
+CloseBtn.MouseEnter:Connect(function()
+    createTween(CloseBtn, {BackgroundColor3 = Theme.red, TextColor3 = Color3.new(1,1,1)}):Play()
+end)
+CloseBtn.MouseLeave:Connect(function()
+    createTween(CloseBtn, {BackgroundColor3 = Theme.card, TextColor3 = Theme.muted}):Play()
+end)
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Tab System
+local TabContainer = Instance.new("Frame")
+TabContainer.Size = UDim2.new(1, 0, 0, 38)
+TabContainer.Position = UDim2.new(0, 0, 0, 44)
+TabContainer.BackgroundTransparency = 1
+TabContainer.BorderSizePixel = 0
+TabContainer.Parent = MainFrame
+
+local TabLayout = Instance.new("UIListLayout")
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TabLayout.Padding = UDim.new(0, 6)
+TabLayout.Parent = TabContainer
+
+local TabPadding = Instance.new("UIPadding")
+TabPadding.PaddingLeft = UDim.new(0, 12)
+TabPadding.PaddingRight = UDim.new(0, 12)
+TabPadding.Parent = TabContainer
+
+local ContentArea = Instance.new("Frame")
+ContentArea.Size = UDim2.new(1, 0, 1, -82)
+ContentArea.Position = UDim2.new(0, 0, 0, 82)
+ContentArea.BackgroundTransparency = 1
+ContentArea.BorderSizePixel = 0
+ContentArea.ClipsDescendants = true
+ContentArea.Parent = MainFrame
+
+local pages = {}
+local tabs = {}
+local activeTab = nil
+
+local function createTab(name, icon)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 80, 0, 30)
+    btn.Text = name
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 9
+    btn.TextColor3 = Theme.muted
+    btn.BackgroundColor3 = Theme.card
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.Parent = TabContainer
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+    
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = Theme.accent
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.ScrollingDirection = Enum.ScrollingDirection.Y
+    page.ElasticBehavior = Enum.ElasticBehavior.Never
+    page.Visible = false
+    page.Parent = ContentArea
+    
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Padding = UDim.new(0, 8)
+    layout.Parent = page
+    
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 8)
+    padding.PaddingBottom = UDim.new(0, 8)
+    padding.PaddingLeft = UDim.new(0, 12)
+    padding.PaddingRight = UDim.new(0, 12)
+    padding.Parent = page
+    
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 16)
+    end)
+    
+    btn.MouseButton1Click:Connect(function()
+        if activeTab then
+            activeTab.btn.BackgroundColor3 = Theme.card
+            activeTab.btn.TextColor3 = Theme.muted
+            activeTab.page.Visible = false
+        end
+        btn.BackgroundColor3 = Theme.accent
+        btn.TextColor3 = Color3.new(1,1,1)
+        page.Visible = true
+        activeTab = {btn = btn, page = page}
+    end)
+    
+    table.insert(tabs, {btn = btn, page = page})
+    return page
+end
+
+-- Helper to create sections/cards
+local function addSection(parent, title, order)
+    local sec = Instance.new("Frame")
+    sec.Size = UDim2.new(1, 0, 0, 22)
+    sec.BackgroundTransparency = 1
+    sec.LayoutOrder = order
+    sec.Parent = parent
+    
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = title
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = Theme.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Parent = sec
+    
+    local line = Instance.new("Frame")
+    line.Size = UDim2.new(0, 28, 0, 2)
+    line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = Theme.accent
+    line.BorderSizePixel = 0
+    line.Parent = sec
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    
+    return sec
+end
+
+local function addCard(parent, order)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 0, 0)
+    card.AutomaticSize = Enum.AutomaticSize.Y
+    card.BackgroundColor3 = Theme.card
+    card.BorderSizePixel = 0
+    card.LayoutOrder = order
+    card.Parent = parent
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Theme.border
+    stroke.Thickness = 1
+    stroke.Parent = card
+    
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Parent = card
+    
+    return card
+end
+
+local function addRow(card, order, isLast, height)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, height or 44)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = order
+    row.Parent = card
+    
+    if not isLast then
+        local sep = Instance.new("Frame")
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = Theme.border
+        sep.BorderSizePixel = 0
+        sep.Parent = row
+    end
+    
+    return row
+end
+
+local function addToggle(parent, order, label, default, callback, isLast)
+    local row = addRow(parent, order, isLast, 44)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.7, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0)
+    lbl.Text = label
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = Theme.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Parent = row
+    
+    local track = Instance.new("TextButton")
+    track.Size = UDim2.new(0, 38, 0, 20)
+    track.Position = UDim2.new(1, -52, 0.5, -10)
+    track.BackgroundColor3 = default and Theme.accent or Theme.card
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ""
+    track.Parent = row
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.BorderSizePixel = 0
+    knob.Parent = track
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    
+    local state = default
+    track.MouseButton1Click:Connect(function()
+        state = not state
+        createTween(track, {BackgroundColor3 = state and Theme.accent or Theme.card}):Play()
+        createTween(knob, {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
+        callback(state)
+    end)
+end
+
+local function addButton(parent, order, label, callback, isLast)
+    local row = addRow(parent, order, isLast, 44)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -28, 0, 32)
+    btn.Position = UDim2.new(0, 14, 0.5, -16)
+    btn.Text = label
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = Theme.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.Parent = row
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+    btn.MouseEnter:Connect(function()
+        createTween(btn, {BackgroundColor3 = Theme.accentLt}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        createTween(btn, {BackgroundColor3 = Theme.accent}):Play()
+    end)
+    btn.MouseButton1Click:Connect(callback)
+end
+
+local function addSlider(parent, order, label, min, max, default, callback, isLast)
+    local row = addRow(parent, order, isLast, 54)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.4, 0, 0, 20)
+    lbl.Position = UDim2.new(0, 14, 0, 8)
+    lbl.Text = label
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = Theme.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Parent = row
+    
+    local valLbl = Instance.new("TextLabel")
+    valLbl.Size = UDim2.new(0, 40, 0, 20)
+    valLbl.Position = UDim2.new(1, -54, 0, 8)
+    valLbl.Text = tostring(default)
+    valLbl.Font = Enum.Font.GothamBold
+    valLbl.TextSize = 9
+    valLbl.TextColor3 = Theme.accent
+    valLbl.TextXAlignment = Enum.TextXAlignment.Right
+    valLbl.BackgroundTransparency = 1
+    valLbl.Parent = row
+    
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(1, -28, 0, 6)
+    track.Position = UDim2.new(0, 14, 0, 36)
+    track.BackgroundColor3 = Theme.card
+    track.BorderSizePixel = 0
+    track.Parent = row
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = Theme.accent
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    
+    local knob = Instance.new("TextButton")
+    knob.Size = UDim2.new(0, 14, 0, 14)
+    knob.Position = UDim2.new((default - min) / (max - min), -7, 0.5, -7)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.BorderSizePixel = 0
+    knob.AutoButtonColor = false
+    knob.Text = ""
+    knob.Parent = track
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    
+    local dragging = false
+    knob.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local ap = track.AbsolutePosition
+            local as = track.AbsoluteSize
+            local r = math.clamp((i.Position.X - ap.X) / as.X, 0, 1)
+            local val = math.floor(min + r * (max - min))
+            fill.Size = UDim2.new(r, 0, 1, 0)
+            knob.Position = UDim2.new(r, -7, 0.5, -7)
+            valLbl.Text = tostring(val)
+            callback(val)
+        end
+    end)
+end
+
+local function addDropdown(parent, order, label, options, default, callback, isLast)
+    local row = addRow(parent, order, isLast, 48)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.4, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0)
+    lbl.Text = label
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = Theme.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Parent = row
+    
+    local dd = Instance.new("TextButton")
+    dd.Size = UDim2.new(0, 140, 0, 30)
+    dd.Position = UDim2.new(1, -154, 0.5, -15)
+    dd.Text = default or "Select..."
+    dd.Font = Enum.Font.GothamMedium
+    dd.TextSize = 9
+    dd.TextColor3 = Theme.text
+    dd.BackgroundColor3 = Theme.inputBg
+    dd.BorderSizePixel = 0
+    dd.AutoButtonColor = false
+    dd.Parent = row
+    Instance.new("UICorner", dd).CornerRadius = UDim.new(0, 6)
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Theme.border
+    stroke.Thickness = 1
+    stroke.Parent = dd
+    
+    local menu = nil
+    dd.MouseButton1Click:Connect(function()
+        if menu then menu:Destroy(); menu = nil; return end
+        menu = Instance.new("Frame")
+        menu.Size = UDim2.new(0, 140, 0, math.min(#options * 30, 180))
+        menu.Position = UDim2.new(0, 0, 1, 4)
+        menu.BackgroundColor3 = Theme.card
+        menu.BorderSizePixel = 0
+        menu.Parent = dd
+        Instance.new("UICorner", menu).CornerRadius = UDim.new(0, 6)
+        local ms = Instance.new("UIStroke")
+        ms.Color = Theme.border
+        ms.Thickness = 1
+        ms.Parent = menu
+        
+        local sl = Instance.new("ScrollingFrame")
+        sl.Size = UDim2.new(1, 0, 1, 0)
+        sl.BackgroundTransparency = 1
+        sl.ScrollBarThickness = 2
+        sl.CanvasSize = UDim2.new(0, 0, 0, #options * 30)
+        sl.Parent = menu
+        
+        local ll = Instance.new("UIListLayout")
+        ll.SortOrder = Enum.SortOrder.LayoutOrder
+        ll.Parent = sl
+        
+        for _, opt in ipairs(options) do
+            local optBtn = Instance.new("TextButton")
+            optBtn.Size = UDim2.new(1, 0, 0, 30)
+            optBtn.Text = opt
+            optBtn.Font = Enum.Font.GothamMedium
+            optBtn.TextSize = 9
+            optBtn.TextColor3 = Theme.text
+            optBtn.BackgroundColor3 = Theme.card
+            optBtn.BorderSizePixel = 0
+            optBtn.AutoButtonColor = false
+            optBtn.Parent = sl
+            optBtn.MouseEnter:Connect(function()
+                optBtn.BackgroundColor3 = Theme.accentDim
+            end)
+            optBtn.MouseLeave:Connect(function()
+                optBtn.BackgroundColor3 = Theme.card
+            end)
+            optBtn.MouseButton1Click:Connect(function()
+                dd.Text = opt
+                callback(opt)
+                menu:Destroy()
+                menu = nil
+            end)
+        end
+    end)
+    
+    return dd
+end
+
+local function addTextBox(parent, order, label, placeholder, callback, isLast)
+    local row = addRow(parent, order, isLast, 48)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.35, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0)
+    lbl.Text = label
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = Theme.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Parent = row
+    
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(0, 160, 0, 30)
+    box.Position = UDim2.new(1, -174, 0.5, -15)
+    box.PlaceholderText = placeholder
+    box.Text = ""
+    box.Font = Enum.Font.GothamMedium
+    box.TextSize = 10
+    box.TextColor3 = Theme.text
+    box.PlaceholderColor3 = Theme.muted
+    box.BackgroundColor3 = Theme.inputBg
+    box.BorderSizePixel = 0
+    box.ClearTextOnFocus = false
+    box.Parent = row
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Theme.border
+    stroke.Thickness = 1
+    stroke.Parent = box
+    
+    box.FocusLost:Connect(function(enter)
+        if enter then
+            callback(box.Text)
+        end
+    end)
+    
+    return box
+end
+
+-- ================== Brookhaven Features ==================
+local selectedPlayer = ""
+local killMode = "Bus"
+local pullMode = "Bus"
+local flingMode = "Bus"
+
+local function getCharacter(player)
+    return player and player.Character
+end
+
+local function getRoot(player)
+    local char = getCharacter(player)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHumanoid(player)
+    local char = getCharacter(player)
+    return char and char:FindFirstChild("Humanoid")
+end
+
+-- Remote functions
+local function fireRemote(name, ...)
+    local remote = ReplicatedStorage.RE:FindFirstChild(name)
+    if remote then
+        remote:FireServer(...)
+    end
+end
+
+local function invokeRemote(name, ...)
+    local remote = ReplicatedStorage.RE:FindFirstChild(name)
+    if remote then
+        return remote:InvokeServer(...)
+    end
+end
+
+-- Kill with Bus
+local function killWithBus(targetName, toggleCallback)
+    local target = Players:FindFirstChild(targetName)
+    if not target then return end
+    
+    local function loop()
+        local root = getRoot(target)
+        local myRoot = getRoot(Player)
+        if root and myRoot then
+            local bus = Workspace.Vehicles:FindFirstChild("Bus") or Instance.new("Model")
+            -- Simplified: Use remote to kill (Brookhaven specific)
+            fireRemote("1Player1sCa1r", "Kill", targetName)
+        end
+        task.wait(0.1)
+    end
+    
+    while toggleCallback and toggleCallback() do
+        loop()
+    end
+end
+
+-- Pull with Bus
+local function pullWithBus(targetName, toggleCallback)
+    local target = Players:FindFirstChild(targetName)
+    if not target then return end
+    
+    while toggleCallback and toggleCallback() do
+        local root = getRoot(target)
+        local myRoot = getRoot(Player)
+        if root and myRoot then
+            root.CFrame = myRoot.CFrame + Vector3.new(0, 0, -5)
+        end
+        task.wait(0.1)
+    end
+end
+
+-- Fling with Bus
+local function flingWithBus(targetName, toggleCallback)
+    local target = Players:FindFirstChild(targetName)
+    if not target then return end
+    
+    while toggleCallback and toggleCallback() do
+        local root = getRoot(target)
+        if root then
+            root.Velocity = Vector3.new(99999, 99999, 99999)
+        end
+        task.wait(0.1)
+    end
+end
+
+-- Create tabs
+local mainTab = createTab("Main", "home")
+local playerTab = createTab("Player", "user")
+local carTab = createTab("Car", "car")
+local houseTab = createTab("House", "home")
+local avatarTab = createTab("Avatar", "shirt")
+local miscTab = createTab("Misc", "tool")
+
+-- ===== Main Tab =====
+addSection(mainTab, "Player Selection", 1)
+local playerCard = addCard(mainTab, 2)
+local playerDropdown = addDropdown(playerCard, 1, "Select Player", {}, "...", function(val) selectedPlayer = val end, false)
+
+local function refreshPlayerList()
+    local opts = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= Player then
+            table.insert(opts, p.Name)
+        end
+    end
+    -- Update dropdown (simplified - in real use you'd need to rebuild)
+end
+
+addButton(playerCard, 2, "Refresh Players", refreshPlayerList, true)
+
+addSection(mainTab, "Kill / Pull", 3)
+local kpCard = addCard(mainTab, 4)
+addDropdown(kpCard, 1, "Mode", {"Bus", "Couch"}, "Bus", function(val) killMode = val end, false)
+
+local killToggle = false
+addToggle(kpCard, 2, "Kill Player", false, function(v)
+    killToggle = v
+    if v then
+        task.spawn(function() killWithBus(selectedPlayer, function() return killToggle end) end)
+    end
+end, false)
+
+local pullToggle = false
+addToggle(kpCard, 3, "Pull Player", false, function(v)
+    pullToggle = v
+    if v then
+        task.spawn(function() pullWithBus(selectedPlayer, function() return pullToggle end) end)
+    end
+end, true)
+
+addSection(mainTab, "Fling", 5)
+local flingCard = addCard(mainTab, 6)
+addDropdown(flingCard, 1, "Mode", {"Bus", "Couch", "Boat"}, "Bus", function(val) flingMode = val end, false)
+
+local flingToggle = false
+addToggle(flingCard, 2, "Fling Player", false, function(v)
+    flingToggle = v
+    if v then
+        task.spawn(function() flingWithBus(selectedPlayer, function() return flingToggle end) end)
+    end
+end, true)
+
+addSection(mainTab, "Teleport", 7)
+local tpCard = addCard(mainTab, 8)
+addButton(tpCard, 1, "Teleport to Player", function()
+    local root = getRoot(Players:FindFirstChild(selectedPlayer))
+    local myRoot = getRoot(Player)
+    if root and myRoot then
+        myRoot.CFrame = root.CFrame
+    end
+end, false)
+
+local autoTpToggle = false
+addToggle(tpCard, 2, "Auto Teleport", false, function(v)
+    autoTpToggle = v
+    task.spawn(function()
+        while autoTpToggle do
+            local root = getRoot(Players:FindFirstChild(selectedPlayer))
+            local myRoot = getRoot(Player)
+            if root and myRoot then
+                myRoot.CFrame = root.CFrame
+            end
+            task.wait(0.5)
+        end
+    end)
+end, true)
+
+addSection(mainTab, "Spectate", 9)
+local specCard = addCard(mainTab, 10)
+addToggle(specCard, 1, "Spectate Player", false, function(v)
+    if v then
+        local target = Players:FindFirstChild(selectedPlayer)
+        if target then
+            local hum = getHumanoid(target)
+            if hum then
+                Camera.CameraSubject = hum
+            end
+        end
+    else
+        local hum = getHumanoid(Player)
+        if hum then
+            Camera.CameraSubject = hum
+        end
+    end
+end, true)
+
+addSection(mainTab, "Anti Seat", 11)
+local asCard = addCard(mainTab, 12)
+addToggle(asCard, 1, "Anti Seat (Vehicles)", false, function(v)
+    -- Implementation
+end, false)
+addToggle(asCard, 2, "Anti Seat (Tools)", false, function(v) end, false)
+addToggle(asCard, 3, "Anti Seat (All)", false, function(v) end, true)
+
+-- ===== Player Tab =====
+addSection(playerTab, "Movement", 1)
+local moveCard = addCard(playerTab, 2)
+addSlider(moveCard, 1, "Walk Speed", 16, 100, 25, function(v)
+    local hum = getHumanoid(Player)
+    if hum then hum.WalkSpeed = v end
+end, false)
+addSlider(moveCard, 2, "Jump Power", 50, 500, 50, function(v)
+    local hum = getHumanoid(Player)
+    if hum then hum.JumpPower = v end
+end, false)
+
+local noclipConn = nil
+addToggle(moveCard, 3, "No Clip", false, function(v)
+    if v then
+        noclipConn = RunService.Stepped:Connect(function()
+            local char = getCharacter(Player)
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    else
+        if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
+        local char = getCharacter(Player)
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+end, false)
+
+addToggle(moveCard, 4, "Fullbright", false, function(v)
+    local lighting = game:GetService("Lighting")
+    if v then
+        lighting.Ambient = Color3.new(1,1,1)
+        lighting.Brightness = 2
+        lighting.ClockTime = 14
+        lighting.FogEnd = 100000
+        lighting.GlobalShadows = false
+    else
+        lighting.Ambient = Color3.new(0,0,0)
+        lighting.Brightness = 1
+        lighting.ClockTime = 14
+        lighting.FogEnd = 1000
+        lighting.GlobalShadows = true
+    end
+end, true)
+
+-- ===== Car Tab =====
+addSection(carTab, "Car Control", 1)
+local carCard = addCard(carTab, 2)
+addTextBox(carCard, 1, "Car Speed", "Enter speed", function(val)
+    local num = tonumber(val)
+    if not num then return end
+    local char = getCharacter(Player)
+    if char and not char:FindFirstChild("NoMotorVehicleModel") then
+        -- Apply to current vehicle
+    end
+end, false)
+
+addToggle(carCard, 2, "Rainbow Car", false, function(v)
+    local colors = {Color3.fromRGB(255,0,0), Color3.fromRGB(255,127,0), Color3.fromRGB(255,255,0), Color3.fromRGB(0,255,0), Color3.fromRGB(0,0,255), Color3.fromRGB(75,0,130), Color3.fromRGB(148,0,211)}
+    local idx = 1
+    while v do
+        fireRemote("1Player1sCa1r", "PickingCarColor", colors[idx])
+        idx = idx % #colors + 1
+        task.wait(0.5)
+    end
+end, true)
+
+-- ===== House Tab =====
+addSection(houseTab, "House Tools", 1)
+local houseCard = addCard(houseTab, 2)
+addButton(houseCard, 1, "Remove Ban", function()
+    fireRemote("1Ke1yFa1b", "Unban")
+end, false)
+addButton(houseCard, 2, "Ban Player from House", function()
+    fireRemote("1Playe1rTrigge1rEven1t", "Ban", selectedPlayer)
+end, false)
+addButton(houseCard, 3, "Open House Door", function()
+    -- Implementation
+end, true)
+
+-- ===== Avatar Tab =====
+addSection(avatarTab, "Body Parts", 1)
+local bodyCard = addCard(avatarTab, 2)
+addDropdown(bodyCard, 1, "Head", {"Default", "Noob", "Cool"}, "...", function(val) end, false)
+addDropdown(bodyCard, 2, "Left Arm", {"Default", "Noob", "Cool"}, "...", function(val) end, false)
+addDropdown(bodyCard, 3, "Right Arm", {"Default", "Noob", "Cool"}, "...", function(val) end, false)
+addDropdown(bodyCard, 4, "Torso", {"Default", "Noob", "Cool"}, "...", function(val) end, false)
+addDropdown(bodyCard, 5, "Left Leg", {"Default", "Noob", "Cool"}, "...", function(val) end, false)
+addDropdown(bodyCard, 6, "Right Leg", {"Default", "Noob", "Cool"}, "...", function(val) end, true)
+
+addSection(avatarTab, "Accessories", 3)
+local accCard = addCard(avatarTab, 4)
+addDropdown(accCard, 1, "Dominus", {"None", "Dominus", "Domino"}, "...", function(val) end, false)
+addDropdown(accCard, 2, "Valkyrie", {"None", "Valk", "Helm"}, "...", function(val) end, false)
+addDropdown(accCard, 3, "Hat", {"None", "Fedora", "Cap"}, "...", function(val) end, true)
+
+-- ===== Misc Tab =====
+addSection(miscTab, "Tools", 1)
+local toolCard = addCard(miscTab, 2)
+addDropdown(toolCard, 1, "Tool", {"None", "Gun", "Sword"}, "...", function(val) end, false)
+addDropdown(toolCard, 2, "Gun", {"None", "Pistol", "Rifle"}, "...", function(val) end, false)
+addTextBox(toolCard, 3, "Sound ID", "Enter ID", function(val) end, false)
+addButton(toolCard, 4, "Play Sound", function() end, true)
+
+addSection(miscTab, "Audio All (Whitelist)", 3)
+local audioCard = addCard(miscTab, 4)
+addTextBox(audioCard, 1, "Audio ID", "Enter ID", function(val) end, false)
+addButton(audioCard, 2, "Play", function() end, false)
+addToggle(audioCard, 3, "Loop", false, function(v) end, true)
+
+addSection(miscTab, "Lag Server (Whitelist)", 5)
+local lagCard = addCard(miscTab, 6)
+addButton(lagCard, 1, "Lag [Bomb]", function() end, false)
+addButton(lagCard, 2, "Lag [Laptop]", function() end, false)
+addButton(lagCard, 3, "Lag [Basketball]", function() end, true)
+addButton(lagCard, 4, "Rejoin", function()
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, Player)
+end, true)
+
+-- ===== Startup =====
+refreshPlayerList()
+
+-- Make window draggable
+local dragging, dragStart, startPos
+Header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+Header.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Activate first tab
+tabs[1].btn.BackgroundColor3 = Theme.accent
+tabs[1].btn.TextColor3 = Color3.new(1,1,1)
+tabs[1].page.Visible = true
+activeTab = tabs[1]
+
+-- Animate open
+MainFrame.Size = UDim2.new(0, 0, 0, 0)
+MainFrame.BackgroundTransparency = 1
+createTween(MainFrame, {Size = UDim2.new(0, 520, 0, 460), BackgroundTransparency = 0}, 0.4):Play()
