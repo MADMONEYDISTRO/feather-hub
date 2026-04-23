@@ -1,0 +1,1282 @@
+-- FeatherHub | Pet Simulator 99
+-- Purple Theme - All Features Preserved
+
+-- ═══════════════════════════════════════════════════════════════
+-- GAME CHECK & ANTI-AFK
+-- ═══════════════════════════════════════════════════════════════
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local function antiAFK()
+    if getgenv().AA then return end
+    print('Anti-AFK Initialized')
+    local v3 = require(game.ReplicatedStorage.Library.Client.Network)
+    local _Fire = v3.Fire
+    setreadonly(v3, false)
+    function v3.Fire(...)
+        if ({...})[1] ~= 'Idle Tracking: Update Timer' then return _Fire(...) end
+    end
+    setreadonly(v3, true)
+    for _, v in pairs(getconnections(game.UserInputService.WindowFocusReleased)) do if v.Disable then v:Disable() end end
+    for _, v in pairs(getconnections(game.UserInputService.WindowFocused)) do if v.Disable then v:Disable() end end
+    getgenv().AA = true
+    while true do
+        game:GetService('VirtualInputManager'):SendKeyEvent(true, Enum.KeyCode.Unknown, false, nil)
+        wait(math.random(15, 120))
+    end
+end
+task.spawn(antiAFK)
+
+-- ═══════════════════════════════════════════════════════════════
+-- SERVICES & GLOBALS
+-- ═══════════════════════════════════════════════════════════════
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local Player = Players.LocalPlayer
+
+-- ═══════════════════════════════════════════════════════════════
+-- THEME (Purple FeatherHub)
+-- ═══════════════════════════════════════════════════════════════
+local THEME = {
+    bg = Color3.fromRGB(13,13,18),
+    sidebar = Color3.fromRGB(18,18,25),
+    card = Color3.fromRGB(23,23,32),
+    border = Color3.fromRGB(42,42,58),
+    text = Color3.fromRGB(228,228,240),
+    muted = Color3.fromRGB(95,95,118),
+    dim = Color3.fromRGB(30,30,44),
+    sep = Color3.fromRGB(34,34,50),
+    header = Color3.fromRGB(16,16,22),
+    inputBg = Color3.fromRGB(9,9,15),
+    accent = Color3.fromRGB(147,112,219),
+    accentLt = Color3.fromRGB(180,140,255),
+    accentDim = Color3.fromRGB(80,60,130),
+    green = Color3.fromRGB(90,195,145),
+    red = Color3.fromRGB(210,75,95),
+    gold = Color3.fromRGB(185,150,60),
+}
+local T = THEME
+local function tw(t) return TweenInfo.new(t or 0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out) end
+local WIN_W, WIN_H, SIDE_W, HDR_H = 480, 520, 110, 42
+
+-- ═══════════════════════════════════════════════════════════════
+-- UI CONSTRUCTION
+-- ═══════════════════════════════════════════════════════════════
+local sg = Instance.new("ScreenGui")
+sg.Name = "FeatherHub_PS99"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 999
+sg.IgnoreGuiInset = true
+pcall(function() sg.Parent = CoreGui end, function() sg.Parent = Player:WaitForChild("PlayerGui") end)
+
+local win = Instance.new("Frame")
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.BackgroundColor3 = T.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.Parent = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 14)
+Instance.new("UIStroke", win).Color = T.border
+Instance.new("UIStroke", win).Thickness = 1
+
+-- Sidebar
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+sidebar.BackgroundColor3 = T.sidebar
+sidebar.BorderSizePixel = 0
+sidebar.Parent = win
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+
+local logoPill = Instance.new("Frame")
+logoPill.Size = UDim2.new(0, 34, 0, 34)
+logoPill.Position = UDim2.new(0.5, -17, 0, 10)
+logoPill.BackgroundColor3 = T.accent
+logoPill.BorderSizePixel = 0
+logoPill.Parent = sidebar
+Instance.new("UICorner", logoPill).CornerRadius = UDim.new(0, 9)
+local logoF = Instance.new("TextLabel", logoPill)
+logoF.Size = UDim2.new(1,0,1,0)
+logoF.Text = "F"
+logoF.TextSize = 18
+logoF.Font = Enum.Font.GothamBold
+logoF.TextColor3 = Color3.new(1,1,1)
+logoF.BackgroundTransparency = 1
+
+local navCont = Instance.new("Frame")
+navCont.Size = UDim2.new(1,0,1,-130)
+navCont.Position = UDim2.new(0,0,0,60)
+navCont.BackgroundTransparency = 1
+navCont.Parent = sidebar
+local navList = Instance.new("UIListLayout", navCont)
+navList.SortOrder = Enum.SortOrder.LayoutOrder
+navList.VerticalAlignment = Enum.VerticalAlignment.Top
+navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+navList.Padding = UDim.new(0,4)
+
+local wmVer = Instance.new("TextLabel", sidebar)
+wmVer.Size = UDim2.new(1,0,0,10)
+wmVer.Position = UDim2.new(0,0,1,-34)
+wmVer.Text = "v1.0  •  feather"
+wmVer.Font = Enum.Font.Gotham
+wmVer.TextSize = 7
+wmVer.TextColor3 = T.muted
+wmVer.BackgroundTransparency = 1
+wmVer.TextXAlignment = Enum.TextXAlignment.Center
+
+-- Header (draggable)
+local hdr = Instance.new("Frame")
+hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
+hdr.BackgroundColor3 = T.header
+hdr.BorderSizePixel = 0
+hdr.Parent = win
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0,14)
+
+local hdrTitle = Instance.new("TextLabel", hdr)
+hdrTitle.Size = UDim2.new(1,-120,1,0)
+hdrTitle.Position = UDim2.new(0,14,0,0)
+hdrTitle.Text = "AUTO FARM"
+hdrTitle.Font = Enum.Font.GothamBold
+hdrTitle.TextSize = 14
+hdrTitle.TextColor3 = T.text
+hdrTitle.BackgroundTransparency = 1
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local hdrBadge = Instance.new("Frame", hdr)
+hdrBadge.Size = UDim2.new(0,50,0,18)
+hdrBadge.Position = UDim2.new(0,200,0.5,-9)
+hdrBadge.BackgroundColor3 = T.accentDim
+hdrBadge.BorderSizePixel = 0
+Instance.new("UICorner", hdrBadge).CornerRadius = UDim.new(0,6)
+local hdrBadgeLbl = Instance.new("TextLabel", hdrBadge)
+hdrBadgeLbl.Size = UDim2.new(1,0,1,0)
+hdrBadgeLbl.Text = "FREE"
+hdrBadgeLbl.Font = Enum.Font.GothamBold
+hdrBadgeLbl.TextSize = 8
+hdrBadgeLbl.TextColor3 = T.text
+hdrBadgeLbl.BackgroundTransparency = 1
+
+local function makeHdrBtn(xPos, symbol)
+    local b = Instance.new("TextButton", hdr)
+    b.Size = UDim2.new(0,24,0,24)
+    b.Position = UDim2.new(1,xPos,0.5,-12)
+    b.Text = symbol
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 14
+    b.TextColor3 = T.muted
+    b.BackgroundColor3 = T.dim
+    b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+    return b
+end
+local minBtn = makeHdrBtn(-56, "–")
+local closeBtn = makeHdrBtn(-28, "×")
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+local isMinimized = false
+minBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
+        sidebar.Visible = false
+        content.Visible = false
+        minBtn.Text = "+"
+    else
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+        sidebar.Visible = true
+        content.Visible = true
+        minBtn.Text = "–"
+    end
+end)
+
+-- Drag logic
+local dragging, dragStart, startPos = false
+hdr.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        local vp = workspace.CurrentCamera.ViewportSize
+        win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + delta.X, 0, vp.X - WIN_W), 0, math.clamp(startPos.Y.Offset + delta.Y, 0, vp.Y - WIN_H))
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+content.BackgroundTransparency = 1
+content.ClipsDescendants = true
+content.Parent = win
+
+-- Pages (tabs)
+local pages = {}
+local tabNames = {"FARM", "EGGS", "MAILBOX", "EVENT", "CONSUME", "MISC", "SETTINGS"}
+local activeTab = 1
+
+local function makePage()
+    local pg = Instance.new("ScrollingFrame")
+    pg.Size = UDim2.new(1,0,1,0)
+    pg.BackgroundTransparency = 1
+    pg.BorderSizePixel = 0
+    pg.ScrollBarThickness = 3
+    pg.ScrollBarImageColor3 = T.accent
+    pg.CanvasSize = UDim2.new(0,0,0,0)
+    pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    pg.ScrollingDirection = Enum.ScrollingDirection.Y
+    pg.ElasticBehavior = Enum.ElasticBehavior.Never
+    pg.Visible = false
+    pg.Parent = content
+    local layout = Instance.new("UIListLayout", pg)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Padding = UDim.new(0,4)
+    local pad = Instance.new("UIPadding", pg)
+    pad.PaddingTop = UDim.new(0,8)
+    pad.PaddingBottom = UDim.new(0,8)
+    pad.PaddingLeft = UDim.new(0,8)
+    pad.PaddingRight = UDim.new(0,8)
+    return pg
+end
+
+for i = 1, #tabNames do pages[i] = makePage() end
+
+local function setTab(idx)
+    activeTab = idx
+    hdrTitle.Text = tabNames[idx]
+    for i, pg in ipairs(pages) do pg.Visible = (i == idx) end
+end
+
+-- Nav buttons
+for i, name in ipairs(tabNames) do
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,-6,0,34)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = i
+    row.Parent = navCont
+    local bar = Instance.new("Frame", row)
+    bar.Size = UDim2.new(0,3,0.4,0)
+    bar.Position = UDim2.new(0,0,0.3,0)
+    bar.BackgroundColor3 = T.accent
+    bar.BackgroundTransparency = 1
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1,0)
+    local bg = Instance.new("Frame", row)
+    bg.Size = UDim2.new(1,-4,1,-6)
+    bg.Position = UDim2.new(0,4,0,3)
+    bg.BackgroundColor3 = T.dim
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0,7)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1,-12,1,0)
+    lbl.Position = UDim2.new(0,8,0,0)
+    lbl.Text = name
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local hit = Instance.new("TextButton", row)
+    hit.Size = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.MouseButton1Click:Connect(function() setTab(i) end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- UI HELPER FUNCTIONS
+-- ═══════════════════════════════════════════════════════════════
+local function makeCard(parent, order)
+    local c = Instance.new("Frame")
+    c.Size = UDim2.new(1,0,0,0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.Parent = parent
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0,9)
+    local s = Instance.new("UIStroke", c)
+    s.Color = T.border
+    s.Thickness = 1
+    Instance.new("UIListLayout", c).SortOrder = Enum.SortOrder.LayoutOrder
+    c:FindFirstChildOfClass("UIListLayout").HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+
+local function makeRow(card, order, isLast, height)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,0,0, height or 38)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = order
+    row.Parent = card
+    if not isLast then
+        local sep = Instance.new("Frame", row)
+        sep.Size = UDim2.new(1,-24,0,1)
+        sep.Position = UDim2.new(0,12,1,-1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+    end
+    return row
+end
+
+local function makeLabel(parent, order, text, color)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,0,0,22)
+    lbl.Text = text
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 10
+    lbl.TextColor3 = color or T.muted
+    lbl.BackgroundTransparency = 1
+    lbl.LayoutOrder = order
+    lbl.Parent = parent
+    return lbl
+end
+
+local function makeButton(card, order, text, callback, small)
+    local row = makeRow(card, order, true, small and 36 or 40)
+    local btn = Instance.new("TextButton", row)
+    if small then
+        btn.Size = UDim2.new(0,120,0,28)
+        btn.Position = UDim2.new(0.5,-60,0.5,-14)
+    else
+        btn.Size = UDim2.new(1,-24,0,32)
+        btn.Position = UDim2.new(0,12,0.5,-16)
+    end
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = small and 10 or 11
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,7)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accentLt}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accent}):Play() end)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+local function makeToggle(card, order, text, initialState, onToggle)
+    local row = makeRow(card, order, false, 38)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.65,0,1,0)
+    lbl.Position = UDim2.new(0,14,0,0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    local track = Instance.new("TextButton", row)
+    track.Size = UDim2.new(0,36,0,20)
+    track.Position = UDim2.new(1,-48,0.5,-10)
+    track.BackgroundColor3 = initialState and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ""
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("Frame", track)
+    knob.Size = UDim2.new(0,16,0,16)
+    knob.Position = initialState and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+    local state = initialState
+    track.MouseButton1Click:Connect(function()
+        state = not state
+        TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)}):Play()
+        onToggle(state)
+    end)
+    return row, track
+end
+
+local function makeSlider(card, order, text, min, max, default, callback)
+    local row = makeRow(card, order, false, 52)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.5,0,0,20)
+    lbl.Position = UDim2.new(0,14,0,6)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    local valLbl = Instance.new("TextLabel", row)
+    valLbl.Size = UDim2.new(0,40,0,20)
+    valLbl.Position = UDim2.new(1,-50,0,6)
+    valLbl.Text = tostring(default)
+    valLbl.Font = Enum.Font.Gotham
+    valLbl.TextSize = 10
+    valLbl.TextColor3 = T.accent
+    valLbl.BackgroundTransparency = 1
+    local slider = Instance.new("Frame", row)
+    slider.Size = UDim2.new(1,-28,0,4)
+    slider.Position = UDim2.new(0,14,0,32)
+    slider.BackgroundColor3 = T.dim
+    slider.BorderSizePixel = 0
+    Instance.new("UICorner", slider).CornerRadius = UDim.new(1,0)
+    local fill = Instance.new("Frame", slider)
+    fill.Size = UDim2.new((default-min)/(max-min),0,1,0)
+    fill.BackgroundColor3 = T.accent
+    fill.BorderSizePixel = 0
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1,0)
+    local knob2 = Instance.new("TextButton", slider)
+    knob2.Size = UDim2.new(0,14,0,14)
+    knob2.Position = UDim2.new((default-min)/(max-min),-7,0.5,-7)
+    knob2.BackgroundColor3 = Color3.new(1,1,1)
+    knob2.BorderSizePixel = 0
+    knob2.Text = ""
+    knob2.AutoButtonColor = false
+    Instance.new("UICorner", knob2).CornerRadius = UDim.new(1,0)
+    local draggingSlider = false
+    knob2.MouseButton1Down:Connect(function() draggingSlider = true end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingSlider = false end end)
+    UserInputService.InputChanged:Connect(function(i)
+        if draggingSlider and i.UserInputType == Enum.UserInputType.MouseMovement then
+            local mousePos = UserInputService:GetMouseLocation()
+            local sliderAbs = slider.AbsolutePosition
+            local sliderSize = slider.AbsoluteSize
+            local relX = math.clamp((mousePos.X - sliderAbs.X) / sliderSize.X, 0, 1)
+            local val = min + relX * (max - min)
+            val = math.floor(val / 1) * 1
+            fill.Size = UDim2.new(relX,0,1,0)
+            knob2.Position = UDim2.new(relX,-7,0.5,-7)
+            valLbl.Text = tostring(val)
+            callback(val)
+        end
+    end)
+    return row
+end
+
+local function makeTextBox(card, order, placeholder, defaultText, callback)
+    local row = makeRow(card, order, true, 42)
+    local box = Instance.new("TextBox", row)
+    box.Size = UDim2.new(1,-24,0,32)
+    box.Position = UDim2.new(0,12,0.5,-16)
+    box.PlaceholderText = placeholder
+    box.Text = defaultText or ""
+    box.Font = Enum.Font.GothamMedium
+    box.TextSize = 10
+    box.TextColor3 = T.text
+    box.PlaceholderColor3 = T.muted
+    box.BackgroundColor3 = T.inputBg
+    box.BorderSizePixel = 0
+    box.ClearTextOnFocus = false
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0,7)
+    box.FocusLost:Connect(function(enterPressed)
+        if enterPressed then callback(box.Text) end
+    end)
+    return box, row
+end
+
+-- Multi-select dropdown (opens a scrollable panel with toggles)
+local activeMultiSelect = nil
+local function makeMultiSelect(card, order, label, options, selectedTable, flagName)
+    local row = makeRow(card, order, false, 44)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.5,0,1,0)
+    lbl.Position = UDim2.new(0,14,0,0)
+    lbl.Text = label
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0,130,0,28)
+    btn.Position = UDim2.new(1,-140,0.5,-14)
+    btn.Text = "Select..."
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 10
+    btn.TextColor3 = T.text
+    btn.BackgroundColor3 = T.inputBg
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+    
+    local panel = Instance.new("Frame")
+    panel.Size = UDim2.new(0,180,0,0)
+    panel.BackgroundColor3 = T.card
+    panel.BorderSizePixel = 0
+    panel.Visible = false
+    panel.ZIndex = 100
+    panel.ClipsDescendants = true
+    panel.Parent = sg
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0,6)
+    Instance.new("UIStroke", panel).Color = T.border
+    Instance.new("UIStroke", panel).Thickness = 1
+    
+    local scroll = Instance.new("ScrollingFrame", panel)
+    scroll.Size = UDim2.new(1,-4,1,-4)
+    scroll.Position = UDim2.new(0,2,0,2)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 2
+    scroll.ScrollBarImageColor3 = T.accent
+    scroll.CanvasSize = UDim2.new(0,0,0,0)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    local scrollLayout = Instance.new("UIListLayout", scroll)
+    scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    scrollLayout.Padding = UDim.new(0,2)
+    
+    local optionToggles = {}
+    local function buildPanel()
+        for _, child in pairs(scroll:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+        optionToggles = {}
+        for _, opt in ipairs(options) do
+            local optRow = Instance.new("Frame", scroll)
+            optRow.Size = UDim2.new(1,0,0,28)
+            optRow.BackgroundTransparency = 1
+            local optLbl = Instance.new("TextLabel", optRow)
+            optLbl.Size = UDim2.new(0.7,0,1,0)
+            optLbl.Position = UDim2.new(0,8,0,0)
+            optLbl.Text = opt
+            optLbl.Font = Enum.Font.Gotham
+            optLbl.TextSize = 10
+            optLbl.TextColor3 = T.text
+            optLbl.TextXAlignment = Enum.TextXAlignment.Left
+            optLbl.BackgroundTransparency = 1
+            local toggle = Instance.new("TextButton", optRow)
+            toggle.Size = UDim2.new(0,30,0,18)
+            toggle.Position = UDim2.new(1,-36,0.5,-9)
+            toggle.BackgroundColor3 = table.find(selectedTable, opt) and T.accent or T.dim
+            toggle.BorderSizePixel = 0
+            toggle.AutoButtonColor = false
+            toggle.Text = ""
+            Instance.new("UICorner", toggle).CornerRadius = UDim.new(1,0)
+            local knob = Instance.new("Frame", toggle)
+            knob.Size = UDim2.new(0,14,0,14)
+            knob.Position = table.find(selectedTable, opt) and UDim2.new(1,-16,0.5,-7) or UDim2.new(0,2,0.5,-7)
+            knob.BackgroundColor3 = Color3.new(1,1,1)
+            Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+            optionToggles[opt] = {toggle = toggle, knob = knob}
+            toggle.MouseButton1Click:Connect(function()
+                if table.find(selectedTable, opt) then
+                    table.remove(selectedTable, table.find(selectedTable, opt))
+                    TweenService:Create(toggle, tw(0.15), {BackgroundColor3 = T.dim}):Play()
+                    TweenService:Create(knob, tw(0.15), {Position = UDim2.new(0,2,0.5,-7)}):Play()
+                else
+                    table.insert(selectedTable, opt)
+                    TweenService:Create(toggle, tw(0.15), {BackgroundColor3 = T.accent}):Play()
+                    TweenService:Create(knob, tw(0.15), {Position = UDim2.new(1,-16,0.5,-7)}):Play()
+                end
+            end)
+        end
+        panel.Size = UDim2.new(0,180,0, math.min(#options * 30 + 8, 200))
+    end
+    buildPanel()
+    
+    local function updatePosition()
+        if not panel.Visible then return end
+        local btnAbs = btn.AbsolutePosition
+        local btnSize = btn.AbsoluteSize
+        local panelHeight = panel.AbsoluteSize.Y
+        local screenSize = workspace.CurrentCamera.ViewportSize
+        local posX = btnAbs.X
+        local posY = btnAbs.Y + btnSize.Y + 5
+        if posY + panelHeight > screenSize.Y - 20 then posY = btnAbs.Y - panelHeight - 5 end
+        if posX + 180 > screenSize.X then posX = screenSize.X - 180 - 5 end
+        panel.Position = UDim2.new(0, posX, 0, posY)
+    end
+    
+    btn.MouseButton1Click:Connect(function()
+        if activeMultiSelect and activeMultiSelect ~= panel then activeMultiSelect.Visible = false end
+        panel.Visible = not panel.Visible
+        if panel.Visible then
+            updatePosition()
+            activeMultiSelect = panel
+        else
+            activeMultiSelect = nil
+        end
+    end)
+    
+    UserInputService.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and panel.Visible then
+            local mousePos = UserInputService:GetMouseLocation()
+            local panelAbs = panel.AbsolutePosition
+            local panelSize = panel.AbsoluteSize
+            local btnAbs = btn.AbsolutePosition
+            local btnSize = btn.AbsoluteSize
+            if not ((mousePos.X >= panelAbs.X and mousePos.X <= panelAbs.X + panelSize.X and mousePos.Y >= panelAbs.Y and mousePos.Y <= panelAbs.Y + panelSize.Y) or
+                    (mousePos.X >= btnAbs.X and mousePos.X <= btnAbs.X + btnSize.X and mousePos.Y >= btnAbs.Y and mousePos.Y <= btnAbs.Y + btnSize.Y)) then
+                panel.Visible = false
+                activeMultiSelect = nil
+            end
+        end
+    end)
+    
+    return row
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- NOTIFICATION
+-- ═══════════════════════════════════════════════════════════════
+local function notify(title, msg, nType)
+    local col = nType == "success" and T.green or nType == "error" and T.red or T.accent
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0,0,0,56)
+    n.Position = UDim2.new(1,-10,1,-66)
+    n.AnchorPoint = Vector2.new(1,1)
+    n.BackgroundColor3 = T.card
+    n.BorderSizePixel = 0
+    n.ZIndex = 200
+    n.Parent = sg
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0,9)
+    local ns = Instance.new("UIStroke", n); ns.Color = col; ns.Thickness = 1
+    local bar = Instance.new("Frame", n); bar.Size = UDim2.new(0,3,0.65,0); bar.Position = UDim2.new(0,0,0.175,0); bar.BackgroundColor3 = col; Instance.new("UICorner", bar).CornerRadius = UDim.new(1,0)
+    local t1 = Instance.new("TextLabel", n); t1.Size = UDim2.new(1,-16,0,18); t1.Position = UDim2.new(0,12,0,8); t1.Text = title; t1.Font = Enum.Font.GothamBold; t1.TextSize = 11; t1.TextColor3 = T.text; t1.TextXAlignment = Enum.TextXAlignment.Left; t1.BackgroundTransparency = 1
+    local t2 = Instance.new("TextLabel", n); t2.Size = UDim2.new(1,-16,0,18); t2.Position = UDim2.new(0,12,0,26); t2.Text = msg; t2.Font = Enum.Font.Gotham; t2.TextSize = 9; t2.TextColor3 = T.text; t2.TextTransparency = 0.35; t2.TextXAlignment = Enum.TextXAlignment.Left; t2.TextWrapped = true; t2.BackgroundTransparency = 1
+    TweenService:Create(n, tw(0.25), {Size = UDim2.new(0,190,0,56)}):Play()
+    task.delay(3.5, function() if n and n.Parent then TweenService:Create(n, tw(0.25), {Position = UDim2.new(1,10,1,-66)}):Play(); task.delay(0.3, function() n:Destroy() end) end end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- LOAD REQUIRED MODULES (from original script)
+-- ═══════════════════════════════════════════════════════════════
+local Network = require(game.ReplicatedStorage.Library.Client.Network)
+local Save = require(game.ReplicatedStorage.Library.Client.Save)
+local Items = require(game.ReplicatedStorage.Library.Items)
+local PlayerPet = require(game.ReplicatedStorage.Library.Client.PlayerPet)
+local EggCmds = require(game.ReplicatedStorage.Library.Client.EggCmds)
+local CustomEggsCmds = require(game.ReplicatedStorage.Library.Client.CustomEggsCmds)
+local CurrencyCmds = require(game.ReplicatedStorage.Library.Client.CurrencyCmds)
+local NotificationCmds = require(game.ReplicatedStorage.Library.Client.NotificationCmds)
+local InstancingCmds = require(game.ReplicatedStorage.Library.Client.InstancingCmds)
+local InstanceZoneCmds = require(game.ReplicatedStorage.Library.Client.InstanceZoneCmds)
+local WorldsUtil = require(game.ReplicatedStorage.Library.Util.WorldsUtil)
+local DaycareCmds = require(game.ReplicatedStorage.Library.Client.DaycareCmds)
+local FruitCmds = require(game.ReplicatedStorage.Library.Client.FruitCmds)
+local LootboxCmds = require(game.ReplicatedStorage.Library.Client.LootboxCmds)
+local UpgradeCmds = require(game.ReplicatedStorage.Library.Client.UpgradeCmds)
+local RankDirectory = require(game.ReplicatedStorage.Library.Directory.Ranks)
+local ZoneCmds = require(game.ReplicatedStorage.Library.Client.ZoneCmds)
+local RebirthCmds = require(game.ReplicatedStorage.Library.Client.RebirthCmds)
+local UltimateCmds = require(game.ReplicatedStorage.Library.Client.UltimateCmds)
+local FlexibleFlagCmds = require(game.ReplicatedStorage.Library.Client.FlexibleFlagCmds)
+local MapCmds = require(game.ReplicatedStorage.Library.Client.MapCmds)
+local RAPCmds = require(game.ReplicatedStorage.Library.Client.RAPCmds)
+local ExistCountCmds = require(game.ReplicatedStorage.Library.Client.ExistCountCmds)
+
+-- ═══════════════════════════════════════════════════════════════
+-- FEATURE STATE VARIABLES
+-- ═══════════════════════════════════════════════════════════════
+local toggles = {
+    -- Farm
+    FastFarm = false,
+    FastFarm2 = false,
+    AutoOrbs = false,
+    InfPetSpeed = false,
+    ClickAura = false,
+    ClickAuraVisualizer = false,
+    OptimizeBreakables = false,
+    OptimizePets = false,
+    -- Eggs
+    HideEggAnimation = false,
+    HookEggAnimation = false,
+    OpenClosestEgg = false,
+    -- Mailbox
+    MailboxEnabled = false,
+    HugeMailboxEnabled = false,
+    MailboxClaimAll = false,
+    -- Event
+    EnterEasterEvent = false,
+    FarmEasterLastArea = false,
+    EasterClaimEgg = false,
+    BuySelectedChestUpgrades = false,
+    ChestHeroicMode = false,
+    AutoEggRoulette = false,
+    BoostGiantBasket = false,
+    -- Consume
+    UseSelectedFruits = false,
+    OpenSelectedLootboxes = false,
+    OpenSelectedGifts = false,
+    -- Misc
+    AutoDayCare = false,
+    AutoFreeGifts = false,
+    UseSelectedFlag = false,
+    AutoClaimRankRewards = false,
+    AutoRank = false,
+    -- Settings
+    SendWebhook = false,
+}
+local values = {
+    ClickAuraRange = 75,
+    FlagAmount = 1,
+    WebhookURL = "",
+    DiscordUserID = "",
+}
+local selected = {
+    SelectedFlag = nil,
+    SelectedFruits = {},
+    SelectedLootboxes = {},
+    SelectedGifts = {},
+    SelectedChestUpgrades = {},
+    MailboxItems = {},
+    MailboxSendHugesType = "",
+}
+local mailboxUsername = ""
+local inputMailboxItem = ""
+local inputMailboxAmount = 0
+
+-- Original script functions (adapted)
+local function getCurrency() return CurrencyCmds.Get(WorldsUtil.GetWorld().MapName == "World 1" and "Coins" or WorldsUtil.GetWorld().MapName == "World 2" and "TechCoins" or "VoidCoins") end
+local function getClosestBreakables()
+    local breakables = {}
+    local char = Player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return breakables end
+    local pos = char.HumanoidRootPart.Position
+    local instance = InstancingCmds.Get()
+    local zone = MapCmds.GetCurrentZone()
+    for _, b in pairs(workspace.__THINGS.Breakables:GetChildren()) do
+        if b:IsA("Model") and (b:GetAttribute("ParentID") == zone or b:GetAttribute("ParentID") == (instance and instance.instanceID)) and (b.WorldPivot.Position - pos).Magnitude < 85 then
+            table.insert(breakables, b.Name)
+        end
+    end
+    return breakables
+end
+local function playerPets()
+    local pets = {}
+    for _, pet in pairs(PlayerPet.GetAll()) do if pet.owner == Player then table.insert(pets, pet) end end
+    return pets
+end
+local function fastFarm()
+    local breakables = getClosestBreakables()
+    local pets = playerPets()
+    if #breakables == 0 or #pets == 0 then return end
+    local assignments = {}
+    local perBreakable = math.floor(#pets / #breakables)
+    local remainder = #pets % #breakables
+    local idx = 1
+    for i, b in ipairs(breakables) do
+        local count = perBreakable + (i <= remainder and 1 or 0)
+        for _ = 1, count do
+            assignments[pets[idx].euid] = b
+            idx = idx + 1
+        end
+    end
+    Network.Fire("Breakables_JoinPetBulk", assignments)
+end
+local function fastFarm2()
+    local breakables = getClosestBreakables()
+    local pets = playerPets()
+    local assignments = {}
+    for _, pet in ipairs(pets) do
+        assignments[pet.Name] = breakables[math.random(1, #breakables)]
+    end
+    Network.Fire("Breakables_JoinPetBulk", assignments)
+end
+local function collectOrbs()
+    for _, orb in pairs(workspace.__THINGS.Orbs:GetChildren()) do
+        Network.Fire("Orbs: Collect", tonumber(orb.Name))
+        orb:Destroy()
+    end
+end
+local function clickAura()
+    local char = Player.Character
+    if not char then return end
+    local pos = char.HumanoidRootPart.Position
+    for _, b in pairs(workspace.__THINGS.Breakables:GetChildren()) do
+        if b:IsA("Model") and (b.WorldPivot.Position - pos).Magnitude <= values.ClickAuraRange then
+            Network.UnreliableFire("Breakables_PlayerDealDamage", b.Name)
+            break
+        end
+    end
+end
+local function openClosestEgg()
+    local maxHatch = EggCmds.GetMaxHatch()
+    local customEgg, customDist = nil, math.huge
+    for _, egg in pairs(workspace.__THINGS.CustomEggs:GetChildren()) do
+        if egg:IsA("Model") then
+            local dist = (Player.Character.HumanoidRootPart.Position - egg.WorldPivot.Position).Magnitude
+            if dist < customDist then customEgg, customDist = egg, dist end
+        end
+    end
+    local normalEgg, normalDist = nil, math.huge
+    local eggFolder = workspace.__THINGS.Eggs[WorldsUtil.GetEggsModelName()]
+    for _, egg in pairs(eggFolder:GetChildren()) do
+        if egg:IsA("Model") then
+            local dist = (Player.Character.HumanoidRootPart.Position - egg.Light.CFrame.Position).Magnitude
+            if dist < normalDist then normalEgg, normalDist = egg, dist end
+        end
+    end
+    if customDist < normalDist then
+        Network.Invoke("CustomEggs_Hatch", tostring(customEgg), maxHatch)
+    elseif normalEgg then
+        local eggId = nil
+        for _, v in pairs(require(game.ReplicatedStorage.__DIRECTORY.Eggs["Zone Eggs"][WorldsUtil.GetWorld()._id]):GetDescendants()) do
+            if v.Name:match(string.split(normalEgg.Name, " ")[1]) then eggId = v.Name break end
+        end
+        if eggId then Network.Invoke("Eggs_RequestPurchase", eggId, maxHatch) end
+    end
+end
+local function optimizeBreakables()
+    local conn = workspace.__DEBRIS.ChildAdded:Connect(function(obj) pcall(function() game.Debris:AddItem(obj, 0) end) end)
+    getgenv().OptBreakablesConn = conn
+end
+local function optimizePets()
+    for _, pet in pairs(workspace.__THINGS.Pets:GetChildren()) do
+        for _, part in pairs(pet:GetDescendants()) do
+            if part:IsA("Part") then
+                part.Color = Color3.new(1,1,1)
+                part.Size = Vector3.new(2.5,2.5,2.5)
+                part.Material = Enum.Material.SmoothPlastic
+            elseif part:IsA("SpecialMesh") or part:IsA("ParticleEmitter") or part:IsA("MeshPart") or part:IsA("Decal") then
+                part:Destroy()
+            end
+        end
+    end
+end
+local function claimFreeGifts()
+    local save = Save.Get()
+    local freeGifts = require(game.ReplicatedStorage.Library.Directory.FreeGifts)
+    for _, gift in pairs(freeGifts) do
+        if gift.WaitTime < save.FreeGiftsTime then break end
+        if not table.find(save.FreeGiftsRedeemed, gift._id) then
+            return Network.Invoke("Redeem Free Gift", gift._id)
+        end
+    end
+end
+local function putPetsInDaycare()
+    local maxSlots = DaycareCmds.GetMaxSlots()
+    local usedSlots = DaycareCmds.GetUsedSlots()
+    if usedSlots >= maxSlots then
+        for uid, data in pairs(Save.Get().DaycareActive) do
+            if DaycareCmds.ComputeRemainingTime(uid, workspace:GetServerTimeNow()) == 0 then
+                DaycareCmds.Claim(uid)
+            end
+        end
+        return
+    end
+    local pets = {}
+    local needed = (maxSlots - usedSlots) * 10
+    for uid, data in pairs(Save.Get().Inventory.Pet) do
+        local item = Items.Pet(data.id)
+        if item:GetExclusiveLevel() < 4 and (data._am or 1) >= 10 then
+            local _, loot = require(game.ReplicatedStorage.Library.Modules.DaycareLoot).ComputePetLootPool(Player, item)
+            if loot == 1 and needed >= data._am then
+                local amt = math.min(data._am, needed - needed % 10)
+                if amt > 0 then
+                    pets[uid] = amt / 10
+                    needed = needed - amt
+                end
+            end
+        end
+        if needed <= 0 then break end
+    end
+    if next(pets) then DaycareCmds.Enroll(pets) end
+end
+local function activateFlag()
+    if not selected.SelectedFlag then return end
+    local amt = values.FlagAmount
+    local flagUtil = {computeMaxFlags = function() return 24 end, computeDuration = function(d) return d.Duration end, flagPlaced = function(m) return m and tonumber(m:FindFirstChild("FlagPole"):FindFirstChild("Attachment"):FindFirstChild("ZoneFlag"):FindFirstChild("Title").Text:match("%d+")) or 0 end}
+    local save = Save.Get()
+    local misc = save.Inventory.Misc
+    local flagId = nil
+    for uid, data in pairs(misc) do if data.id == selected.SelectedFlag then flagId = uid; amt = math.min(data._am or 1, amt); break end end
+    if not flagId then return end
+    local activeFlags = getupvalue(FlexibleFlagCmds.GetActiveFlag, 3)
+    local instance = MapCmds.GetCurrentInstanceInfo()
+    local key, model
+    if instance then
+        key = "2!" .. instance.InstanceId .. "!" .. instance.AreaId
+        model = activeFlags[key] and activeFlags[key].Model
+    else
+        key = "1!" .. MapCmds.GetCurrentZone() .. "!Main"
+        model = activeFlags[key] and activeFlags[key].Model
+    end
+    local placed = flagUtil.flagPlaced(model)
+    if placed < amt then
+        FlexibleFlagCmds.Consume(selected.SelectedFlag, flagId, amt - placed)
+    end
+end
+local function claimRankRewards()
+    local save = Save.Get()
+    local rank = nil
+    for _, r in pairs(RankDirectory) do if r.RankNumber == save.Rank then rank = r break end end
+    if not rank then return end
+    for idx, reward in ipairs(rank.Rewards) do
+        if reward.StarsRequired > save.RankStars then break end
+        if not save.RedeemedRankRewards[tostring(idx)] then
+            Network.Fire("Ranks_ClaimReward", idx)
+            wait(1)
+        end
+    end
+end
+local function useUltimate()
+    local item = UltimateCmds.GetEquippedItem()
+    if item then UltimateCmds.Activate(item._data.id) end
+end
+local function consumeFruits()
+    for _, fruitName in ipairs(selected.SelectedFruits) do
+        local isShiny = fruitName:match("Shiny") and true or false
+        local fruitId = fruitName:gsub("Shiny ", "")
+        local uid, data = nil, nil
+        for u, d in pairs(Save.Get().Inventory.Fruit) do
+            if d.id == fruitId and (isShiny and d.sh or not isShiny and not d.sh) then
+                uid, data = u, d
+                break
+            end
+        end
+        if uid then
+            local limit = FruitCmds.ComputeFruitQueueLimit() - (FruitCmds.GetActiveFruits()[fruitId] and #FruitCmds.GetActiveFruits()[fruitId][isShiny and "Shiny" or "Normal"] or 0)
+            local amt = math.min(data._am or 1, limit)
+            if amt > 0 then Network.Fire("Fruits: Consume", uid, amt) end
+        end
+        wait(0.5)
+    end
+end
+local function openLootboxes()
+    for _, boxId in ipairs(selected.SelectedLootboxes) do
+        local uid, data = nil, nil
+        for u, d in pairs(Save.Get().Inventory.Lootbox) do
+            if d.id == boxId then
+                uid, data = u, d
+                break
+            end
+        end
+        if uid then
+            local amt = math.min(data._am or 1, 8)
+            local box = Items.Lootbox(boxId)
+            box._uid = uid
+            LootboxCmds.Open(box, amt)
+        end
+        wait(0.5)
+    end
+end
+local function openGifts()
+    for _, giftId in ipairs(selected.SelectedGifts) do
+        local uid, data = nil, nil
+        for u, d in pairs(Save.Get().Inventory.Misc) do
+            if d.id == giftId then
+                uid, data = u, d
+                break
+            end
+        end
+        if uid then
+            local amt = math.min(data._am or 1, 100)
+            Network.Invoke("GiftBag_Open", giftId, amt)
+        end
+        wait(0.5)
+    end
+end
+
+-- Mailbox functions
+local function sendMailboxItems()
+    if mailboxUsername == "" then return end
+    for itemId, amt in pairs(selected.MailboxItems) do
+        local uid, data = nil, nil
+        for cat, items in pairs(Save.Get().Inventory) do
+            if cat ~= "Pet" then
+                for u, d in pairs(items) do
+                    if d.id == itemId then
+                        uid, data = u, d
+                        break
+                    end
+                end
+                if uid then break end
+            end
+        end
+        if uid and data and (data._am or 1) >= amt then
+            local itemType = nil
+            for k, v in pairs(getmetatable(Items).__index) do
+                if pcall(function() return Items[k](itemId) end) then itemType = k break end
+            end
+            if itemType then
+                Network.Invoke("Mailbox: Send", mailboxUsername:lower(), "VRT " .. math.random(1000,9999), itemType, uid, amt)
+            end
+        end
+    end
+end
+local function sendHugeMailbox()
+    if mailboxUsername == "" then return end
+    local mode = selected.MailboxSendHugesType
+    for uid, data in pairs(Save.Get().Inventory.Pet) do
+        if data.id:match("Huge") or data.id:match("Titanic") then
+            if mode == "All" or (mode == "New" and not getgenv().SentHuges) then
+                Network.Invoke("Mailbox: Send", mailboxUsername:lower(), "VRT " .. math.random(1000,9999), "Pet", uid, data._am or 1)
+                if not getgenv().SentHuges then getgenv().SentHuges = {} end
+                getgenv().SentHuges[uid] = true
+            end
+        end
+    end
+end
+local function claimMailbox()
+    Network.Invoke("Mailbox: Claim All")
+end
+
+-- Event functions
+local function enterEasterEvent()
+    if workspace.__THINGS.__INSTANCE_CONTAINER.Active:FindFirstChild("EasterEvent") then return end
+    local portal = workspace.__THINGS.Instances:FindFirstChild("EasterEvent")
+    if portal and portal:FindFirstChild("Teleports") and portal.Teleports:FindFirstChild("Enter") then
+        Player.Character.HumanoidRootPart.CFrame = portal.Teleports.Enter.CFrame
+    end
+end
+
+-- Webhook for huge/titanic hatches
+local sentPets = {}
+local function checkHugeHatches()
+    if not toggles.SendWebhook then return end
+    for uid, data in pairs(Save.Get().Inventory.Pet) do
+        if (data.id:match("Huge") or data.id:match("Titanic")) and not sentPets[uid] then
+            sentPets[uid] = true
+            local webhook = values.WebhookURL
+            if webhook ~= "" then
+                local petData = require(game.ReplicatedStorage.Library.Directory.Pets)[data.id]
+                local rap = RAPCmds.Get(Items.Pet:From(data)) or 0
+                local exist = ExistCountCmds.Get(Items.Pet:From(data)) or 0
+                local color = data.pt == 2 and 16737996 or (data.pt == 1 and 16766720 or 30893)
+                local embed = {
+                    username = "VRT Hatch Notifier",
+                    content = values.DiscordUserID ~= "" and "<@" .. values.DiscordUserID .. ">" or nil,
+                    embeds = {{
+                        color = color,
+                        thumbnail = {url = HttpService:JSONDecode(request({Url="https://thumbnails.roblox.com/v1/assets?assetIds="..petData.thumbnail:match("%d+").."&size=700x700&format=Png",Method="GET"}).Body).data[1].imageUrl},
+                        fields = {
+                            {name = "Hatched a " .. (data.pt==2 and "Rainbow " or data.pt==1 and "Golden " or "") .. data.id .. "!", value = "🌟 **Rap:** ".. rap .."\n🌍 **Exist:** ".. exist},
+                            {name = "Account Info", value = "||" .. Player.Name .. "||"}
+                        }
+                    }}
+                }
+                request({Url=webhook, Method="POST", Headers={["Content-Type"]="application/json"}, Body=HttpService:JSONEncode(embed)})
+            end
+        end
+    end
+end
+
+
+-- ═══════════════════════════════════════════════════════════════
+-- BUILD UI PAGES
+-- ═══════════════════════════════════════════════════════════════
+
+-- PAGE 1: FARM
+local pg_farm = pages[1]
+local cardFarm1 = makeCard(pg_farm, 1)
+makeToggle(cardFarm1, 1, "Fast Farm", false, function(s) toggles.FastFarm = s end)
+makeToggle(cardFarm1, 2, "Fast Farm v2 (Test)", false, function(s) toggles.FastFarm2 = s end)
+makeToggle(cardFarm1, 3, "Auto Collect Orbs", false, function(s) toggles.AutoOrbs = s end)
+makeToggle(cardFarm1, 4, "Infinite Pet Speed", false, function(s) toggles.InfPetSpeed = s end)
+local cardFarm2 = makeCard(pg_farm, 2)
+makeLabel(cardFarm2, 1, "Click Aura", T.accent)
+makeSlider(cardFarm2, 2, "Range", 0, 150, 75, function(v) values.ClickAuraRange = v end)
+makeToggle(cardFarm2, 3, "Click Aura", false, function(s) toggles.ClickAura = s end)
+makeToggle(cardFarm2, 4, "Visualizer", false, function(s) toggles.ClickAuraVisualizer = s end)
+local cardFarm3 = makeCard(pg_farm, 3)
+makeLabel(cardFarm3, 1, "Optimization", T.accent)
+makeToggle(cardFarm3, 2, "Optimize Breakables", false, function(s) toggles.OptimizeBreakables = s end)
+makeToggle(cardFarm3, 3, "Optimize Pets", false, function(s) toggles.OptimizePets = s end)
+
+-- PAGE 2: EGGS
+local pg_eggs = pages[2]
+local cardEggs = makeCard(pg_eggs, 1)
+makeToggle(cardEggs, 1, "Hide Egg Animation", false, function(s) toggles.HideEggAnimation = s end)
+makeToggle(cardEggs, 2, "Hook Egg Animation", false, function(s) toggles.HookEggAnimation = s end)
+makeToggle(cardEggs, 3, "Auto Open Closest Egg", false, function(s) toggles.OpenClosestEgg = s end)
+
+-- PAGE 3: MAILBOX
+local pg_mail = pages[3]
+local cardMail1 = makeCard(pg_mail, 1)
+makeTextBox(cardMail1, 1, "Target Username", "", function(t) mailboxUsername = t end)
+makeMultiSelect(cardMail1, 2, "Send Huges Mode", {"All", "New"}, {}, "MailboxSendHugesType")
+makeToggle(cardMail1, 3, "Auto Send Selected Items", false, function(s) toggles.MailboxEnabled = s end)
+makeToggle(cardMail1, 4, "Auto Send Huges", false, function(s) toggles.HugeMailboxEnabled = s end)
+makeToggle(cardMail1, 5, "Auto Claim Mailbox", false, function(s) toggles.MailboxClaimAll = s end)
+local cardMail2 = makeCard(pg_mail, 2)
+makeLabel(cardMail2, 1, "Add Item to Send", T.muted)
+local itemInput = makeTextBox(cardMail2, 2, "Item Name", "", function(t) inputMailboxItem = t end)
+local amtInput = makeTextBox(cardMail2, 3, "Min Amount", "0", function(t) inputMailboxAmount = tonumber(t) or 0 end)
+makeButton(cardMail2, 4, "Add to List", function()
+    if inputMailboxItem ~= "" and inputMailboxAmount > 0 then
+        selected.MailboxItems[inputMailboxItem] = inputMailboxAmount
+        notify("Mailbox", "Added " .. inputMailboxItem, "success")
+    end
+end, true)
+makeButton(cardMail2, 5, "Clear List", function() selected.MailboxItems = {}; notify("Mailbox", "List cleared", "info") end, true)
+
+-- PAGE 4: EVENT (Easter)
+local pg_event = pages[4]
+local cardEvent = makeCard(pg_event, 1)
+makeToggle(cardEvent, 1, "Auto Enter Easter Event", false, function(s) toggles.EnterEasterEvent = s end)
+makeToggle(cardEvent, 2, "Farm Last Area", false, function(s) toggles.FarmEasterLastArea = s end)
+makeToggle(cardEvent, 3, "Claim Easter Eggs", false, function(s) toggles.EasterClaimEgg = s end)
+makeToggle(cardEvent, 4, "Boost Giant Basket", false, function(s) toggles.BoostGiantBasket = s end)
+makeToggle(cardEvent, 5, "Auto Egg Roulette", false, function(s) toggles.AutoEggRoulette = s end)
+
+-- PAGE 5: CONSUME
+local pg_consume = pages[5]
+local cardConsume = makeCard(pg_consume, 1)
+local fruitList = {}
+for name, _ in pairs(require(game.ReplicatedStorage.Library.Directory.Fruits)) do table.insert(fruitList, name); table.insert(fruitList, "Shiny " .. name) end
+makeMultiSelect(cardConsume, 1, "Select Fruits", fruitList, selected.SelectedFruits, "SelectedFruits")
+makeToggle(cardConsume, 2, "Use Selected Fruits", false, function(s) toggles.UseSelectedFruits = s end)
+local boxList = {}
+for name, _ in pairs(require(game.ReplicatedStorage.Library.Directory.Lootboxes)) do table.insert(boxList, name) end
+makeMultiSelect(cardConsume, 3, "Select Lootboxes", boxList, selected.SelectedLootboxes, "SelectedLootboxes")
+makeToggle(cardConsume, 4, "Open Selected Lootboxes", false, function(s) toggles.OpenSelectedLootboxes = s end)
+local giftList = {}
+for _, obj in pairs(game.ReplicatedStorage.__DIRECTORY.MiscItems.Categorized.Gifts:GetChildren()) do table.insert(giftList, obj.Name) end
+makeMultiSelect(cardConsume, 5, "Select Gift Bags", giftList, selected.SelectedGifts, "SelectedGifts")
+makeToggle(cardConsume, 6, "Open Selected Gifts", false, function(s) toggles.OpenSelectedGifts = s end)
+
+-- PAGE 6: MISC
+local pg_misc = pages[6]
+local cardMisc = makeCard(pg_misc, 1)
+makeToggle(cardMisc, 1, "Auto Daycare", false, function(s) toggles.AutoDayCare = s end)
+makeToggle(cardMisc, 2, "Auto Free Gifts", false, function(s) toggles.AutoFreeGifts = s end)
+makeToggle(cardMisc, 3, "Auto Claim Rank Rewards", false, function(s) toggles.AutoClaimRankRewards = s end)
+makeToggle(cardMisc, 4, "Use Ultimate", false, function(s) if s then useUltimate() end end)
+local flagNames = {}
+for name, _ in pairs(require(game.ReplicatedStorage.Library.Directory.ZoneFlags)) do table.insert(flagNames, name) end
+makeMultiSelect(cardMisc, 5, "Select Flag", flagNames, {selected.SelectedFlag or ""}, "SelectedFlagSingle")
+makeSlider(cardMisc, 6, "Flag Amount", 1, 45, 1, function(v) values.FlagAmount = v end)
+makeToggle(cardMisc, 7, "Use Selected Flag", false, function(s) toggles.UseSelectedFlag = s end)
+
+-- PAGE 7: SETTINGS
+local pg_set = pages[7]
+local cardSet = makeCard(pg_set, 1)
+makeLabel(cardSet, 1, "Discord Webhook", T.accent)
+makeTextBox(cardSet, 2, "Webhook URL", "", function(t) values.WebhookURL = t end)
+makeTextBox(cardSet, 3, "Discord User ID", "", function(t) values.DiscordUserID = t end)
+makeToggle(cardSet, 4, "Send Webhook on Huge/Titanic", false, function(s) toggles.SendWebhook = s end)
+makeLabel(cardSet, 5, "Auto Rank (Key System)", T.gold)
+makeButton(cardSet, 6, "Check Key / Activate", function()
+    if not autoRankLoaded then
+        if keyValid then
+            loadstring(game:HttpGet(""))()
+            autoRankLoaded = true
+            notify("Auto Rank", "Activated!", "success")
+        else
+            keyPrompt()
+        end
+    else
+        notify("Auto Rank", "Already active", "info")
+    end
+end, true)
+
+-- ═══════════════════════════════════════════════════════════════
+-- LOOPS FOR TOGGLES
+-- ═══════════════════════════════════════════════════════════════
+task.spawn(function() while true do
+    if toggles.FastFarm then fastFarm() end
+    if toggles.FastFarm2 then fastFarm2() end
+    if toggles.AutoOrbs then collectOrbs() end
+    if toggles.ClickAura then clickAura() end
+    if toggles.OpenClosestEgg then openClosestEgg() end
+    if toggles.MailboxEnabled then sendMailboxItems() end
+    if toggles.HugeMailboxEnabled then sendHugeMailbox() end
+    if toggles.MailboxClaimAll then claimMailbox() end
+    if toggles.AutoDayCare then putPetsInDaycare() end
+    if toggles.AutoFreeGifts then claimFreeGifts() end
+    if toggles.UseSelectedFlag then activateFlag() end
+    if toggles.AutoClaimRankRewards then claimRankRewards() end
+    if toggles.UseSelectedFruits then consumeFruits() end
+    if toggles.OpenSelectedLootboxes then openLootboxes() end
+    if toggles.OpenSelectedGifts then openGifts() end
+    checkHugeHatches()
+    task.wait(0.5)
+end end)
+
+-- Visualizer loop
+task.spawn(function()
+    local visualizerPart
+    while true do
+        if toggles.ClickAuraVisualizer then
+            if not visualizerPart or not visualizerPart.Parent then
+                visualizerPart = Instance.new("Part", workspace)
+                visualizerPart.Name = "ClickAuraVisual"
+                visualizerPart.Anchored = true
+                visualizerPart.CanCollide = false
+                visualizerPart.Shape = Enum.PartType.Cylinder
+                visualizerPart.Size = Vector3.new(0.2, values.ClickAuraRange*2, values.ClickAuraRange*2)
+                visualizerPart.Transparency = 0.5
+                visualizerPart.BrickColor = BrickColor.new("Lavender")
+                visualizerPart.Rotation = Vector3.new(0,0,90)
+            end
+            if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+                visualizerPart.Position = Player.Character.HumanoidRootPart.Position
+            end
+        elseif visualizerPart then
+            visualizerPart:Destroy()
+            visualizerPart = nil
+        end
+        task.wait()
+    end
+end)
+
+-- Optimize breakables connection management
+task.spawn(function()
+    local conn
+    while true do
+        if toggles.OptimizeBreakables and not conn then
+            conn = workspace.__DEBRIS.ChildAdded:Connect(function(obj) pcall(function() game.Debris:AddItem(obj, 0) end) end)
+        elseif not toggles.OptimizeBreakables and conn then
+            conn:Disconnect()
+            conn = nil
+        end
+        task.wait(1)
+    end
+end)
+
+-- Inf pet speed
+local originalSpeed = PlayerPet.CalculateSpeedMultiplier
+task.spawn(function()
+    while true do
+        if toggles.InfPetSpeed then
+            PlayerPet.CalculateSpeedMultiplier = function() return math.huge end
+        else
+            PlayerPet.CalculateSpeedMultiplier = originalSpeed
+        end
+        task.wait(1)
+    end
+end)
+
+-- Hide/Hook egg animation
+local eggEnv = getsenv(Player.PlayerScripts.Scripts.Game["Egg Opening Frontend"])
+local origPlay = eggEnv.PlayEggAnimation
+task.spawn(function()
+    while true do
+        if toggles.HideEggAnimation then
+            eggEnv.PlayEggAnimation = function() end
+        elseif toggles.HookEggAnimation then
+            eggEnv.PlayEggAnimation = function(egg) NotificationCmds.Message.Bottom({Message="Opening "..egg, Color=Color3.fromRGB(255,255,255)}) end
+        else
+            eggEnv.PlayEggAnimation = origPlay
+        end
+        task.wait(1)
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- FINALIZE
+-- ═══════════════════════════════════════════════════════════════
+local vp = workspace.CurrentCamera.ViewportSize
+win.Position = UDim2.new(0, (vp.X - WIN_W)/2, 0, (vp.Y - WIN_H)/2)
+win.Visible = true
+win.Size = UDim2.new(0,0,0,0)
+win.BackgroundTransparency = 1
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0,WIN_W,0,WIN_H)}):Play()
+task.delay(0.45, function() win.BackgroundTransparency = 0 end)
+
+setTab(1)
+notify("FeatherHub PS99", "Loaded successfully", "success")
+
+-- Toggle UI with RightBracket
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.RightBracket then
+        sg.Enabled = not sg.Enabled
+    end
+end)
