@@ -1,0 +1,966 @@
+-- FeatherHub | Bee Swarm Simulator (Complete – Auto Sell Teleport Fix)
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser")
+local HttpService = game:GetService("HttpService")
+local Player = Players.LocalPlayer
+
+-- Theme
+local T = {
+    bg = Color3.fromRGB(13,13,18), sidebar = Color3.fromRGB(18,18,25),
+    card = Color3.fromRGB(23,23,32), border = Color3.fromRGB(42,42,58),
+    text = Color3.fromRGB(228,228,240), muted = Color3.fromRGB(95,95,118),
+    dim = Color3.fromRGB(30,30,44), sep = Color3.fromRGB(34,34,50),
+    header = Color3.fromRGB(16,16,22), inputBg = Color3.fromRGB(9,9,15),
+    accent = Color3.fromRGB(110,95,210), accentLt = Color3.fromRGB(135,115,235),
+    green = Color3.fromRGB(90,195,145), red = Color3.fromRGB(210,75,95)
+}
+local WIN_W, WIN_H, SIDE_W, HDR_H = 520, 460, 100, 44
+
+-- Remote events
+local REvents = ReplicatedStorage.Events
+local ToolCollect = REvents.ToolCollect
+local ToyEvent = REvents.ToyEvent
+local PlayerHiveCommand = REvents.PlayerHiveCommand
+local ClaimHive = REvents.ClaimHive
+local PlayerActivesCommand = REvents.PlayerActivesCommand
+local ItemPackageEvent = REvents.ItemPackageEvent
+local BadgeEvent = REvents.BadgeEvent
+
+-- =============================================
+-- GLOBAL STATE
+-- =============================================
+local autoDig = false
+local selectedField = "Sunflower Field"
+local selectedFarmMode = "Walk"
+local farmCoconuts = false
+local farmFlames = false
+local farmBubbles = false
+local farmBalloons = false
+local autoFarmActive = false
+local autoSell = false
+local autoSprinkler = false
+local autoMicroConverter = false
+local autoInstantConverter = false
+local autoCoconut = false
+local autoGumdrops = false
+local webhookEnabled = false
+local webhookURL = ""
+local webhookInterval = 60
+local initialHoney = 0
+local autoQuest = false
+local speedEnabled = false
+local jumpEnabled = false
+local currentSpeed = 16
+local currentJumpPower = 50
+local noclipEnabled = false
+local sellInProgress = false
+
+local fieldPositions = {
+    ["BamBoo Field"] = CFrame.new(93, 20, -25),
+    ["Blue Field"] = CFrame.new(113.7, 4, 101.5),
+    ["Cactus Field"] = CFrame.new(-194, 68, -107),
+    ["Clover Field"] = CFrame.new(174, 34, 189),
+    ["Coconut Field"] = CFrame.new(-255, 72, 459),
+    ["Dandelion Field"] = CFrame.new(-30, 4, 225),
+    ["Stump Field"] = CFrame.new(420, 117, -178),
+    ["MountainTop Field"] = CFrame.new(76, 176, -181),
+    ["Mushroom Field"] = CFrame.new(-91, 4, 116),
+    ["Pepper Patch"] = CFrame.new(-486, 124, 517),
+    ["Pineapple Field"] = CFrame.new(262, 68, -201),
+    ["PineTree Field"] = CFrame.new(-338, 69, -180),
+    ["Pumpkin Field"] = CFrame.new(-186, 68.5, -194),
+    ["Rose Field"] = CFrame.new(-322, 20, 124),
+    ["Spider Field"] = CFrame.new(-57.2, 20, -5.3),
+    ["StrawBerry Field"] = CFrame.new(-179, 20, -14),
+    ["Sunflower Field"] = CFrame.new(-208, 4, 185)
+}
+local farmRadius = 40
+
+-- =============================================
+-- UTILITY FUNCTIONS
+-- =============================================
+local function isWithinField(pos, fieldPos)
+    return (pos - fieldPos).Magnitude <= farmRadius
+end
+
+local function findNearestCollectible(pos)
+    local best, bestDist = nil, math.huge
+    for _, c in ipairs(Workspace.Collectibles:GetChildren()) do
+        if c.Transparency == 0 then
+            local d = (c.Position - pos).Magnitude
+            if d < bestDist then best, bestDist = c, d end
+        end
+    end
+    return best
+end
+
+local function findPriorityTarget(pos, fieldPos)
+    local best, bestDist = nil, math.huge
+    local function check(tbl, name)
+        for _, obj in ipairs(tbl) do
+            local part = obj
+            if name == "Balloon" then
+                part = obj:FindFirstChild("BalloonBody")
+                if not part then continue end
+            end
+            if isWithinField(part.Position, fieldPos.Position) then
+                local d = (part.Position - pos).Magnitude
+                if d < bestDist then best, bestDist = part, d end
+            end
+        end
+    end
+    if farmCoconuts then check(Workspace.Particles:GetChildren(), "WarningDisk") end
+    if farmFlames then check(Workspace.PlayerFlames:GetChildren(), "Flame") end
+    if farmBubbles then
+        for _, b in ipairs(Workspace.Particles:GetChildren()) do
+            if b.Name == "Bubble" and isWithinField(b.Position, fieldPos.Position) then
+                local d = (b.Position - pos).Magnitude
+                if d < bestDist then best, bestDist = b, d end
+            end
+        end
+    end
+    if farmBalloons then check(Workspace.Balloons.FieldBalloons:GetChildren(), "Balloon") end
+    return best
+end
+
+local function randomFieldTarget(fieldPos)
+    local angle = math.random() * math.pi * 2
+    local dist = math.random(5, farmRadius)
+    local offset = Vector3.new(math.cos(angle)*dist, 0, math.sin(angle)*dist)
+    local target = fieldPos.Position + offset
+    local ray = RaycastParams.new()
+    ray.FilterType = Enum.RaycastFilterType.Blacklist
+    ray.FilterDescendantsInstances = {Player.Character or nil}
+    local hit = Workspace:Raycast(target + Vector3.new(0,20,0), Vector3.new(0,-100,0), ray)
+    if hit then target = hit.Position + Vector3.new(0,3,0) end
+    return target
+end
+
+local function moveTo(targetPos)
+    local char = Player.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if selectedFarmMode == "Walk" then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:MoveTo(Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
+            repeat task.wait() until (hrp.Position - Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)).Magnitude < 3 or not autoFarmActive
+        end
+    else
+        local tween = TweenService:Create(hrp,
+            TweenInfo.new(selectedFarmMode == "Tween" and 0.5 or 0.2),
+            {CFrame = CFrame.new(targetPos.X, hrp.Position.Y, targetPos.Z)})
+        tween:Play()
+        tween.Completed:Wait()
+    end
+end
+
+-- =============================================
+-- LOOPS
+-- =============================================
+-- Auto Dig
+spawn(function()
+    while true do
+        if autoDig then ToolCollect:FireServer() end
+        task.wait(0.09)
+    end
+end)
+
+-- Auto Farm (pauses during sell)
+spawn(function()
+    while true do
+        if autoFarmActive then
+            while sellInProgress do task.wait(0.1) end
+            local char = Player.Character
+            if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local pos = hrp.Position
+                    local fieldPos = fieldPositions[selectedField]
+                    if fieldPos then
+                        if not isWithinField(pos, fieldPos.Position) then
+                            hrp.CFrame = fieldPos
+                            pos = hrp.Position
+                        end
+                        local target = findPriorityTarget(pos, fieldPos) or findNearestCollectible(pos)
+                        if target and isWithinField(target.Position, fieldPos.Position) then
+                            moveTo(target.Position)
+                        else
+                            moveTo(randomFieldTarget(fieldPos))
+                        end
+                    end
+                end
+            end
+            task.wait(0.1)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+-- Auto Sell (finds player's hive by Owner.UserId)
+spawn(function()
+    while true do
+        if autoSell then
+            local capacity = Player.CoreStats.Capacity.Value
+            local pollen = Player.CoreStats.Pollen.Value
+            if pollen >= capacity * 0.99 then
+                sellInProgress = true
+                local char = Player.Character
+                if char then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local originalPos = hrp.CFrame
+                        local myHive = nil
+                        for _, hive in ipairs(Workspace.Honeycombs:GetChildren()) do
+                            local owner = hive:FindFirstChild("Owner")
+                            if owner and owner.Value == Player.UserId then
+                                myHive = hive
+                                break
+                            end
+                        end
+                        if myHive then
+                            local lightHolder = myHive:FindFirstChild("LightHolder")
+                            if lightHolder then
+                                local sellCF = lightHolder.CFrame * CFrame.new(0, -5, -5)
+                                hrp.CFrame = sellCF
+                                local conn; conn = RunService.Heartbeat:Connect(function()
+                                    if autoSell and Player.CoreStats.Pollen.Value > 0 then
+                                        hrp.CFrame = sellCF
+                                    else
+                                        conn:Disconnect()
+                                    end
+                                end)
+                                repeat
+                                    local btnText = Player.PlayerGui.ScreenGui.ActivateButton.TextBox.Text
+                                    if btnText == 'Make Honey' then
+                                        PlayerHiveCommand:FireServer("ToggleHoneyMaking")
+                                    end
+                                    task.wait()
+                                until Player.CoreStats.Pollen.Value == 0 or not autoSell
+                                task.wait(8)
+                            end
+                        end
+                        hrp.CFrame = originalPos
+                    end
+                end
+                sellInProgress = false
+            end
+        end
+        task.wait(0)
+    end
+end)
+
+-- Sprinkler
+spawn(function()
+    while true do
+        if autoSprinkler then
+            PlayerActivesCommand:FireServer({["Name"] = "Sprinkler Builder"})
+            task.wait(30)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+-- Converters
+spawn(function()
+    while true do
+        if autoMicroConverter or autoInstantConverter then
+            local maxPollenTxt = (Player.Character and Player.Character:FindFirstChild("ProgressLabel",true) and Player.Character.ProgressLabel.Text:match("%d+$"))
+            local maxPollen = tonumber(maxPollenTxt) or 999
+            if Player.CoreStats.Pollen.Value >= maxPollen then
+                if autoMicroConverter then PlayerActivesCommand:FireServer({["Name"] = "Micro-Converter"}) end
+                if autoInstantConverter then
+                    ToyEvent:FireServer("Instant Converter")
+                    task.wait(0.3)
+                    ToyEvent:FireServer("Instant Converter B")
+                    task.wait(0.3)
+                    ToyEvent:FireServer("Instant Converter C")
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Coconut & Gumdrops
+spawn(function()
+    while true do
+        if autoCoconut then PlayerActivesCommand:FireServer({["Name"] = "Coconut"}) task.wait(11) end
+        if autoGumdrops then PlayerActivesCommand:FireServer({["Name"] = "Gumdrops"}) task.wait(3) end
+        task.wait(0.1)
+    end
+end)
+
+-- Webhook
+spawn(function()
+    while true do
+        if webhookEnabled and webhookURL ~= "" then
+            local honey = Player.CoreStats.Honey.Value
+            local profit = honey - (initialHoney or honey)
+            local data = {["content"] = string.format("Old Honey: %d\nNew Honey: %d\nHoney Profit: %d\n\nCapacity: %d\nPollen: %d", initialHoney, honey, profit, Player.CoreStats.Capacity.Value, Player.CoreStats.Pollen.Value)}
+            local body = HttpService:JSONEncode(data)
+            local headers = {["Content-Type"] = "application/json"}
+            pcall(function()
+                if syn then syn.request({Url=webhookURL, Method="POST", Headers=headers, Body=body})
+                elseif http_request then http_request({Url=webhookURL, Method="POST", Headers=headers, Body=body})
+                else game:HttpGet(webhookURL.."?content="..HttpService:UrlEncode(body)) end
+            end)
+        end
+        task.wait(webhookInterval)
+    end
+end)
+
+-- Auto Quest (bulk fire)
+spawn(function()
+    while true do
+        if autoQuest then
+            for _, b in ipairs({"Pepper","Coconut","Playtime","Honey","Quest","Battle","Ability","Goo","Sunflower","Dandelion","Mushroom","Blue Flower","Clover","Spider","Bamboo","Strawberry","Pineapple","Pumpkin","Cactus","Rose","Pine Tree","Stump"}) do
+                BadgeEvent:FireServer("Collect", b)
+            end
+            for _, d in ipairs({"Glue Dispenser","Free Royal Jelly Dispenser","Blueberry Dispenser","Strawberry Dispenser","Treat Dispenser","Wealth Clock"}) do
+                ToyEvent:FireServer(d)
+            end
+            for _, b in ipairs({"Black Bear","Mother Bear","Brown Bear","Panda Bear","Science Bear","Dapper Bear","Polar Bear","Spirit Bear","Onett","Gifted Riley Bee","Gifted Bucko Bee","Riley Bee","Bucko Bee","Honey Bee","Bubble Bee Man","Gummy Bear","Stick Bug","Sun Bear","Bee Bear"}) do
+                REvents.CompleteQuestFromPool:FireServer(b)
+                REvents.GiveQuestFromPool:FireServer(b)
+            end
+            local quests = {"Sunflower Start","Dandelion Deed","Pollen Fetcher","Red Request","Into The Blue","Variety Fetcher","Bamboo Boogie","Red Request 2","Cobweb Sweeper","Leisure Loot","White Pollen Wrangler","Pineapple Picking","Pollen Fetcher 2","Weed Wacker","Red + Blue = Gold","Colorless Collection","Spirit of Springtime","Weed Wacker 2","Pollen Fetcher 3","Lucky Landscaping","Azure Adventure","Pink Pineapples","Blue Mushrooms","Cobweb Sweeper 2","Rojo-A-Go-Go","Pumpkin Plower","Pollen Fetcher 4","Bouncing Around Biomes","Blue Pineapples","Rose Request","Search For The White Clover","Stomping Grounds","Collecting Cliffside","Mountain Meandering","Quest Of Legends","High Altitude","Blissfully Blue","Rouge Round-up","White As Snow","Solo On The Stump","Colorful Craving","Pumpkins, Please!","Smorgasbord","Pollen Fetcher 5","White Clover Redux","Strawberry Field Forever","Tasting The Sky","Whispy and Crispy","Walk Through The Woods","Get Red-y","One Stop On The Tip Top","Blue Mushrooms 2","Pretty Pumpkins","Black Bear, Why?","Bee A Star","Bamboo Boogie 2: Bamboo Boogaloo","Rocky Red Mountain","Can't Without Ants","The 15 Bee Zone","Bubble Trouble","Sweet And Sour","Rare Red Clover","Low Tier Treck","Okey-Pokey","Pollen Fetcher 6","Capsaicin Collector","Mountain Mix","You Blue It","Variety Fetcher 2","Getting Stumped","Weed Wacker 3","All-Whitey Then","Red Delicacy","Boss Battles","Myth In The Making","Black Bear's Honey Wreath","Brown Bear's Stockings","Panda Bear's Snowbear","Ready For The Red Drive?","Dapper Bear's Samovar","Science Bear's Beesmas Lights","Spirit Bear's Galentine Shrine","Onett's Yard Art on The Lid","Yard Art on The Lid","Riley Bee's Honeyday Candles","Bucko Bee's Snow Machine","Honey Bee's Honey Hunt","Honey Bee's Honey Wreath?","BBM's Naughty List","Stick Bug's Nymph Hats","Goo Years Beacon","Begin The Goo Invasion","Patient Plundering","Piecewise Invasion","Colorful Conquest","Stickier Than Spider Webs","Four Front Assault","Total Gummification","Artillery Lessons: Slingshot","GOO Away, Bugs","Colorful Conquest 2","Artillery Lessons: Yellow Cannon","Peace Through Goo-nity","Artillery Lessons: Blue Cannon","Goo-ing Goo-mmando","Candy Conquest","⛳ The Games (1/3): Let The Golf Begin","⛳ The Games (2/3): Right On Target","⛳ The Games (3/3): Hole In One","Beesmas Summer Starts","Blueberries For Beesmas","Tis The Season For Stickers","Festive Fundraising","Wrapping Up The Sticker Planter","Beesmas Boosting","Teamwork Makes The Dream","The Scoop On Stickers","Beesmas Beat Em Up","Walkin' In A Wavy Wonderland","Festive Flower Fun","Beesmas Bee-leaf-er","The Season For Giving","Rain, Rain, Snow Away!","Here Comes Cub Buddy","Doodle Cub Creation (1/5","Doodle Cub Creation (2/5)","Doodle Cub Creation (3/5)","Doodle Cub Creation (4/5)","Doodle Cub Creation (5/5)","Treat Tutorial","Bonding With Bees","Search For A Sunflower Seed","The Gist Of Jellies","Search For Strawberries","Binging On Blueberries","Royal Jelly Jamboree","Search For Sunflower Seeds","Picking Out Pineapples","Seven To Seven","Mother Bear's Midterm","Eight To Eight","Sights On The Stars","The Family Final","Preliminary Research","Biology Study","Proving The Hypothesis","Bear Botany","Kingdom Collection","Defensive Adaptions","Benefits Of Technology","Spider Study","Roses And Weeds","Blue Review","Ongoing Progress","Red / Blue Duality","Costs Of Computation","Pollination Practice","Optimizing Abilities","Ready For Infrared","Breaking Down Badges","Subsidized Agriculture","Meticulously Crafted","Smart, Not Hard","Limits of Language","Patterns and Probability","Chemical Analysis","Mark Mechanics","Meditating On Phenomenon","Beesperanto","Hive Minded Bias","Mushroom Measurement Monotony","The Power Of Information","Testing Teamwork","Epistemological Endeavor","Egg Hunt: Panda Bear","Lesson On Ladybugs","Rhino Rumble","Beetle Battle","Spider Slayer","Ladybug Bonker","Spider Slayer 2","Rhino Wrecking","Final Showdown","Werewolf Hunter","Skirmish with Scorpions","Mantis Massacre","The REAL Final Showdown","Ant Arrival","Winged Wack Attack","Fire Fighter","Army Ant Assault","Colossal Combat","Eager Exterminator","Leaper Lickin'","Colossal Combat 2","Outrageous Onslaught","Royal Rumble","Ultimate Ant Annihilation 1","Ultimate Ant Annihilation 2","Ultimate Ant Annihilation 3","Ultimate Ant Annihilation 4","Ultimate Ant Annihilation 5","Star Journey 1","Star Journey 2","Star Journey 3","Star Journey 4","Star Journey 5","Egg Hunt: Riley Bee","Egg Hunt: Bucko Bee","Bean Bug Busser","Bombs, Blueberries, and Bean Bugs","Bean Bugs And Boosts","Make It Hasty","Total Focus","On Your Marks","Look In The Leaves","What About Sprouts","Bean Bug Beatdown","Bear Without Despair","Spirit Spree","Echoing Call","Spring Out Of The Mountain","Riley Bee: Goo","Riley Bee: Medley","Riley Bee: Mushrooms","Riley Bee: Picnic","Riley Bee: Pollen","Riley Bee: Rampage","Riley Bee: Roses","Riley Bee: Scavenge","Riley Bee: Skirmish","Riley Bee: Strawberries","Riley Bee: Tango","Riley Bee: Tour"}
+            for _, q in ipairs(quests) do
+                REvents.CompleteQuest:FireServer(q)
+                REvents.GiveQuest:FireServer(q)
+            end
+        end
+        task.wait(10)
+    end
+end)
+
+-- Player speed/jump/noclip heartbeat
+RunService.Heartbeat:Connect(function()
+    local char = Player.Character
+    if char then
+        if speedEnabled then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = currentSpeed end
+        end
+        if jumpEnabled then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.JumpPower = currentJumpPower end
+        end
+        if noclipEnabled then
+            for _, p in ipairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+            end
+        end
+    end
+end)
+
+-- =============================================
+-- UI CONSTRUCTION
+-- =============================================
+local sg = Instance.new("ScreenGui", CoreGui)
+sg.Name = "FeatherBSS"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.IgnoreGuiInset = true
+
+local win = Instance.new("Frame", sg)
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.BackgroundColor3 = T.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 14)
+Instance.new("UIStroke", win).Color = T.border
+
+local sidebar = Instance.new("Frame", win)
+sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+sidebar.BackgroundColor3 = T.sidebar
+sidebar.BorderSizePixel = 0
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+
+local logo = Instance.new("Frame", sidebar)
+logo.Size = UDim2.new(0, 34, 0, 34)
+logo.Position = UDim2.new(0.5, -17, 0, 10)
+logo.BackgroundColor3 = T.accent
+Instance.new("UICorner", logo).CornerRadius = UDim.new(0, 9)
+local logoText = Instance.new("TextLabel", logo)
+logoText.Size = UDim2.new(1,0,1,0)
+logoText.Text = "F"
+logoText.TextSize = 18
+logoText.Font = Enum.Font.GothamBold
+logoText.TextColor3 = Color3.new(1,1,1)
+logoText.BackgroundTransparency = 1
+
+local nav = Instance.new("Frame", sidebar)
+nav.Size = UDim2.new(1,0,1,-130)
+nav.Position = UDim2.new(0,0,0,60)
+nav.BackgroundTransparency = 1
+local navList = Instance.new("UIListLayout", nav)
+navList.SortOrder = Enum.SortOrder.LayoutOrder
+navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+navList.Padding = UDim.new(0,3)
+
+local ver = Instance.new("TextLabel", sidebar)
+ver.Size = UDim2.new(1,0,0,10)
+ver.Position = UDim2.new(0,0,1,-34)
+ver.Text = "v2.3"
+ver.Font = Enum.Font.Gotham
+ver.TextSize = 6
+ver.TextColor3 = T.muted
+ver.BackgroundTransparency = 1
+ver.TextXAlignment = Enum.TextXAlignment.Center
+
+local hdr = Instance.new("Frame", win)
+hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
+hdr.BackgroundColor3 = T.header
+hdr.BorderSizePixel = 0
+hdr.Active = true
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 14)
+
+local grabBar = Instance.new("Frame", hdr)
+grabBar.Size = UDim2.new(0, 40, 0, 4)
+grabBar.Position = UDim2.new(0.5, -20, 0, 8)
+grabBar.BackgroundColor3 = T.muted
+grabBar.BackgroundTransparency = 0.7
+grabBar.BorderSizePixel = 0
+Instance.new("UICorner", grabBar).CornerRadius = UDim.new(1, 0)
+
+local hdrTitle = Instance.new("TextLabel", hdr)
+hdrTitle.Size = UDim2.new(1,-120,1,0)
+hdrTitle.Position = UDim2.new(0,14,0,0)
+hdrTitle.Text = "FARM"
+hdrTitle.Font = Enum.Font.GothamBold
+hdrTitle.TextSize = 12
+hdrTitle.TextColor3 = T.text
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+hdrTitle.BackgroundTransparency = 1
+
+local function hdrBtn(x, sym)
+    local b = Instance.new("TextButton", hdr)
+    b.Size = UDim2.new(0,28,0,28)
+    b.Position = UDim2.new(1,x,0.5,-14)
+    b.Text = sym
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 16
+    b.TextColor3 = T.muted
+    b.BackgroundColor3 = T.dim
+    b.AutoButtonColor = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+    return b
+end
+local minBtn = hdrBtn(-62, "–")
+local closeBtn = hdrBtn(-32, "×")
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+local content = Instance.new("Frame", win)
+content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+content.BackgroundTransparency = 1
+content.ClipsDescendants = true
+
+local minimized = false
+local function toggleMin()
+    minimized = not minimized
+    if minimized then
+        TweenService:Create(win, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Size = UDim2.new(0,WIN_W,0,HDR_H)}):Play()
+        sidebar.Visible = false; content.Visible = false
+        minBtn.Text = "+"
+    else
+        TweenService:Create(win, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Size = UDim2.new(0,WIN_W,0,WIN_H)}):Play()
+        sidebar.Visible = true; content.Visible = true
+        minBtn.Text = "–"
+    end
+end
+minBtn.MouseButton1Click:Connect(toggleMin)
+
+-- Mobile drag
+do
+    local dragging, dragStartPos, winStartPos, activeTouch
+    local function beginDrag(pos) dragging=true; dragStartPos=pos; winStartPos=win.Position end
+    local function updateDrag(pos)
+        if not dragging then return end
+        local d = pos - dragStartPos
+        local vp = Workspace.CurrentCamera.ViewportSize
+        win.Position = UDim2.new(0, math.clamp(winStartPos.X.Offset+d.X,0,vp.X-WIN_W), 0, math.clamp(winStartPos.Y.Offset+d.Y,0,vp.Y-WIN_H))
+    end
+    local function endDrag() dragging=false; dragStartPos=nil; winStartPos=nil; activeTouch=nil end
+    hdr.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then beginDrag(i.Position)
+        elseif i.UserInputType==Enum.UserInputType.Touch then activeTouch=i; beginDrag(i.Position)
+            i.Changed:Connect(function()
+                if i.UserInputState==Enum.UserInputState.Change then updateDrag(i.Position)
+                elseif i.UserInputState==Enum.UserInputState.End or i.UserInputState==Enum.UserInputState.Cancel then endDrag() end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i) if dragging and not activeTouch and i.UserInputType==Enum.UserInputType.MouseMovement then updateDrag(i.Position) end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then endDrag() end end)
+end
+
+-- Pages
+local pages = {}
+local tabs = {"FARM","EVENT","MOBS","ITEMS","PLAYER","EXTRA","WEBHOOK","SETTINGS"}
+local activeTab = 1
+for i=1,#tabs do
+    local pg = Instance.new("ScrollingFrame", content)
+    pg.Size = UDim2.new(1,0,1,0)
+    pg.BackgroundTransparency = 1
+    pg.BorderSizePixel = 0
+    pg.ScrollBarThickness = 3
+    pg.ScrollBarImageColor3 = T.accent
+    pg.CanvasSize = UDim2.new(0,0,0,0)
+    pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    pg.ScrollingDirection = Enum.ScrollingDirection.Y
+    pg.ElasticBehavior = Enum.ElasticBehavior.Never
+    pg.Visible = (i==1)
+    local layout = Instance.new("UIListLayout", pg)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Padding = UDim.new(0,6)
+    local pad = Instance.new("UIPadding", pg)
+    pad.PaddingTop = UDim.new(0,10); pad.PaddingBottom = UDim.new(0,10)
+    pad.PaddingLeft = UDim.new(0,10); pad.PaddingRight = UDim.new(0,10)
+    pages[i] = pg
+end
+local function setTab(idx)
+    activeTab = idx
+    hdrTitle.Text = tabs[idx]
+    for i,pg in ipairs(pages) do pg.Visible = (i==idx) end
+end
+
+-- Nav buttons
+for i,name in ipairs(tabs) do
+    local row = Instance.new("Frame", nav)
+    row.Size = UDim2.new(1,-6,0,36)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = i
+    local bg = Instance.new("Frame", row)
+    bg.Size = UDim2.new(1,-4,1,-6)
+    bg.Position = UDim2.new(0,4,0,3)
+    bg.BackgroundColor3 = T.dim
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0,7)
+    local lbl = Instance.new("TextLabel", bg)
+    lbl.Size = UDim2.new(1,-12,1,0)
+    lbl.Position = UDim2.new(0,6,0,0)
+    lbl.Text = name
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 7
+    lbl.TextColor3 = T.text
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local hit = Instance.new("TextButton", row)
+    hit.Size = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.MouseButton1Click:Connect(function() setTab(i) end)
+end
+
+-- UI helper functions (compact)
+local function card(parent, order)
+    local c = Instance.new("Frame", parent)
+    c.Size = UDim2.new(1,0,0,0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0,9)
+    Instance.new("UIStroke", c).Color = T.border
+    local ll = Instance.new("UIListLayout", c)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+local function row(c, order, last, h)
+    local r = Instance.new("Frame", c)
+    r.Size = UDim2.new(1,0,0, h or 44)
+    r.BackgroundTransparency = 1
+    r.LayoutOrder = order
+    if not last then
+        local sep = Instance.new("Frame", r)
+        sep.Size = UDim2.new(1,-24,0,1)
+        sep.Position = UDim2.new(0,12,1,-1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+    end
+    return r
+end
+local function toggle(c, order, text, default, cb)
+    local r = row(c, order, false, 44)
+    local lbl = Instance.new("TextLabel", r)
+    lbl.Size = UDim2.new(0.65,0,1,0)
+    lbl.Position = UDim2.new(0,14,0,0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 10; lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1
+    local track = Instance.new("TextButton", r)
+    track.Size = UDim2.new(0,38,0,20)
+    track.Position = UDim2.new(1,-52,0.5,-10)
+    track.BackgroundColor3 = default and T.accent or T.dim
+    track.BorderSizePixel = 0; track.AutoButtonColor = false; track.Text = ""
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("Frame", track)
+    knob.Size = UDim2.new(0,16,0,16)
+    knob.Position = default and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+    local state = default
+    track.MouseButton1Click:Connect(function()
+        state = not state
+        TweenService:Create(track, TweenInfo.new(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.15), {Position = state and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)}):Play()
+        cb(state)
+    end)
+    return r
+end
+local function slider(c, order, text, min, max, default, round, cb)
+    local r = row(c, order, false, 64)
+    local lbl = Instance.new("TextLabel", r)
+    lbl.Size = UDim2.new(1,-24,0,22)
+    lbl.Position = UDim2.new(0,14,0,6)
+    lbl.Text = text..": "..default
+    lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 10; lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1
+    local track = Instance.new("Frame", r)
+    track.Size = UDim2.new(1,-28,0,6)
+    track.Position = UDim2.new(0,14,0,34)
+    track.BackgroundColor3 = T.dim; track.Active = true
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new((default-min)/(max-min),0,1,0)
+    fill.BackgroundColor3 = T.accent
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("TextButton", track)
+    knob.Size = UDim2.new(0,18,0,18)
+    knob.Position = UDim2.new((default-min)/(max-min),-9,0.5,-9)
+    knob.BackgroundColor3 = Color3.new(1,1,1); knob.Text = ""; knob.AutoButtonColor = false
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+    local drag = false
+    local function upd(input)
+        local rel = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        local val = min + (max-min)*rel
+        if round>0 then val = math.floor(val/round+0.5)*round end
+        lbl.Text = text..": "..val
+        fill.Size = UDim2.new(rel,0,1,0)
+        knob.Position = UDim2.new(rel,-9,0.5,-9)
+        cb(val)
+    end
+    local function hookTouch(input)
+        drag = true; upd(input)
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.Change then upd(input)
+            elseif input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then drag=false end
+        end)
+    end
+    knob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch then hookTouch(i) elseif i.UserInputType==Enum.UserInputType.MouseButton1 then drag=true end end)
+    track.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch then hookTouch(i) elseif i.UserInputType==Enum.UserInputType.MouseButton1 then upd(i) drag=true end end)
+    UserInputService.InputChanged:Connect(function(i) if drag and i.UserInputType==Enum.UserInputType.MouseMovement then upd(i) end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drag=false end end)
+    return r
+end
+local function dropdown(c, order, text, opts, default, cb)
+    local r = row(c, order, false, 52)
+    local lbl = Instance.new("TextLabel", r)
+    lbl.Size = UDim2.new(0.5,0,1,0); lbl.Position = UDim2.new(0,14,0,0)
+    lbl.Text = text; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 10
+    lbl.TextColor3 = T.text; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1
+    local btn = Instance.new("TextButton", r)
+    btn.Size = UDim2.new(0,130,0,28); btn.Position = UDim2.new(1,-142,0.5,-14)
+    btn.Text = default; btn.Font = Enum.Font.GothamMedium; btn.TextSize = 9
+    btn.TextColor3 = T.text; btn.BackgroundColor3 = T.inputBg; btn.AutoButtonColor = false
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+    local menu = Instance.new("Frame", sg)
+    menu.Size = UDim2.new(0,130,0,0); menu.BackgroundColor3 = T.card
+    menu.Visible = false; menu.ZIndex = 50
+    Instance.new("UICorner", menu).CornerRadius = UDim.new(0,6)
+    local menuList = Instance.new("UIListLayout", menu)
+    menuList.SortOrder = Enum.SortOrder.LayoutOrder; menuList.Padding = UDim.new(0,2)
+    local function buildMenu()
+        for _,c in pairs(menu:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+        for _,opt in ipairs(opts) do
+            local b = Instance.new("TextButton", menu)
+            b.Size = UDim2.new(1,0,0,28); b.Text = opt; b.Font = Enum.Font.GothamMedium; b.TextSize = 9
+            b.TextColor3 = T.text; b.BackgroundColor3 = T.dim; b.AutoButtonColor = false
+            b.MouseButton1Click:Connect(function() btn.Text = opt; menu.Visible = false; cb(opt) end)
+        end
+        menu.Size = UDim2.new(0,130,0,#opts*30)
+        local abs = btn.AbsolutePosition; local h = #opts*30
+        local vs = Workspace.CurrentCamera.ViewportSize
+        local y = abs.Y + btn.AbsoluteSize.Y + 2
+        if y+h > vs.Y-20 then y = abs.Y - h - 2 end
+        menu.Position = UDim2.new(0, abs.X, 0, y)
+    end
+    btn.MouseButton1Click:Connect(function() if menu.Visible then menu.Visible = false else buildMenu(); menu.Visible = true end end)
+    UserInputService.InputBegan:Connect(function(i)
+        if menu.Visible and (i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch) then
+            task.wait()
+            local pos = i.Position
+            local a = menu.AbsolutePosition; local s = menu.AbsoluteSize
+            if not (pos.X>=a.X and pos.X<=a.X+s.X and pos.Y>=a.Y and pos.Y<=a.Y+s.Y) then menu.Visible = false end
+        end
+    end)
+    return r
+end
+local function keybind(c, order, text, default, cb)
+    local r = row(c, order, false, 44)
+    local lbl = Instance.new("TextLabel", r)
+    lbl.Size = UDim2.new(0.5,0,1,0); lbl.Position = UDim2.new(0,14,0,0)
+    lbl.Text = text; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 10
+    lbl.TextColor3 = T.text; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1
+    local btn = Instance.new("TextButton", r)
+    btn.Size = UDim2.new(0,90,0,28); btn.Position = UDim2.new(1,-102,0.5,-14)
+    btn.Text = default.Name; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10
+    btn.TextColor3 = T.text; btn.BackgroundColor3 = T.dim
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+    local binding = false
+    btn.MouseButton1Click:Connect(function() binding = true; btn.Text = "..." end)
+    UserInputService.InputBegan:Connect(function(i,gpe)
+        if binding and not gpe then
+            if i.UserInputType==Enum.UserInputType.Keyboard then
+                binding = false; btn.Text = i.KeyCode.Name; cb(i.KeyCode)
+            elseif i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                binding = false; btn.Text = default.Name
+            end
+        end
+    end)
+    return r
+end
+local function section(parent, title, order)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1,0,0,22); f.LayoutOrder = order; f.BackgroundTransparency = 1
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Position = UDim2.new(0,8,0,0); lbl.Size = UDim2.new(1,0,1,0); lbl.Text = title
+    lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 8; lbl.TextColor3 = T.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1
+    local line = Instance.new("Frame", f)
+    line.Size = UDim2.new(0,20,0,2); line.Position = UDim2.new(0,0,1,-2)
+    line.BackgroundColor3 = T.accent; Instance.new("UICorner", line).CornerRadius = UDim.new(1,0)
+    return f
+end
+local function button(c, order, text, cb)
+    local r = row(c, order, true, 44)
+    local btn = Instance.new("TextButton", r)
+    btn.Size = UDim2.new(1,-28,0,32); btn.Position = UDim2.new(0,14,0.5,-16)
+    btn.Text = text; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10
+    btn.TextColor3 = Color3.new(1,1,1); btn.BackgroundColor3 = T.accent; btn.AutoButtonColor = false
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,7)
+    btn.MouseButton1Click:Connect(cb)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3=T.accentLt}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3=T.accent}):Play() end)
+    return btn
+end
+
+-- =============================================
+-- POPULATE TABS
+-- =============================================
+-- FARM
+local pgFarm = pages[1]
+section(pgFarm, "Farm", 1)
+local farmCard1 = card(pgFarm, 2)
+toggle(farmCard1, 1, "Auto Dig", false, function(v) autoDig = v end)
+dropdown(farmCard1, 2, "Select Field", {"Sunflower Field","BamBoo Field","Blue Field","Cactus Field","Clover Field","Coconut Field","Dandelion Field","Stump Field","MountainTop Field","Mushroom Field","Pepper Patch","Pineapple Field","PineTree Field","Pumpkin Field","Rose Field","Spider Field","StrawBerry Field"}, "Sunflower Field", function(v) selectedField = v end)
+dropdown(farmCard1, 3, "Farm Mode", {"Walk","Tween","TweenFast"}, "Walk", function(v) selectedFarmMode = v end)
+toggle(farmCard1, 4, "Farm Coconuts", false, function(v) farmCoconuts = v end)
+toggle(farmCard1, 5, "Farm Flames", false, function(v) farmFlames = v end)
+toggle(farmCard1, 6, "Farm Bubbles", false, function(v) farmBubbles = v end)
+toggle(farmCard1, 7, "Farm Balloons", false, function(v) farmBalloons = v end)
+toggle(farmCard1, 8, "Auto Farm", false, function(v) autoFarmActive = v end)
+
+local farmCard2 = card(pgFarm, 3)
+toggle(farmCard2, 1, "Auto Sell", false, function(v) autoSell = v end)
+toggle(farmCard2, 2, "Auto Place Sprinkler", false, function(v) autoSprinkler = v end)
+
+local farmCard3 = card(pgFarm, 4)
+toggle(farmCard3, 1, "Auto Micro-Converter", false, function(v) autoMicroConverter = v end)
+toggle(farmCard3, 2, "Auto Instant Converter", false, function(v) autoInstantConverter = v end)
+toggle(farmCard3, 3, "Auto Coconut", false, function(v) autoCoconut = v end)
+toggle(farmCard3, 4, "Auto Gumdrops", false, function(v) autoGumdrops = v end)
+
+-- EVENT
+local pgEvent = pages[2]
+section(pgEvent, "Masks", 1)
+local maskCard = card(pgEvent, 2)
+dropdown(maskCard, 1, "Equip Mask", {"Gummy Mask","Demon Mask","Diamond Mask","Bubble Mask","Fire Mask","Honey Mask"}, "Gummy Mask", function(v)
+    local maskTypes = {["Gummy Mask"]="Gummy Mask",["Demon Mask"]="Demon Mask",["Diamond Mask"]="Diamond Mask",["Bubble Mask"]="Bubble Mask",["Fire Mask"]="Fire Mask",["Honey Mask"]="Honey Mask"}
+    ItemPackageEvent:InvokeServer("Equip", {["Mute"]=true, ["Type"]=maskTypes[v], ["Category"]="Accessory"})
+end)
+
+-- MOBS
+local pgMobs = pages[3]
+section(pgMobs, "Mobs", 1)
+local mobCard = card(pgMobs, 2)
+toggle(mobCard, 1, "Kill Crab", false, function(v) if v then
+    local part = Instance.new("Part", Workspace)
+    part.Name = "Coconut Part"; part.Anchored = true; part.Transparency = 0.5; part.Size = Vector3.new(40,1,40); part.Position = Vector3.new(-307.5,105.9,467.9)
+    spawn(function() while v and part do
+        local char = Player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            for _,c in ipairs(Workspace.Collectibles:GetChildren()) do
+                if c.Transparency==0 and (c.Position-char.HumanoidRootPart.Position).Magnitude<=10 then
+                    char.HumanoidRootPart.CFrame = CFrame.new(c.Position.X, char.HumanoidRootPart.Position.Y, c.Position.Z)
+                end
+            end
+            char.HumanoidRootPart.CFrame = CFrame.new(-307.5,110.9,467.9)
+        end
+        task.wait(0.2)
+    end; if part then part:Destroy() end end)
+else local p = Workspace:FindFirstChild("Coconut Part"); if p then p:Destroy() end end end)
+button(mobCard, 2, "Kill Commando Chick", function()
+    local part = Instance.new("Part", Workspace)
+    part.Name = "Commando Part"; part.Anchored = true; part.Transparency = 0.5; part.Size = Vector3.new(10,1,10); part.Position = Vector3.new(532.56,68.2,162.8)
+    task.wait(0.1)
+    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        Player.Character.HumanoidRootPart.CFrame = CFrame.new(532.56,68.2,162.8)
+    end
+end)
+toggle(mobCard, 3, "AFK Stump Snail", false, function(v) if v then
+    local part = Instance.new("Part", Workspace)
+    part.Name = "Snail Part"; part.Anchored = true; part.Transparency = 0.5; part.Size = Vector3.new(50,1,50); part.Position = Vector3.new(424.48,71.43,-174.81)
+    spawn(function() while v and part do
+        local char = Player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            for _,c in ipairs(Workspace.Collectibles:GetChildren()) do
+                if c.Transparency==0 and (c.Position-char.HumanoidRootPart.Position).Magnitude<=15 then
+                    char.HumanoidRootPart.CFrame = CFrame.new(c.Position.X, char.HumanoidRootPart.Position.Y, c.Position.Z)
+                end
+            end
+            char.HumanoidRootPart.CFrame = CFrame.new(424.48,74.43,-174.81)
+        end
+        task.wait(0.3)
+    end; if part then part:Destroy() end end)
+else local p = Workspace:FindFirstChild("Snail Part"); if p then p:Destroy() end end end)
+button(mobCard, 4, "Kill Tunnel Bear", function()
+    local part = Instance.new("Part", Workspace)
+    part.Name = "Tunnel Part"; part.Anchored = true; part.Transparency = 0.5; part.Size = Vector3.new(10,1,10); part.Position = Vector3.new(469.1,23.27,-46.39)
+    task.wait(0.1)
+    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        Player.Character.HumanoidRootPart.CFrame = CFrame.new(469.1,7.27,-46.39)
+        task.wait(0.1)
+        Player.Character.HumanoidRootPart.CFrame = CFrame.new(469.1,24.27,-46.39)
+    end
+end)
+
+-- ITEMS
+local pgItems = pages[4]
+section(pgItems, "Dispensers", 1)
+local dispCard = card(pgItems, 2)
+button(dispCard, 1, "Use All Dispensers", function()
+    for _,d in ipairs({"Glue Dispenser","Gingerbread House","Wealth Clock","Coconut Dispenser","Strawberry Dispenser","Treat Dispenser","Free Ant Pass Dispenser","Blueberry Dispenser","Honey Dispenser","Free Royal Jelly Dispenser"}) do
+        ToyEvent:FireServer(d)
+    end
+end)
+toggle(dispCard, 2, "Auto All Dispensers", false, function(v) if v then spawn(function() while v do for _,d in ipairs({"Glue Dispenser","Wealth Clock","Coconut Dispenser","Strawberry Dispenser","Treat Dispenser","Free Ant Pass Dispenser","Blueberry Dispenser","Honey Dispenser","Free Royal Jelly Dispenser"}) do ToyEvent:FireServer(d) end task.wait(10) end end) end end)
+
+section(pgItems, "Dices", 3)
+local diceCard = card(pgItems, 4)
+button(diceCard, 1, "Use Field Dice", function() PlayerActivesCommand:FireServer({["Name"]="Field Dice"}) end)
+toggle(diceCard, 2, "Auto Field Dice", false, function(v) if v then spawn(function() while v do PlayerActivesCommand:FireServer({["Name"]="Field Dice"}); task.wait(3) end end) end end)
+button(diceCard, 3, "Use Smooth Dice", function() PlayerActivesCommand:FireServer({["Name"]="Smooth Dice"}) end)
+toggle(diceCard, 4, "Auto Smooth Dice", false, function(v) if v then spawn(function() while v do PlayerActivesCommand:FireServer({["Name"]="Smooth Dice"}); task.wait(3) end end) end end)
+button(diceCard, 5, "Use Loaded Dice", function() PlayerActivesCommand:FireServer({["Name"]="Loaded Dice"}) end)
+toggle(diceCard, 6, "Auto Loaded Dice", false, function(v) if v then spawn(function() while v do PlayerActivesCommand:FireServer({["Name"]="Loaded Dice"}); task.wait(3) end end) end end)
+
+section(pgItems, "Boosts", 5)
+local boostCard = card(pgItems, 6)
+button(boostCard, 1, "Use All Boosters", function()
+    ToyEvent:FireServer("Red Field Booster"); ToyEvent:FireServer("Blue Field Booster"); ToyEvent:FireServer("Field Booster")
+end)
+toggle(boostCard, 2, "Auto All Boosters", false, function(v) if v then spawn(function() while v do ToyEvent:FireServer("Red Field Booster"); ToyEvent:FireServer("Blue Field Booster"); ToyEvent:FireServer("Field Booster"); task.wait(15) end end) end end)
+
+section(pgItems, "Buffs", 7)
+local buffCard = card(pgItems, 8)
+button(buffCard, 1, "Use All Buffs", function()
+    for _,b in ipairs({"Red Extract","Blue Extract","Glitter","Glue","Oil","Enzymes","Tropical Drink"}) do
+        PlayerActivesCommand:FireServer({["Name"]=b})
+    end
+end)
+
+-- PLAYER
+local pgPlayer = pages[5]
+section(pgPlayer, "Player", 1)
+local playerCard = card(pgPlayer, 2)
+toggle(playerCard, 1, "Enable Speed", false, function(v) speedEnabled = v; if not v and Player.Character then Player.Character.Humanoid.WalkSpeed = 16 end end)
+slider(playerCard, 2, "Walk Speed", 1, 150, 16, 1, function(v) currentSpeed = v end)
+toggle(playerCard, 3, "Enable Jump Power", false, function(v) jumpEnabled = v; if not v and Player.Character then Player.Character.Humanoid.JumpPower = 50 end end)
+slider(playerCard, 4, "Jump Power", 1, 200, 50, 1, function(v) currentJumpPower = v end)
+toggle(playerCard, 5, "Noclip", false, function(v) noclipEnabled = v end)
+button(playerCard, 6, "Collect Hidden Stickers", function()
+    for _,v in Workspace.HiddenStickers:GetChildren() do fireclickdetector(v.ClickDetector) end
+end)
+
+-- EXTRA
+local pgExtra = pages[6]
+section(pgExtra, "Teleports", 1)
+local tpCard = card(pgExtra, 2)
+button(tpCard, 1, "TP To Hive", function()
+    if Player.Character then Player.Character:MoveTo(Player.SpawnPos.Value.p) end
+end)
+dropdown(tpCard, 2, "Teleport To Shop", {"Bee Shop","First Tool Shop","Second Tool Shop (15+ bees)","MountainTop Shop (25+ bees)","Spirit Shop (35+ bees)","Dapper Bear's Shop","GumBall Shop","Blue Clubhouse","Red Clubhouse","Ticket Shop","RoyalJelly Shop","Ticket RoyalJelly Shop","Treat Shop","Moon","Nuoc"}, "Bee Shop", function(v)
+    local pos = {["Bee Shop"]=CFrame.new(-136.8,4.6,243.4),["First Tool Shop"]=CFrame.new(86,4.6,294),["Second Tool Shop (15+ bees)"]=CFrame.new(165,69,-161),["MountainTop Shop (25+ bees)"]=CFrame.new(-18,176,-137),["Spirit Shop (35+ bees)"]=CFrame.new(-501,52,474),["Dapper Bear's Shop"]=CFrame.new(456.7,137.9,-313.8),["GumBall Shop"]=CFrame.new(269,25257.55,-724.2),["Blue Clubhouse"]=CFrame.new(292,4,98),["Red Clubhouse"]=CFrame.new(-334,21,216),["Ticket Shop"]=CFrame.new(-12.8,184,-222.2),["RoyalJelly Shop"]=CFrame.new(-297,53,68),["Ticket RoyalJelly Shop"]=CFrame.new(81,18,240),["Treat Shop"]=CFrame.new(-228.2,5,89.4),["Moon"]=CFrame.new(21,88,-54),["Nuoc"]=CFrame.new(-426,70,38)}
+    if Player.Character then Player.Character.HumanoidRootPart.CFrame = pos[v] end
+end)
+dropdown(tpCard, 3, "Teleport To Bear", {"Black Bear","Brown Bear","Panda Bear","Polar Bear","Science Bear","Mother Bear","Spirit Bear","Gummy Bear","Onett","Tunnel Bear","Stick Bug"}, "Black Bear", function(v)
+    local pos = {["Black Bear"]=CFrame.new(-258.1,5,299.7),["Brown Bear"]=CFrame.new(282,46,236),["Panda Bear"]=CFrame.new(106.3,35,50.1),["Polar Bear"]=CFrame.new(-106,119,-77),["Science Bear"]=CFrame.new(267,103,20),["Mother Bear"]=CFrame.new(-183.9,5.6,83.5),["Spirit Bear"]=CFrame.new(-363.9,105.3,485.9),["Gummy Bear"]=CFrame.new(271.6,25292.9,-851),["Onett"]=CFrame.new(-9.4,232.8,-520.3),["Tunnel Bear"]=CFrame.new(313.7,6.8,-46.9),["Stick Bug"]=CFrame.new(-129.2,50.1,148.3)}
+    if Player.Character then Player.Character.HumanoidRootPart.CFrame = pos[v] end
+end)
+dropdown(tpCard, 4, "Teleport To Field", {"Sunflower Field","BamBoo Field","Blue Field","Cactus Field","Clover Field","Coconut Field","Dandelion Field","Stump Field","MountainTop Field","Mushroom Field","Pepper Patch","Pineapple Field","PineTree Field","Pumpkin Field","Rose Field","Spider Field","StrawBerry Field"}, "Sunflower Field", function(v)
+    if Player.Character then Player.Character.HumanoidRootPart.CFrame = fieldPositions[v] end
+end)
+
+section(pgExtra, "Auto Quest", 3)
+local questCard = card(pgExtra, 4)
+toggle(questCard, 1, "Auto Quest", false, function(v) autoQuest = v end)
+
+-- WEBHOOK
+local pgWebhook = pages[7]
+section(pgWebhook, "Honey Profit", 1)
+local webCard = card(pgWebhook, 2)
+toggle(webCard, 1, "Enable Webhook", false, function(v) webhookEnabled = v; if v then initialHoney = Player.CoreStats.Honey.Value end end)
+local urlRow = row(webCard, 2, false, 44)
+local urlLbl = Instance.new("TextLabel", urlRow)
+urlLbl.Size = UDim2.new(0.5,0,1,0); urlLbl.Position = UDim2.new(0,14,0,0); urlLbl.Text = "Webhook URL"
+urlLbl.Font = Enum.Font.GothamSemibold; urlLbl.TextSize = 10; urlLbl.TextColor3 = T.text; urlLbl.BackgroundTransparency = 1
+local urlBox = Instance.new("TextBox", urlRow)
+urlBox.Size = UDim2.new(0,130,0,28); urlBox.Position = UDim2.new(1,-142,0.5,-14); urlBox.PlaceholderText = "URL..."
+urlBox.Font = Enum.Font.GothamMedium; urlBox.TextSize = 9; urlBox.TextColor3 = T.text
+urlBox.BackgroundColor3 = T.inputBg; urlBox.BorderSizePixel = 0; urlBox.Text = webhookURL
+Instance.new("UICorner", urlBox).CornerRadius = UDim.new(0,6)
+urlBox.FocusLost:Connect(function(enter) if enter then webhookURL = urlBox.Text end end)
+slider(webCard, 3, "Update Interval", 1, 300, 60, 1, function(v) webhookInterval = v end)
+
+-- SETTINGS
+local pgSettings = pages[8]
+section(pgSettings, "Keybinds", 1)
+local setCard = card(pgSettings, 2)
+keybind(setCard, 1, "Toggle GUI", Enum.KeyCode.LeftControl, function(k) end) -- placeholder
+
+-- Finalize window
+local vp = Workspace.CurrentCamera.ViewportSize
+win.Position = UDim2.new(0, (vp.X-WIN_W)/2, 0, (vp.Y-WIN_H)/2)
+win.Visible = true; win.Size = UDim2.new(0,0,0,0); win.BackgroundTransparency = 1
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back), {Size=UDim2.new(0,WIN_W,0,WIN_H)}):Play()
+task.wait(0.45) win.BackgroundTransparency = 0
+
+setTab(1)
+
+UserInputService.InputBegan:Connect(function(i,gpe)
+    if not gpe and i.KeyCode == Enum.KeyCode.RightShift then sg.Enabled = not sg.Enabled end
+end)
+
+-- Anti-AFK
+spawn(function()
+    while true do
+        pcall(function() VirtualUser:Button2Down(Vector2.new(), Workspace.CurrentCamera.CFrame) end)
+        task.wait(1)
+        pcall(function() VirtualUser:Button2Up(Vector2.new(), Workspace.CurrentCamera.CFrame) end)
+        task.wait(119)
+    end
+end)
