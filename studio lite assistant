@@ -1,0 +1,858 @@
+
+local u1 = '3.1'
+local HttpService = game:GetService('HttpService')
+local v2 = HttpService:JSONDecode(game:HttpGet('https://raw.githubusercontent.com/Allvideo1/My-script-/refs/heads/main/Version.json'))
+local _LocalPlayer = game:GetService('Players').LocalPlayer
+
+if game.PlaceId ~= 10959918411 then
+    return _LocalPlayer:Kick('please be on studio lite')
+end
+if v2.Version ~= u1 then
+    return _LocalPlayer:Kick('Wrong Version Copied Discord Server')
+end
+
+-- Services
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+
+-- Theme (FeatherHub Purple)
+local T = {
+    bg = Color3.fromRGB(13,13,18),
+    sidebar = Color3.fromRGB(18,18,25),
+    card = Color3.fromRGB(23,23,32),
+    border = Color3.fromRGB(42,42,58),
+    text = Color3.fromRGB(228,228,240),
+    muted = Color3.fromRGB(95,95,118),
+    dim = Color3.fromRGB(30,30,44),
+    sep = Color3.fromRGB(34,34,50),
+    header = Color3.fromRGB(16,16,22),
+    inputBg = Color3.fromRGB(9,9,15),
+    accent = Color3.fromRGB(110,95,210),
+    accentLt = Color3.fromRGB(135,115,235),
+    accentDim = Color3.fromRGB(65,55,130),
+    green = Color3.fromRGB(90,195,145),
+    red = Color3.fromRGB(210,75,95),
+}
+local WIN_W, WIN_H, SIDE_W, HDR_H = 440, 380, 90, 42
+
+local DISCORD_INVITE = "https://discord.gg/w28bDq6abr"
+
+-- =============================================
+-- NOTIFICATION SYSTEM
+-- =============================================
+local function notify(title, msg, nType)
+    local col = T.accent
+    if nType == "success" then col = T.green
+    elseif nType == "error" then col = T.red end
+    local n = Instance.new("Frame")
+    n.Size = UDim2.new(0, 0, 0, 56)
+    n.Position = UDim2.new(1, -10, 1, -66)
+    n.AnchorPoint = Vector2.new(1, 1)
+    n.BackgroundColor3 = T.card
+    n.BorderSizePixel = 0
+    n.ZIndex = 100
+    n.Parent = CoreGui
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 9)
+    local ns = Instance.new("UIStroke", n)
+    ns.Color = col
+    ns.Thickness = 1
+    local bar = Instance.new("Frame", n)
+    bar.Size = UDim2.new(0, 3, 0.65, 0)
+    bar.Position = UDim2.new(0, 0, 0.175, 0)
+    bar.BackgroundColor3 = col
+    bar.BorderSizePixel = 0
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+    local t1 = Instance.new("TextLabel", n)
+    t1.Size = UDim2.new(1, -16, 0, 18)
+    t1.Position = UDim2.new(0, 12, 0, 8)
+    t1.Text = title
+    t1.Font = Enum.Font.GothamBold
+    t1.TextSize = 10
+    t1.TextColor3 = T.text
+    t1.TextXAlignment = Enum.TextXAlignment.Left
+    t1.BackgroundTransparency = 1
+    local t2 = Instance.new("TextLabel", n)
+    t2.Size = UDim2.new(1, -16, 0, 18)
+    t2.Position = UDim2.new(0, 12, 0, 26)
+    t2.Text = msg
+    t2.Font = Enum.Font.Gotham
+    t2.TextSize = 8
+    t2.TextColor3 = T.text
+    t2.TextTransparency = 0.35
+    t2.TextXAlignment = Enum.TextXAlignment.Left
+    t2.TextWrapped = true
+    t2.BackgroundTransparency = 1
+    TweenService:Create(n, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0, 190, 0, 56)}):Play()
+    task.delay(3.5, function()
+        if n and n.Parent then
+            TweenService:Create(n, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Position = UDim2.new(1, 10, 1, -66)}):Play()
+            task.delay(0.3, function() if n and n.Parent then n:Destroy() end end)
+        end
+    end)
+end
+
+notify("NukerHub", "Successfully loaded.", "success")
+
+-- Utility functions from original
+function GetAnchoredPath()
+    local v4 = next
+    local v5, v6 = _LocalPlayer.PlayerGui.StudioGui.PropertiesPanel.List:GetDescendants()
+    while true do
+        local v7
+        v6, v7 = v4(v5, v6)
+        if v6 == nil then break end
+        if v7:IsA('Frame') and v7.Name == 'name' then
+            local _locked = v7:FindFirstChild('locked')
+            if _locked and (_locked:IsA('TextLabel') and _locked.Text == 'Anchored') then
+                return v7.Parent:FindFirstChild('edit').check
+            end
+        end
+    end
+end
+
+local function u12(p11)
+    return _LocalPlayer.Character and (_LocalPlayer.Backpack:FindFirstChild(p11) or _LocalPlayer.Character:FindFirstChild(p11)) and true or false
+end
+
+local function u14(p13)
+    if u12(p13) and _LocalPlayer.Character and _LocalPlayer.Character:FindFirstChild('Humanoid') then
+        if _LocalPlayer.Backpack:FindFirstChild(p13) then
+            _LocalPlayer.Character.Humanoid:EquipTool(_LocalPlayer.Backpack:FindFirstChild(p13))
+        elseif _LocalPlayer.Character:FindFirstChildWhichIsA('Tool') then
+            _LocalPlayer.Character.Humanoid:UnequipTools()
+        end
+    end
+end
+
+function HasProperty(p29, p30)
+    local v31, _ = pcall(function() p29[p30] = p29[p30] end)
+    return v31
+end
+
+function MakeScript(p32, p33)
+    local v34, v35 = pcall(function() return p33.Parent end)
+    local v36 = v34 and v35 and v35 or Workspace
+    local v37 = game:GetService('ReplicatedStorage').StudioLiteFolder.RigEditScriptFolder.DanceScript.SL_CodeTextBox:Clone()
+    v37.Text = "--// Generated by Allvideo's Model Inserter " .. u1 .. '\n\n' .. p33.Source
+    local v38 = Instance.new(p32, v36)
+    v38.Name = p33.Name
+    local v39 = next
+    local v40, v41 = p33:GetChildren()
+    while true do
+        local v42
+        v41, v42 = v39(v40, v41)
+        if v41 == nil then break end
+        v42.Parent = v38
+    end
+    v37.Parent = v38
+    pcall(function() p33.Parent = _LocalPlayer; p33:Destroy() end)
+end
+
+-- Scale GUI (standalone function)
+function GiveScaleGui()
+    if CoreGui:FindFirstChild('Delete if no need (Scale Gui)') then
+        return CoreGui['Delete if no need (Scale Gui)']:Destroy()
+    end
+    local _ScreenGui3 = Instance.new('ScreenGui', CoreGui)
+    _ScreenGui3.Name = 'Delete if no need (Scale Gui)'
+    local _Frame2 = Instance.new('Frame', _ScreenGui3)
+    _Frame2.Size = UDim2.new(0.3, 0, 0.25, 0)
+    _Frame2.Position = UDim2.new(0, 0, 0, 0)
+    _Frame2.BackgroundColor3 = Color3.fromRGB(50, 75, 120)
+    _Frame2.BorderSizePixel = 0
+    _Frame2.Draggable = true
+    _Frame2.Active = true
+    _Frame2.BackgroundTransparency = 0.1
+    local _TextLabel5 = Instance.new('TextLabel', _Frame2)
+    _TextLabel5.Size = UDim2.new(1, 0, 0.3, 0)
+    _TextLabel5.Position = UDim2.new(0, 0, 0, 0)
+    _TextLabel5.BackgroundTransparency = 1
+    _TextLabel5.Text = tostring(_Frame2.Position)
+    _TextLabel5.Font = Enum.Font.GothamBold
+    _TextLabel5.TextSize = 20
+    _TextLabel5.TextColor3 = Color3.fromRGB(255, 255, 255)
+    _TextLabel5.TextStrokeTransparency = 0.5
+    _TextLabel5.TextXAlignment = Enum.TextXAlignment.Center
+    _TextLabel5.TextYAlignment = Enum.TextYAlignment.Center
+    local _TextButton4 = Instance.new('TextButton', _Frame2)
+    _TextButton4.Size = UDim2.new(0.8, 0, 0.3, 0)
+    _TextButton4.Position = UDim2.new(0.1, 0, 0.6, 0)
+    _TextButton4.BackgroundColor3 = Color3.fromRGB(80, 120, 180)
+    _TextButton4.Text = 'Copy'
+    _TextButton4.Font = Enum.Font.GothamBold
+    _TextButton4.TextSize = 18
+    _TextButton4.TextColor3 = Color3.fromRGB(255, 255, 255)
+    _TextButton4.TextStrokeTransparency = 0.5
+    _TextButton4.AutoButtonColor = true
+    _Frame2:GetPropertyChangedSignal('Position'):Connect(function()
+        local vp = Workspace.CurrentCamera.ViewportSize
+        _TextLabel5.Text = '{' .. math.round(_Frame2.AbsolutePosition.X / vp.X * 1000) / 1000 .. ',0,' .. math.round(_Frame2.AbsolutePosition.Y / vp.Y * 1000) / 1000 .. ',0}'
+    end)
+    _TextButton4.MouseButton1Click:Connect(function()
+        local vp = Workspace.CurrentCamera.ViewportSize
+        setclipboard('{' .. math.round(_Frame2.AbsolutePosition.X / vp.X * 1000) / 1000 .. ',0,' .. math.round(_Frame2.AbsolutePosition.Y / vp.Y * 1000) / 1000 .. ',0}')
+    end)
+end
+
+-- =============================================
+-- MAIN UI CONSTRUCTION (FeatherHub style)
+-- =============================================
+local sg = Instance.new("ScreenGui", CoreGui)
+sg.Name = "NukerHubUI"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.IgnoreGuiInset = true
+
+local win = Instance.new("Frame", sg)
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.BackgroundColor3 = T.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 14)
+Instance.new("UIStroke", win).Color = T.border
+
+-- Sidebar
+local sidebar = Instance.new("Frame", win)
+sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+sidebar.BackgroundColor3 = T.sidebar
+sidebar.BorderSizePixel = 0
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+
+-- Logo
+local logo = Instance.new("Frame", sidebar)
+logo.Size = UDim2.new(0, 34, 0, 34)
+logo.Position = UDim2.new(0.5, -17, 0, 10)
+logo.BackgroundColor3 = T.accent
+Instance.new("UICorner", logo).CornerRadius = UDim.new(0, 9)
+local logoText = Instance.new("TextLabel", logo)
+logoText.Size = UDim2.new(1, 0, 1, 0)
+logoText.Text = "N"
+logoText.TextSize = 18
+logoText.Font = Enum.Font.GothamBold
+logoText.TextColor3 = Color3.new(1, 1, 1)
+logoText.BackgroundTransparency = 1
+
+-- Nav container
+local nav = Instance.new("Frame", sidebar)
+nav.Size = UDim2.new(1, 0, 1, -70)
+nav.Position = UDim2.new(0, 0, 0, 60)
+nav.BackgroundTransparency = 1
+local navList = Instance.new("UIListLayout", nav)
+navList.SortOrder = Enum.SortOrder.LayoutOrder
+navList.VerticalAlignment = Enum.VerticalAlignment.Top
+navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+navList.Padding = UDim.new(0, 4)
+
+-- Version label
+local ver = Instance.new("TextLabel", sidebar)
+ver.Size = UDim2.new(1, 0, 0, 10)
+ver.Position = UDim2.new(0, 0, 1, -56)
+ver.Text = "v" .. u1
+ver.Font = Enum.Font.Gotham
+ver.TextSize = 6
+ver.TextColor3 = T.muted
+ver.BackgroundTransparency = 1
+ver.TextXAlignment = Enum.TextXAlignment.Center
+
+-- Discord button at bottom of sidebar
+local dcBtn = Instance.new("TextButton", sidebar)
+dcBtn.Size = UDim2.new(0, 70, 0, 28)
+dcBtn.Position = UDim2.new(0.5, -35, 1, -40)
+dcBtn.Text = "Discord"
+dcBtn.Font = Enum.Font.GothamBold
+dcBtn.TextSize = 9
+dcBtn.TextColor3 = Color3.new(1, 1, 1)
+dcBtn.BackgroundColor3 = T.accent
+dcBtn.BorderSizePixel = 0
+dcBtn.AutoButtonColor = false
+Instance.new("UICorner", dcBtn).CornerRadius = UDim.new(0, 7)
+dcBtn.MouseButton1Click:Connect(function()
+    setclipboard(DISCORD_INVITE)
+    notify("Discord", "Invite copied to clipboard", "success")
+end)
+dcBtn.MouseEnter:Connect(function()
+    TweenService:Create(dcBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accentLt}):Play()
+end)
+dcBtn.MouseLeave:Connect(function()
+    TweenService:Create(dcBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accent}):Play()
+end)
+
+-- Header
+local hdr = Instance.new("Frame", win)
+hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
+hdr.BackgroundColor3 = T.header
+hdr.BorderSizePixel = 0
+hdr.Active = true
+Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 14)
+
+-- Grab handle
+local grabBar = Instance.new("Frame", hdr)
+grabBar.Size = UDim2.new(0, 40, 0, 4)
+grabBar.Position = UDim2.new(0.5, -20, 0, 8)
+grabBar.BackgroundColor3 = T.muted
+grabBar.BackgroundTransparency = 0.7
+grabBar.BorderSizePixel = 0
+Instance.new("UICorner", grabBar).CornerRadius = UDim.new(1, 0)
+
+local hdrTitle = Instance.new("TextLabel", hdr)
+hdrTitle.Size = UDim2.new(1, -120, 1, 0)
+hdrTitle.Position = UDim2.new(0, 14, 0, 0)
+hdrTitle.Text = "MAIN"
+hdrTitle.Font = Enum.Font.GothamBold
+hdrTitle.TextSize = 12
+hdrTitle.TextColor3 = T.text
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+hdrTitle.BackgroundTransparency = 1
+
+local function hdrBtn(xOff, sym)
+    local b = Instance.new("TextButton", hdr)
+    b.Size = UDim2.new(0, 28, 0, 28)
+    b.Position = UDim2.new(1, xOff, 0.5, -14)
+    b.Text = sym
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 16
+    b.TextColor3 = T.muted
+    b.BackgroundColor3 = T.dim
+    b.AutoButtonColor = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    return b
+end
+local minBtn = hdrBtn(-62, "–")
+local closeBtn = hdrBtn(-32, "×")
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- Minimize
+local minimized = false
+local function toggleMin()
+    minimized = not minimized
+    if minimized then
+        TweenService:Create(win, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
+        sidebar.Visible = false
+        content.Visible = false
+        minBtn.Text = "+"
+    else
+        TweenService:Create(win, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+        sidebar.Visible = true
+        content.Visible = true
+        minBtn.Text = "–"
+    end
+end
+minBtn.MouseButton1Click:Connect(toggleMin)
+
+-- Content area
+local content = Instance.new("Frame", win)
+content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+content.BackgroundTransparency = 1
+content.ClipsDescendants = true
+
+-- Single page
+local pg = Instance.new("ScrollingFrame", content)
+pg.Size = UDim2.new(1, 0, 1, 0)
+pg.BackgroundTransparency = 1
+pg.BorderSizePixel = 0
+pg.ScrollBarThickness = 3
+pg.ScrollBarImageColor3 = T.accent
+pg.CanvasSize = UDim2.new(0, 0, 0, 0)
+pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
+pg.ScrollingDirection = Enum.ScrollingDirection.Y
+pg.ElasticBehavior = Enum.ElasticBehavior.Never
+local pgLayout = Instance.new("UIListLayout", pg)
+pgLayout.SortOrder = Enum.SortOrder.LayoutOrder
+pgLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+pgLayout.Padding = UDim.new(0, 6)
+local pgPad = Instance.new("UIPadding", pg)
+pgPad.PaddingTop = UDim.new(0, 10)
+pgPad.PaddingBottom = UDim.new(0, 10)
+pgPad.PaddingLeft = UDim.new(0, 10)
+pgPad.PaddingRight = UDim.new(0, 10)
+
+-- Mobile drag
+do
+    local dragging, dragStartPos, winStartPos, activeTouch
+    local function beginDrag(pos) dragging = true; dragStartPos = pos; winStartPos = win.Position end
+    local function updateDrag(pos)
+        if not dragging then return end
+        local d = pos - dragStartPos
+        local vp = Workspace.CurrentCamera.ViewportSize
+        win.Position = UDim2.new(0, math.clamp(winStartPos.X.Offset + d.X, 0, vp.X - WIN_W), 0, math.clamp(winStartPos.Y.Offset + d.Y, 0, vp.Y - WIN_H))
+    end
+    local function endDrag() dragging = false; dragStartPos = nil; winStartPos = nil; activeTouch = nil end
+    hdr.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then beginDrag(i.Position)
+        elseif i.UserInputType == Enum.UserInputType.Touch then activeTouch = i; beginDrag(i.Position)
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.Change then updateDrag(i.Position)
+                elseif i.UserInputState == Enum.UserInputState.End or i.UserInputState == Enum.UserInputState.Cancel then endDrag() end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and not activeTouch and i.UserInputType == Enum.UserInputType.MouseMovement then updateDrag(i.Position) end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then endDrag() end
+    end)
+end
+
+-- Single nav button "MAIN"
+local navRow = Instance.new("Frame", nav)
+navRow.Size = UDim2.new(1, -6, 0, 36)
+navRow.BackgroundTransparency = 1
+navRow.LayoutOrder = 1
+local navBg = Instance.new("Frame", navRow)
+navBg.Size = UDim2.new(1, -4, 1, -6)
+navBg.Position = UDim2.new(0, 4, 0, 3)
+navBg.BackgroundColor3 = T.accent
+navBg.BackgroundTransparency = 0.12
+Instance.new("UICorner", navBg).CornerRadius = UDim.new(0, 7)
+local navLbl = Instance.new("TextLabel", navBg)
+navLbl.Size = UDim2.new(1, -12, 1, 0)
+navLbl.Position = UDim2.new(0, 8, 0, 0)
+navLbl.Text = "MAIN"
+navLbl.Font = Enum.Font.GothamBold
+navLbl.TextSize = 7
+navLbl.TextColor3 = Color3.new(1, 1, 1)
+navLbl.BackgroundTransparency = 1
+navLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+-- =============================================
+-- CARD HELPERS
+-- =============================================
+local function card(p, order)
+    local c = Instance.new("Frame", p)
+    c.Size = UDim2.new(1, 0, 0, 0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 9)
+    Instance.new("UIStroke", c).Color = T.border
+    local ll = Instance.new("UIListLayout", c)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+
+local function row(c, order, last, h)
+    local r = Instance.new("Frame", c)
+    r.Size = UDim2.new(1, 0, 0, h or 44)
+    r.BackgroundTransparency = 1
+    r.LayoutOrder = order
+    if not last then
+        local sep = Instance.new("Frame", r)
+        sep.Size = UDim2.new(1, -24, 0, 1)
+        sep.Position = UDim2.new(0, 12, 1, -1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+    end
+    return r
+end
+
+local function sectionLabel(p, title, order)
+    local f = Instance.new("Frame", p)
+    f.Size = UDim2.new(1, 0, 0, 22)
+    f.LayoutOrder = order
+    f.BackgroundTransparency = 1
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = title
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = T.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    local line = Instance.new("Frame", f)
+    line.Size = UDim2.new(0, 20, 0, 2)
+    line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = T.accent
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return f
+end
+
+-- =============================================
+-- MODEL INSERTER CARD
+-- =============================================
+sectionLabel(pg, "Model Inserter", 1)
+local modelCard = card(pg, 2)
+
+-- TextBox row
+local tbRow = row(modelCard, 1, false, 48)
+local tbLbl = Instance.new("TextLabel", tbRow)
+tbLbl.Size = UDim2.new(0, 40, 1, 0)
+tbLbl.Position = UDim2.new(0, 14, 0, 0)
+tbLbl.Text = "ID:"
+tbLbl.Font = Enum.Font.GothamSemibold
+tbLbl.TextSize = 10
+tbLbl.TextColor3 = T.text
+tbLbl.TextXAlignment = Enum.TextXAlignment.Left
+tbLbl.BackgroundTransparency = 1
+local tbBox = Instance.new("TextBox", tbRow)
+tbBox.Size = UDim2.new(1, -124, 0, 32)
+tbBox.Position = UDim2.new(0, 54, 0.5, -16)
+tbBox.Text = "115182995329665"
+tbBox.PlaceholderText = "Enter model ID..."
+tbBox.Font = Enum.Font.GothamMedium
+tbBox.TextSize = 10
+tbBox.TextColor3 = T.text
+tbBox.PlaceholderColor3 = T.muted
+tbBox.BackgroundColor3 = T.inputBg
+tbBox.BorderSizePixel = 0
+tbBox.ClearTextOnFocus = false
+Instance.new("UICorner", tbBox).CornerRadius = UDim.new(0, 7)
+local insBtn = Instance.new("TextButton", tbRow)
+insBtn.Size = UDim2.new(0, 60, 0, 32)
+insBtn.Position = UDim2.new(1, -70, 0.5, -16)
+insBtn.Text = "Insert"
+insBtn.Font = Enum.Font.GothamBold
+insBtn.TextSize = 10
+insBtn.TextColor3 = Color3.new(1, 1, 1)
+insBtn.BackgroundColor3 = T.accent
+insBtn.BorderSizePixel = 0
+insBtn.AutoButtonColor = false
+Instance.new("UICorner", insBtn).CornerRadius = UDim.new(0, 7)
+insBtn.MouseEnter:Connect(function() TweenService:Create(insBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accentLt}):Play() end)
+insBtn.MouseLeave:Connect(function() TweenService:Create(insBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accent}):Play() end)
+
+-- Status label
+local statusRow = row(modelCard, 2, true, 30)
+local statusLbl = Instance.new("TextLabel", statusRow)
+statusLbl.Size = UDim2.new(1, -28, 1, 0)
+statusLbl.Position = UDim2.new(0, 14, 0, 0)
+statusLbl.Text = ""
+statusLbl.Font = Enum.Font.Gotham
+statusLbl.TextSize = 9
+statusLbl.TextColor3 = T.muted
+statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+statusLbl.BackgroundTransparency = 1
+
+insBtn.MouseButton1Click:Connect(function()
+    local uid = tonumber(tbBox.Text)
+    if uid then
+        statusLbl.Text = "Loading..."
+        statusLbl.TextColor3 = T.muted
+        local ok, result = pcall(function() return game:GetObjects('rbxassetid://' .. uid) end)
+        if ok and result and #result > 0 and result[1] then
+            local obj = result[1]
+            -- Process descendants: anchor and handle scripts
+            local function processDescendants(parent)
+                for _, child in pairs(parent:GetDescendants()) do
+                    if HasProperty(child, 'Anchored') then
+                        child:SetAttribute('SL_Anchored', child.Anchored)
+                        child.Anchored = true
+                        if HasProperty(child, 'CanCollide') then
+                            child:SetAttribute('SL_CanCollide', child.CanCollide)
+                        end
+                        if HasProperty(child, 'AssemblyAngularVelocity') then
+                            child:SetAttribute('SL_AssemblyAngularVelocity', child.AssemblyAngularVelocity)
+                        end
+                    elseif child:IsA('Script') then
+                        MakeScript('Script', child)
+                    elseif child:IsA('LocalScript') then
+                        MakeScript('LocalScript', child)
+                    elseif child:IsA('ModuleScript') then
+                        MakeScript('ModuleScript', child)
+                    end
+                end
+            end
+            processDescendants(obj)
+            -- Handle the root object
+            if obj:IsA('Script') then
+                MakeScript('Script', obj)
+            elseif obj:IsA('LocalScript') then
+                MakeScript('LocalScript', obj)
+            elseif obj:IsA('ModuleScript') then
+                MakeScript('ModuleScript', obj)
+            end
+            if obj:IsA('Sky') then
+                obj.Parent = game:GetService('Lighting')
+            else
+                obj.Parent = Workspace
+            end
+            local cf = Workspace.FlyCameraFocus.CFrame
+            if obj:IsA('Model') then
+                obj:MoveTo(cf.Position)
+            elseif obj:IsA('Folder') then
+                local p = obj.Parent
+                local m = Instance.new('Model', p)
+                obj.Parent = m
+                m:MoveTo(cf.Position)
+                obj.Parent = p
+                m:Destroy()
+            end
+            statusLbl.Text = "Successfully Inserted"
+            statusLbl.TextColor3 = T.green
+            notify("Model Inserter", "Model inserted!", "success")
+        else
+            statusLbl.Text = "Error! Model not found."
+            statusLbl.TextColor3 = T.red
+            notify("Model Inserter", "Model not found", "error")
+        end
+    else
+        statusLbl.Text = "Invalid Model ID"
+        statusLbl.TextColor3 = T.red
+    end
+    task.delay(3, function()
+        if statusLbl then statusLbl.Text = "" end
+    end)
+end)
+
+-- =============================================
+-- TOOLS CARD
+-- =============================================
+sectionLabel(pg, "Tools", 3)
+local toolsCard = card(pg, 4)
+
+-- F3X Button
+local f3xRow = row(toolsCard, 1, false, 44)
+local f3xLbl = Instance.new("TextLabel", f3xRow)
+f3xLbl.Size = UDim2.new(0.55, 0, 1, 0)
+f3xLbl.Position = UDim2.new(0, 14, 0, 0)
+f3xLbl.Text = "F3X Building Tools"
+f3xLbl.Font = Enum.Font.GothamSemibold
+f3xLbl.TextSize = 10
+f3xLbl.TextColor3 = T.text
+f3xLbl.TextXAlignment = Enum.TextXAlignment.Left
+f3xLbl.BackgroundTransparency = 1
+local f3xBtn = Instance.new("TextButton", f3xRow)
+f3xBtn.Size = UDim2.new(0, 60, 0, 28)
+f3xBtn.Position = UDim2.new(1, -72, 0.5, -14)
+f3xBtn.Text = "Load"
+f3xBtn.Font = Enum.Font.GothamBold
+f3xBtn.TextSize = 9
+f3xBtn.TextColor3 = Color3.new(1, 1, 1)
+f3xBtn.BackgroundColor3 = T.accent
+f3xBtn.AutoButtonColor = false
+Instance.new("UICorner", f3xBtn).CornerRadius = UDim.new(0, 6)
+f3xBtn.MouseEnter:Connect(function() TweenService:Create(f3xBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accentLt}):Play() end)
+f3xBtn.MouseLeave:Connect(function() TweenService:Create(f3xBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accent}):Play() end)
+f3xBtn.MouseButton1Click:Connect(function()
+    if u12('F3X') then
+        u14('F3X')
+        notify("F3X", "Equipped from backpack", "success")
+    else
+        local f3xObj = game:GetObjects('rbxassetid://9797801917')[1]
+        f3xObj.CanBeDropped = false
+        f3xObj.Name = 'F3X'
+        f3xObj.Parent = _LocalPlayer.Backpack
+        ; -- << FIX: semicolon separates assignment from IIFE
+        -- Execute the F3X internal scripts
+        (function(src)
+            local mods = {}
+            local loaded = {}
+            local active = {}
+            local function requireProxy(m)
+                if typeof(m) == 'Instance' then
+                    if loaded[m] then return loaded[m] end
+                    if mods[m] then loaded[m] = mods[m](); return loaded[m] end
+                    return require(m)
+                end
+            end
+            local function setupEnv(s, fn, errMsg)
+                if not fn then return end
+                local env = setmetatable({script = s}, {
+                    __index = function(_, k)
+                        if k == 'require' then return requireProxy
+                        elseif k == 'getfenv' then return function(lvl) return getfenv(typeof(lvl) == 'number' and (lvl == 0 and 2 or lvl + 1) or lvl) end
+                        else return getfenv()[k] end
+                    end
+                })
+                setfenv(fn, env)
+            end
+            local function walk(o)
+                if o:IsA('Script') or o:IsA('LocalScript') or o.ClassName == 'ModuleScript' then
+                    local f, e = loadstring(o.Source, '=' .. o:GetFullName())
+                    if o.ClassName == 'ModuleScript' then mods[o] = f
+                    else active[o] = f end
+                    setupEnv(o, f, e)
+                end
+                for _, c in pairs(o:GetChildren()) do walk(c) end
+            end
+            walk(src)
+            for _, fn in pairs(active) do task.spawn(fn) end
+        end)(f3xObj)
+        u14('F3X')
+        notify("F3X", "Loaded and equipped", "success")
+    end
+end)
+
+-- Scale Button
+local scaleRow = row(toolsCard, 2, false, 44)
+local scaleLbl = Instance.new("TextLabel", scaleRow)
+scaleLbl.Size = UDim2.new(0.55, 0, 1, 0)
+scaleLbl.Position = UDim2.new(0, 14, 0, 0)
+scaleLbl.Text = "Scale Position GUI"
+scaleLbl.Font = Enum.Font.GothamSemibold
+scaleLbl.TextSize = 10
+scaleLbl.TextColor3 = T.text
+scaleLbl.TextXAlignment = Enum.TextXAlignment.Left
+scaleLbl.BackgroundTransparency = 1
+local scaleBtn2 = Instance.new("TextButton", scaleRow)
+scaleBtn2.Size = UDim2.new(0, 60, 0, 28)
+scaleBtn2.Position = UDim2.new(1, -72, 0.5, -14)
+scaleBtn2.Text = "Toggle"
+scaleBtn2.Font = Enum.Font.GothamBold
+scaleBtn2.TextSize = 9
+scaleBtn2.TextColor3 = Color3.new(1, 1, 1)
+scaleBtn2.BackgroundColor3 = T.accent
+scaleBtn2.AutoButtonColor = false
+Instance.new("UICorner", scaleBtn2).CornerRadius = UDim.new(0, 6)
+scaleBtn2.MouseEnter:Connect(function() TweenService:Create(scaleBtn2, TweenInfo.new(0.1), {BackgroundColor3 = T.accentLt}):Play() end)
+scaleBtn2.MouseLeave:Connect(function() TweenService:Create(scaleBtn2, TweenInfo.new(0.1), {BackgroundColor3 = T.accent}):Play() end)
+scaleBtn2.MouseButton1Click:Connect(function()
+    GiveScaleGui()
+    notify("Scale GUI", "Toggled scale position tool", "success")
+end)
+
+-- Anchor Button
+local anchorRow = row(toolsCard, 3, false, 44)
+local anchorLbl = Instance.new("TextLabel", anchorRow)
+anchorLbl.Size = UDim2.new(0.55, 0, 1, 0)
+anchorLbl.Position = UDim2.new(0, 14, 0, 0)
+anchorLbl.Text = "Toggle Anchored"
+anchorLbl.Font = Enum.Font.GothamSemibold
+anchorLbl.TextSize = 10
+anchorLbl.TextColor3 = T.text
+anchorLbl.TextXAlignment = Enum.TextXAlignment.Left
+anchorLbl.BackgroundTransparency = 1
+local anchorBtn = Instance.new("TextButton", anchorRow)
+anchorBtn.Size = UDim2.new(0, 60, 0, 28)
+anchorBtn.Position = UDim2.new(1, -72, 0.5, -14)
+anchorBtn.Text = "Toggle"
+anchorBtn.Font = Enum.Font.GothamBold
+anchorBtn.TextSize = 9
+anchorBtn.TextColor3 = Color3.new(1, 1, 1)
+anchorBtn.BackgroundColor3 = T.accent
+anchorBtn.AutoButtonColor = false
+Instance.new("UICorner", anchorBtn).CornerRadius = UDim.new(0, 6)
+anchorBtn.MouseEnter:Connect(function() TweenService:Create(anchorBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accentLt}):Play() end)
+anchorBtn.MouseLeave:Connect(function() TweenService:Create(anchorBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accent}):Play() end)
+anchorBtn.MouseButton1Click:Connect(function()
+    local sel = _LocalPlayer.PlayerGui.StudioGui.SelectionBox
+    if sel.Adornee == nil then
+        notify("Anchor", "Select something first", "error")
+        return
+    end
+    if sel.Adornee == Workspace or sel.Adornee == game.ReplicatedStorage then
+        notify("Anchor", "Cannot select workspace/ReplicatedStorage", "error")
+        return
+    end
+    local count = 0
+    local state = false
+    for _, child in pairs(sel.Adornee:GetDescendants()) do
+        if child:IsA('BasePart') and child:GetAttribute('SL_Anchored') ~= nil then
+            child:SetAttribute('SL_Anchored', not child:GetAttribute('SL_Anchored'))
+            state = child:GetAttribute('SL_Anchored')
+            count = count + 1
+        end
+    end
+    if count > 0 then
+        notify("Anchor", (state and "Anchored " or "Unanchored ") .. count .. " part(s)", "success")
+    else
+        notify("Anchor", "No anchored parts found in selection", "error")
+    end
+end)
+
+-- Collide Button
+local collideRow = row(toolsCard, 4, true, 44)
+local collideLbl = Instance.new("TextLabel", collideRow)
+collideLbl.Size = UDim2.new(0.55, 0, 1, 0)
+collideLbl.Position = UDim2.new(0, 14, 0, 0)
+collideLbl.Text = "Toggle Collision"
+collideLbl.Font = Enum.Font.GothamSemibold
+collideLbl.TextSize = 10
+collideLbl.TextColor3 = T.text
+collideLbl.TextXAlignment = Enum.TextXAlignment.Left
+collideLbl.BackgroundTransparency = 1
+local collideBtn = Instance.new("TextButton", collideRow)
+collideBtn.Size = UDim2.new(0, 60, 0, 28)
+collideBtn.Position = UDim2.new(1, -72, 0.5, -14)
+collideBtn.Text = "Toggle"
+collideBtn.Font = Enum.Font.GothamBold
+collideBtn.TextSize = 9
+collideBtn.TextColor3 = Color3.new(1, 1, 1)
+collideBtn.BackgroundColor3 = T.accent
+collideBtn.AutoButtonColor = false
+Instance.new("UICorner", collideBtn).CornerRadius = UDim.new(0, 6)
+collideBtn.MouseEnter:Connect(function() TweenService:Create(collideBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accentLt}):Play() end)
+collideBtn.MouseLeave:Connect(function() TweenService:Create(collideBtn, TweenInfo.new(0.1), {BackgroundColor3 = T.accent}):Play() end)
+collideBtn.MouseButton1Click:Connect(function()
+    local sel = _LocalPlayer.PlayerGui.StudioGui.SelectionBox
+    if sel.Adornee == nil then
+        notify("Collide", "Select something first", "error")
+        return
+    end
+    if sel.Adornee == Workspace or sel.Adornee == game.ReplicatedStorage then
+        notify("Collide", "Cannot select workspace/ReplicatedStorage", "error")
+        return
+    end
+    local count = 0
+    local state = false
+    for _, child in pairs(sel.Adornee:GetDescendants()) do
+        if child:IsA('BasePart') and child:GetAttribute('SL_CanCollide') ~= nil then
+            child:SetAttribute('SL_CanCollide', not child:GetAttribute('SL_CanCollide'))
+            state = child:GetAttribute('SL_CanCollide')
+            count = count + 1
+        end
+    end
+    if count > 0 then
+        notify("Collide", (state and "Collision ON for " or "Collision OFF for ") .. count .. " part(s)", "success")
+    else
+        notify("Collide", "No collidable parts found in selection", "error")
+    end
+end)
+
+-- =============================================
+-- STUDIO GUI TOOLBAR TOGGLE
+-- =============================================
+local toolbarGui = Instance.new('ScreenGui', CoreGui)
+toolbarGui.Name = 'ModelToggler'
+local toolbarBtn = _LocalPlayer.PlayerGui.StudioGui.MainBar.toolbox:Clone()
+local tbScript = toolbarBtn:FindFirstChildOfClass('LocalScript')
+if tbScript then tbScript:Destroy() end
+if toolbarBtn:FindFirstChild('toolbox') then
+    toolbarBtn.toolbox.Image = 'rbxassetid://17329820770'
+    toolbarBtn.toolbox.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    local corner = Instance.new('UICorner', toolbarBtn.toolbox)
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Name = 'Rounding'
+    local imgBg = Instance.new('ImageLabel', toolbarBtn.toolbox)
+    imgBg.BackgroundTransparency = 1
+    imgBg.Image = 'rbxassetid://9098469826'
+    imgBg.ImageColor3 = Color3.fromRGB(24, 24, 24)
+    imgBg.Position = UDim2.new(0, -12, 0, -12)
+    imgBg.ScaleType = 'Slice'
+    imgBg.Size = UDim2.new(1, 24, 1, 24)
+    imgBg.SliceCenter = Rect.new(20, 20, 492, 492)
+    toolbarBtn.toolbox.Name = 'ImageToggle'
+end
+toolbarBtn.Position = UDim2.new(0, 357, 0, 3)
+toolbarBtn.Parent = _LocalPlayer.PlayerGui.StudioGui.MainBar
+toolbarBtn.Name = 'Model Inserter Toggle'
+toolbarBtn.Text = 'Model Inserter'
+toolbarBtn.MouseButton1Click:Connect(function()
+    win.Visible = not win.Visible
+end)
+
+-- =============================================
+-- FINALIZE
+-- =============================================
+local vp = Workspace.CurrentCamera.ViewportSize
+win.Position = UDim2.new(0, (vp.X - WIN_W) / 2, 0, (vp.Y - WIN_H) / 2)
+win.Visible = true
+win.Size = UDim2.new(0, 0, 0, 0)
+win.BackgroundTransparency = 1
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, WIN_W, 0, WIN_H), BackgroundTransparency = 0}):Play()
+
+-- RightShift toggles the entire UI
+UserInputService.InputBegan:Connect(function(i, gpe)
+    if not gpe and i.KeyCode == Enum.KeyCode.RightShift then
+        sg.Enabled = not sg.Enabled
+    end
+end)
+
+notify("studio assistant", "Ready — RightShift to toggle UI", "success")
