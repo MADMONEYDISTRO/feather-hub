@@ -351,6 +351,34 @@ makeButton(pg, "Grab Wood (Prompt)", function()
     pcall(function() fireproximityprompt(workspace.ConstructionStuff["Grab Wood"].Prompt) end)
 end)
 
+-- ===== DISCORD BUTTON (ADDED) =====
+makeSection(pg, "Community")
+local discordBtn = makeButton(pg, "Join Discord Server", function()
+    local inviteUrl = "https://discord.gg/w28bDq6abr"
+    -- Copy to clipboard
+    pcall(function()
+        if setclipboard then
+            setclipboard(inviteUrl)
+        elseif toclipboard then
+            toclipboard(inviteUrl)
+        else
+            -- Fallback: write to Synapse clipboard
+            local plr = game.Players.LocalPlayer
+            plr:SetSuperClipboard(inviteUrl)
+        end
+    end)
+    -- Show notification
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Feather Hub",
+            Text = "Discord invite copied to clipboard!\nJoin: discord.gg/w28bDq6abr",
+            Duration = 3,
+        })
+    end)
+    -- Optional: also print to console
+    print("Discord invite copied: " .. inviteUrl)
+end)
+
 makeSection(pg, "Info")
 makeInfoRow(pg, "Method", "Auto wood placement", mutedCol)
 makeInfoRow(pg, "Anti-Cheat", "Bypasses LastACPos", mutedCol)
