@@ -3,6 +3,7 @@
     - ESP Highlights + Arrows + Color‑Coded Tracers
     - Jump Unlocker, Anti‑Slowness, Fullbright
     - Generator Solver, Stamina Mods
+    - Discord button (Feather style)
 ]]
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -459,7 +460,7 @@ local function tw(t,s,d) return TweenInfo.new(t or 0.2,s or Enum.EasingStyle.Qua
 local function mkC(p,r) Instance.new("UICorner",p).CornerRadius=UDim.new(0,r or 6) end
 
 local sg=Instance.new("ScreenGui"); sg.Name="FeatherForsaken"; sg.ResetOnSpawn=false; sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; sg.IgnoreGuiInset=true; sg.DisplayOrder=999; sg.Parent=Player:WaitForChild("PlayerGui")
-local WIN_W=isMobile and 340 or 380; local WIN_H=isMobile and 530 or 510; local HDR_H=44
+local WIN_W=isMobile and 340 or 380; local WIN_H=isMobile and 550 or 530; local HDR_H=44
 local win=Instance.new("Frame"); win.Size=UDim2.new(0,WIN_W,0,WIN_H); win.Position=UDim2.new(0.5,-math.floor(WIN_W/2),0.5,-math.floor(WIN_H/2)); win.BackgroundColor3=bgCol; win.BorderSizePixel=0; win.ClipsDescendants=true; win.Parent=sg; mkC(win,14); Instance.new("UIStroke",win).Color=borderCol
 local glow=Instance.new("ImageLabel"); glow.Size=UDim2.new(1,40,1,40); glow.Position=UDim2.new(0,-20,0,-20); glow.BackgroundTransparency=1; glow.Image="rbxassetid://1316045217"; glow.ImageColor3=Color3.fromRGB(160,140,40); glow.ImageTransparency=0.88; glow.ScaleType=Enum.ScaleType.Slice; glow.SliceCenter=Rect.new(10,10,118,118); glow.ZIndex=-1; glow.Parent=win
 
@@ -615,8 +616,13 @@ end)
 makeSection(content, "Utility")
 makeToggle(content, "Anti-Slow & Fullbright", true, function(v) if v then AntiDebuff:Start() else AntiDebuff:Stop() end end)
 
+-- Join Discord button at the bottom (Feather style)
+makeButton(content, "Join Discord", function()
+    setclipboard("https://discord.gg/w28bDq6abr")  -- replace with your actual Discord invite
+end)
+
 setupAutoUpdate()
 
 win.Size=UDim2.new(0,0,0,0); win.BackgroundTransparency=1; TS:Create(win,tw(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,WIN_W,0,WIN_H),BackgroundTransparency=0}):Play()
 task.spawn(function() while sg and sg.Parent do TS:Create(glow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.82}):Play(); task.wait(2.4); TS:Create(glow,TweenInfo.new(2.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{ImageTransparency=0.92}):Play(); task.wait(2.4) end end)
-print("Feather Hub | Forsaken v3.2 loaded – Tracers, Jump Unlocker, Anti‑Debuff.")
+print("Feather Hub | Forsaken v3.2 loaded")
