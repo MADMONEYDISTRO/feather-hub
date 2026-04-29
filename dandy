@@ -699,7 +699,7 @@ local function toggleSpin(state)
 end
 
 local godModeActive = false
-local godModeHeight = 6.6
+local godModeHeight = 11
 local function updateGodModeHeight(val) godModeHeight = tonumber(val) or 6.6 end
 local function godModeLoop()
     while godModeActive do
