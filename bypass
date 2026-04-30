@@ -1,0 +1,620 @@
+
+local HttpService         = game:GetService("HttpService")
+local TweenService        = game:GetService("TweenService")
+local UserInputService    = game:GetService("UserInputService")
+local CoreGui             = game:GetService("CoreGui")
+local Players             = game:GetService("Players")
+local RunService          = game:GetService("RunService")
+local Player              = Players.LocalPlayer
+
+-- Accent color (purple)
+local ACCENT = Color3.fromRGB(110, 95, 210)
+
+-- Theme constants (identical to Feather Hub free)
+local T = {
+    bg        = Color3.fromRGB(13,13,18),
+    sidebar   = Color3.fromRGB(18,18,25),
+    card      = Color3.fromRGB(23,23,32),
+    border    = Color3.fromRGB(42,42,58),
+    text      = Color3.fromRGB(228,228,240),
+    muted     = Color3.fromRGB(95,95,118),
+    dim       = Color3.fromRGB(30,30,44),
+    sep       = Color3.fromRGB(34,34,50),
+    header    = Color3.fromRGB(16,16,22),
+    inputBg   = Color3.fromRGB(9,9,15),
+    accent    = ACCENT,
+    accentLt  = Color3.fromRGB(140,125,240),
+    accentDim = Color3.fromRGB(65,55,130),
+    green     = Color3.fromRGB(90,195,145),
+    red       = Color3.fromRGB(210,75,95),
+    gold      = Color3.fromRGB(185,150,60),
+}
+
+-- Window dimensions
+local WIN_W, WIN_H, SIDE_W, HDR_H = 490, 440, 108, 48
+
+-- Helper Tween
+local function tw(t,s,d) return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
+
+-- =================== Bypass Logic ===================
+local spoofedKey = "FEATHER-KEY-" .. tostring(math.random(100000, 999999))
+local bypassActive = false
+local logLabel
+
+local function addLog(text, color)
+    if logLabel and logLabel.Parent then
+        logLabel.Text = logLabel.Text .. "\n" .. text
+        logLabel.TextColor3 = color or T.text
+        local scroll = logLabel.Parent.Parent
+        if scroll and scroll:IsA("ScrollingFrame") then
+            scroll.CanvasPosition = Vector2.new(0, scroll.CanvasSize.Y.Offset)
+        end
+    end
+end
+
+local function enableBypass()
+    if bypassActive then return end
+    bypassActive = true
+
+    -- Overwrite common key check globals
+    local keyFunctions = {
+        "is_key_valid","check_key","verify_key","get_key","key_check",
+        "validate_key","is_executor_whitelisted","is_whitelisted",
+        "check_whitelist","is_key","key_verify","getkey","checkkey","validatekey",
+    }
+    for _, fnName in ipairs(keyFunctions) do
+        if not _G[fnName] or type(_G[fnName]) ~= "function" then
+            _G[fnName] = function() return true end
+        end
+    end
+    _G.get_key = function() return spoofedKey end
+    _G.getkey = _G.get_key
+
+    -- Hook game.HttpGet
+    local originalHttpGet = game.HttpGet
+    if type(originalHttpGet) == "function" then
+        local hooked = function(url)
+            local lowerUrl = url:lower()
+            if lowerUrl:find("key") or lowerUrl:find("whitelist") then
+                addLog("🌐 Intercepted: " .. url, T.muted)
+                return [[{"success":true,"key":"]], spoofedKey, [["}]]
+            end
+            return originalHttpGet(url)
+        end
+        local ok = pcall(function() game.HttpGet = hooked end)
+        if ok then
+            addLog("🔗 HttpGet hooked for key requests.", T.green)
+        else
+            addLog("⚠ Could not hook HttpGet (global bypass still active)", T.red)
+        end
+    end
+
+    _G.whitelist_status = true
+    _G.executor_whitelisted = true
+    _G.script_key = spoofedKey
+    _G.GLOBAL_KEY = spoofedKey
+    addLog("✅ Bypass enabled – all key functions mocked.", T.green)
+end
+
+-- =================== UI Build ===================
+local sg = Instance.new("ScreenGui")
+sg.Name = "FeatherBypass"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.DisplayOrder = 100
+sg.IgnoreGuiInset = true
+pcall(function() sg.Parent = CoreGui end)
+if not sg.Parent then sg.Parent = Player:WaitForChild("PlayerGui") end
+
+-- Main window
+local win = Instance.new("Frame")
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.BackgroundColor3 = T.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 1
+win.Parent = sg
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 16)
+
+local winStroke = Instance.new("UIStroke")
+winStroke.Color = T.border
+winStroke.Thickness = 1
+winStroke.Parent = win
+
+-- ================= SIDEBAR =================
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+sidebar.BackgroundColor3 = T.sidebar
+sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 3
+sidebar.Parent = win
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 16)
+
+-- Cover to square-off right side corners
+local sbCover = Instance.new("Frame")
+sbCover.Size = UDim2.new(0, 16, 1, 0)
+sbCover.Position = UDim2.new(1, -16, 0, 0)
+sbCover.BackgroundColor3 = T.sidebar
+sbCover.BorderSizePixel = 0
+sbCover.ZIndex = 3
+sbCover.Parent = sidebar
+
+-- Logo
+local logoPill = Instance.new("Frame")
+logoPill.Size = UDim2.new(0, 40, 0, 40)
+logoPill.Position = UDim2.new(0.5, -20, 0, 12)
+logoPill.BackgroundColor3 = T.accent
+logoPill.BorderSizePixel = 0
+logoPill.ZIndex = 5
+logoPill.Parent = sidebar
+Instance.new("UICorner", logoPill).CornerRadius = UDim.new(0, 11)
+
+local logoF = Instance.new("TextLabel")
+logoF.Size = UDim2.new(1, 0, 1, 0)
+logoF.Text = "F"
+logoF.TextSize = 20
+logoF.Font = Enum.Font.GothamBold
+logoF.TextColor3 = Color3.new(1,1,1)
+logoF.BackgroundTransparency = 1
+logoF.ZIndex = 6
+logoF.Parent = logoPill
+
+-- Top separator
+local sbTopSep = Instance.new("Frame")
+sbTopSep.Size = UDim2.new(0.6, 0, 0, 1)
+sbTopSep.Position = UDim2.new(0.2, 0, 0, 60)
+sbTopSep.BackgroundColor3 = T.sep
+sbTopSep.BorderSizePixel = 0
+sbTopSep.ZIndex = 4
+sbTopSep.Parent = sidebar
+
+-- Navigation container
+local navCont = Instance.new("Frame")
+navCont.Size = UDim2.new(1, 0, 1, -140)
+navCont.Position = UDim2.new(0, 0, 0, 68)
+navCont.BackgroundTransparency = 1
+navCont.ZIndex = 4
+navCont.Parent = sidebar
+
+local navList = Instance.new("UIListLayout")
+navList.SortOrder = Enum.SortOrder.LayoutOrder
+navList.VerticalAlignment = Enum.VerticalAlignment.Top
+navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+navList.Padding = UDim.new(0, 4)
+navList.Parent = navCont
+
+-- Bottom separator
+local sbBotSep = Instance.new("Frame")
+sbBotSep.Size = UDim2.new(0.6, 0, 0, 1)
+sbBotSep.Position = UDim2.new(0.2, 0, 1, -50)
+sbBotSep.BackgroundColor3 = T.sep
+sbBotSep.BorderSizePixel = 0
+sbBotSep.ZIndex = 4
+sbBotSep.Parent = sidebar
+
+-- Version label
+local wmVer = Instance.new("TextLabel")
+wmVer.Size = UDim2.new(1, 0, 0, 12)
+wmVer.Position = UDim2.new(0, 0, 1, -38)
+wmVer.Text = "v2.0  •  bypass"
+wmVer.Font = Enum.Font.Gotham
+wmVer.TextSize = 7
+wmVer.TextColor3 = T.muted
+wmVer.BackgroundTransparency = 1
+wmVer.TextXAlignment = Enum.TextXAlignment.Center
+wmVer.ZIndex = 5
+wmVer.Parent = sidebar
+
+-- Tab button (only one: "Bypass")
+local tabBtnBg = Instance.new("Frame")
+tabBtnBg.Size = UDim2.new(1, -5, 1, -6)
+tabBtnBg.Position = UDim2.new(0, 5, 0, 3)
+tabBtnBg.BackgroundColor3 = T.accent  -- highlighted
+tabBtnBg.BackgroundTransparency = 0.12
+tabBtnBg.BorderSizePixel = 0
+tabBtnBg.ZIndex = 4
+tabBtnBg.Parent = Instance.new("Frame")
+tabBtnBg.Parent.Size = UDim2.new(1, -8, 0, 38)
+tabBtnBg.Parent.BackgroundTransparency = 1
+tabBtnBg.Parent.LayoutOrder = 1
+tabBtnBg.Parent.Parent = navCont
+Instance.new("UICorner", tabBtnBg).CornerRadius = UDim.new(0, 8)
+
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(0, 3, 0.45, 0)
+tabBar.Position = UDim2.new(0, 0, 0.275, 0)
+tabBar.BackgroundColor3 = T.accent
+tabBar.BackgroundTransparency = 0
+tabBar.BorderSizePixel = 0
+tabBar.ZIndex = 5
+tabBar.Parent = tabBtnBg.Parent
+Instance.new("UICorner", tabBar).CornerRadius = UDim.new(1, 0)
+
+local tabLabel = Instance.new("TextLabel")
+tabLabel.Size = UDim2.new(1, -14, 1, 0)
+tabLabel.Position = UDim2.new(0, 10, 0, 0)
+tabLabel.Text = "BYPASS"
+tabLabel.Font = Enum.Font.GothamBold
+tabLabel.TextSize = 7
+tabLabel.TextColor3 = Color3.new(1,1,1)
+tabLabel.BackgroundTransparency = 1
+tabLabel.TextXAlignment = Enum.TextXAlignment.Left
+tabLabel.ZIndex = 5
+tabLabel.Parent = tabBtnBg.Parent
+
+local tabHit = Instance.new("TextButton")
+tabHit.Size = UDim2.new(1, 0, 1, 0)
+tabHit.BackgroundTransparency = 1
+tabHit.Text = ""
+tabHit.ZIndex = 6
+tabHit.Parent = tabBtnBg.Parent
+
+-- ================= HEADER =================
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+header.Position = UDim2.new(0, SIDE_W, 0, 0)
+header.BackgroundColor3 = T.header
+header.BorderSizePixel = 0
+header.ZIndex = 3
+header.Parent = win
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 16)
+
+local hdrLC = Instance.new("Frame")
+hdrLC.Size = UDim2.new(0, 16, 1, 0)
+hdrLC.BackgroundColor3 = T.header
+hdrLC.BorderSizePixel = 0
+hdrLC.ZIndex = 3
+hdrLC.Parent = header
+
+local hdrBC = Instance.new("Frame")
+hdrBC.Size = UDim2.new(0, 16, 0, 16)
+hdrBC.Position = UDim2.new(1, -16, 1, -16)
+hdrBC.BackgroundColor3 = T.header
+hdrBC.BorderSizePixel = 0
+hdrBC.ZIndex = 3
+hdrBC.Parent = header
+
+local hdrLine = Instance.new("Frame")
+hdrLine.Size = UDim2.new(1, -10, 0, 1)
+hdrLine.Position = UDim2.new(0, 5, 1, -1)
+hdrLine.BackgroundColor3 = T.sep
+hdrLine.BorderSizePixel = 0
+hdrLine.ZIndex = 4
+hdrLine.Parent = header
+
+local hdrTitle = Instance.new("TextLabel")
+hdrTitle.Size = UDim2.new(1, -140, 1, 0)
+hdrTitle.Position = UDim2.new(0, 16, 0, 0)
+hdrTitle.Text = "Feather Bypass"
+hdrTitle.Font = Enum.Font.GothamBold
+hdrTitle.TextSize = 13
+hdrTitle.TextColor3 = T.text
+hdrTitle.BackgroundTransparency = 1
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+hdrTitle.ZIndex = 5
+hdrTitle.Parent = header
+
+-- Badge (FREE)
+local hdrBadge = Instance.new("Frame")
+hdrBadge.Size = UDim2.new(0, 52, 0, 20)
+hdrBadge.Position = UDim2.new(0, 260, 0.5, -10)
+hdrBadge.BackgroundColor3 = T.accentDim
+hdrBadge.BorderSizePixel = 0
+hdrBadge.ZIndex = 5
+hdrBadge.Parent = header
+Instance.new("UICorner", hdrBadge).CornerRadius = UDim.new(0, 6)
+
+local hdrBadgeStroke = Instance.new("UIStroke")
+hdrBadgeStroke.Color = T.accent
+hdrBadgeStroke.Thickness = 1
+hdrBadgeStroke.Parent = hdrBadge
+
+local hdrBadgeLbl = Instance.new("TextLabel")
+hdrBadgeLbl.Size = UDim2.new(1, 0, 1, 0)
+hdrBadgeLbl.Text = "BYPASS"
+hdrBadgeLbl.Font = Enum.Font.GothamBold
+hdrBadgeLbl.TextSize = 7
+hdrBadgeLbl.TextColor3 = T.text
+hdrBadgeLbl.BackgroundTransparency = 1
+hdrBadgeLbl.ZIndex = 6
+hdrBadgeLbl.Parent = hdrBadge
+
+-- Control buttons
+local function makeHdrBtn(xPos, symbol)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 28, 0, 28)
+    b.Position = UDim2.new(1, xPos, 0.5, -14)
+    b.Text = symbol
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 16
+    b.TextColor3 = T.muted
+    b.BackgroundColor3 = T.dim
+    b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    b.ZIndex = 5
+    b.Parent = header
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+    return b
+end
+
+local isMinimized = false
+local minBtn = makeHdrBtn(-66, "–")
+minBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, HDR_H)}):Play()
+        sidebar.Visible = false
+        contentArea.Visible = false
+        TweenService:Create(header, tw(0.3), {Size = UDim2.new(1, 0, 0, HDR_H), Position = UDim2.new(0, 0, 0, 0)}):Play()
+        minBtn.Text = "+"
+    else
+        TweenService:Create(win, tw(0.3), {Size = UDim2.new(0, WIN_W, 0, WIN_H)}):Play()
+        sidebar.Visible = true
+        contentArea.Visible = true
+        TweenService:Create(header, tw(0.3), {Size = UDim2.new(1, -SIDE_W, 0, HDR_H), Position = UDim2.new(0, SIDE_W, 0, 0)}):Play()
+        minBtn.Text = "–"
+    end
+end)
+
+local closeBtn = makeHdrBtn(-34, "×")
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3 = T.red, TextColor3 = Color3.new(1,1,1)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play() end)
+minBtn.MouseEnter:Connect(function() TweenService:Create(minBtn, tw(), {BackgroundColor3 = T.accent, TextColor3 = Color3.new(1,1,1)}):Play() end)
+minBtn.MouseLeave:Connect(function() TweenService:Create(minBtn, tw(), {BackgroundColor3 = T.dim, TextColor3 = T.muted}):Play() end)
+
+-- =============== CONTENT AREA ===============
+local contentArea = Instance.new("Frame")
+contentArea.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+contentArea.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+contentArea.BackgroundTransparency = 1
+contentArea.BorderSizePixel = 0
+contentArea.ZIndex = 2
+contentArea.Visible = true
+contentArea.Parent = win
+
+-- Scrolling inside content
+local scrollMain = Instance.new("ScrollingFrame")
+scrollMain.Size = UDim2.new(1, 0, 1, 0)
+scrollMain.BackgroundTransparency = 1
+scrollMain.BorderSizePixel = 0
+scrollMain.ScrollBarThickness = 3
+scrollMain.ScrollBarImageColor3 = T.accent
+scrollMain.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollMain.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollMain.ScrollingDirection = Enum.ScrollingDirection.Y
+scrollMain.ElasticBehavior = Enum.ElasticBehavior.Never
+scrollMain.Parent = contentArea
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+listLayout.Padding = UDim.new(0, 8)
+listLayout.Parent = scrollMain
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 12)
+padding.PaddingBottom = UDim.new(0, 16)
+padding.PaddingLeft = UDim.new(0, 12)
+padding.PaddingRight = UDim.new(0, 12)
+padding.Parent = scrollMain
+
+-- ============== CARD BUILDER ==============
+local function createCard(parent, order)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 0, 0)
+    card.AutomaticSize = Enum.AutomaticSize.Y
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    card.LayoutOrder = order
+    card.ZIndex = 3
+    card.Parent = parent
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 11)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = T.border
+    stroke.Thickness = 1
+    stroke.Parent = card
+    local ll = Instance.new("UIListLayout")
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    ll.Padding = UDim.new(0, 8)
+    ll.Parent = card
+    return card
+end
+
+local function makeRow(card, order, isLast, h)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, h or 46)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.ZIndex = 4
+    row.Parent = card
+    if not isLast then
+        local sep = Instance.new("Frame")
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+        sep.ZIndex = 4
+        sep.Parent = row
+    end
+    return row
+end
+
+-- =============== CARDS ===============
+-- Card 1: Status & Activate
+local card1 = createCard(scrollMain, 1)
+local row1 = makeRow(card1, 1, true, 54)
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0.6, 0, 1, 0)
+statusLabel.Position = UDim2.new(0, 16, 0, 0)
+statusLabel.Text = "Status: Not bypassed"
+statusLabel.Font = Enum.Font.GothamSemibold
+statusLabel.TextSize = 11
+statusLabel.TextColor3 = T.red
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.BackgroundTransparency = 1
+statusLabel.ZIndex = 5
+statusLabel.Parent = row1
+
+local activateBtn = Instance.new("TextButton")
+activateBtn.Size = UDim2.new(0, 120, 0, 32)
+activateBtn.Position = UDim2.new(1, -132, 0.5, -16)
+activateBtn.Text = "ENABLE BYPASS"
+activateBtn.Font = Enum.Font.GothamBold
+activateBtn.TextSize = 8
+activateBtn.TextColor3 = Color3.new(1,1,1)
+activateBtn.BackgroundColor3 = T.accent
+activateBtn.BorderSizePixel = 0
+activateBtn.AutoButtonColor = false
+activateBtn.ZIndex = 5
+activateBtn.Parent = row1
+Instance.new("UICorner", activateBtn).CornerRadius = UDim.new(0, 7)
+
+activateBtn.MouseButton1Click:Connect(function()
+    enableBypass()
+    statusLabel.Text = "Status: Bypass active ✅"
+    statusLabel.TextColor3 = T.green
+    activateBtn.Text = "ACTIVE"
+    activateBtn.BackgroundColor3 = T.green
+end)
+
+-- Card 2: Auto-bypass toggle
+local card2 = createCard(scrollMain, 2)
+local row2 = makeRow(card2, 1, true, 46)
+
+local autoLabel = Instance.new("TextLabel")
+autoLabel.Size = UDim2.new(0.65, 0, 1, 0)
+autoLabel.Position = UDim2.new(0, 16, 0, 0)
+autoLabel.Text = "Auto-bypass on load"
+autoLabel.Font = Enum.Font.GothamSemibold
+autoLabel.TextSize = 10
+autoLabel.TextColor3 = T.text
+autoLabel.TextXAlignment = Enum.TextXAlignment.Left
+autoLabel.BackgroundTransparency = 1
+autoLabel.ZIndex = 5
+autoLabel.Parent = row2
+
+local toggleFrame = Instance.new("TextButton")
+toggleFrame.Size = UDim2.new(0, 38, 0, 20)
+toggleFrame.Position = UDim2.new(1, -52, 0.5, -10)
+toggleFrame.BackgroundColor3 = T.dim
+toggleFrame.BorderSizePixel = 0
+toggleFrame.Text = ""
+toggleFrame.AutoButtonColor = false
+toggleFrame.ZIndex = 6
+toggleFrame.Parent = row2
+Instance.new("UICorner", toggleFrame).CornerRadius = UDim.new(1, 0)
+
+local toggleKnob = Instance.new("Frame")
+toggleKnob.Size = UDim2.new(0, 16, 0, 16)
+toggleKnob.Position = UDim2.new(0, 2, 0.5, -8)
+toggleKnob.BackgroundColor3 = Color3.new(1,1,1)
+toggleKnob.BorderSizePixel = 0
+toggleKnob.ZIndex = 7
+toggleKnob.Parent = toggleFrame
+Instance.new("UICorner", toggleKnob).CornerRadius = UDim.new(1, 0)
+
+local autoOn = false
+toggleFrame.MouseButton1Click:Connect(function()
+    autoOn = not autoOn
+    if autoOn then
+        TweenService:Create(toggleFrame, tw(0.15), {BackgroundColor3 = T.accent}):Play()
+        TweenService:Create(toggleKnob, tw(0.15), {Position = UDim2.new(1, -18, 0.5, -8)}):Play()
+        enableBypass()
+    else
+        TweenService:Create(toggleFrame, tw(0.15), {BackgroundColor3 = T.dim}):Play()
+        TweenService:Create(toggleKnob, tw(0.15), {Position = UDim2.new(0, 2, 0.5, -8)}):Play()
+    end
+end)
+
+-- Card 3: Spoofed key
+local card3 = createCard(scrollMain, 3)
+local row3 = makeRow(card3, 1, true, 48)
+
+local keyPrompt = Instance.new("TextLabel")
+keyPrompt.Size = UDim2.new(0, 110, 1, 0)
+keyPrompt.Position = UDim2.new(0, 16, 0, 0)
+keyPrompt.Text = "Spoofed Key:"
+keyPrompt.Font = Enum.Font.GothamSemibold
+keyPrompt.TextSize = 10
+keyPrompt.TextColor3 = T.text
+keyPrompt.TextXAlignment = Enum.TextXAlignment.Left
+keyPrompt.BackgroundTransparency = 1
+keyPrompt.ZIndex = 5
+keyPrompt.Parent = row3
+
+local keyBox = Instance.new("TextBox")
+keyBox.Size = UDim2.new(1, -130, 0, 28)
+keyBox.Position = UDim2.new(0, 118, 0.5, -14)
+keyBox.Text = spoofedKey
+keyBox.Font = Enum.Font.GothamMedium
+keyBox.TextSize = 10
+keyBox.TextColor3 = T.accent
+keyBox.BackgroundColor3 = T.inputBg
+keyBox.BorderSizePixel = 0
+keyBox.ClearTextOnFocus = true
+keyBox.ZIndex = 5
+keyBox.Parent = row3
+Instance.new("UICorner", keyBox).CornerRadius = UDim.new(0, 6)
+
+-- Card 4: Log
+local card4 = createCard(scrollMain, 4)
+card4.AutomaticSize = Enum.AutomaticSize.None
+card4.Size = UDim2.new(1, 0, 0, 150)
+
+local logScroll = Instance.new("ScrollingFrame")
+logScroll.Size = UDim2.new(1, -16, 1, -16)
+logScroll.Position = UDim2.new(0, 8, 0, 8)
+logScroll.BackgroundTransparency = 1
+logScroll.BorderSizePixel = 0
+logScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+logScroll.ScrollBarThickness = 2
+logScroll.ScrollBarImageColor3 = T.accent
+logScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+logScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+logScroll.Parent = card4
+
+logLabel = Instance.new("TextLabel")
+logLabel.Size = UDim2.new(1, -4, 0, 0)
+logLabel.AutomaticSize = Enum.AutomaticSize.Y
+logLabel.BackgroundTransparency = 1
+logLabel.Text = "-- Feather Bypass Log --"
+logLabel.TextColor3 = T.muted
+logLabel.Font = Enum.Font.Gotham
+logLabel.TextSize = 9
+logLabel.TextXAlignment = Enum.TextXAlignment.Left
+logLabel.TextWrapped = true
+logLabel.Parent = logScroll
+
+addLog(" Feather Bypass v2.0 ready", T.accent)
+addLog(" Key: " .. spoofedKey, T.muted)
+addLog("Press ENABLE BYPASS or toggle auto-bypass.", T.muted)
+
+-- Dragging
+local dragging, dragStart, winStart
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        winStart = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        local camSize = workspace.CurrentCamera.ViewportSize
+        win.Position = UDim2.new(
+            0, math.clamp(winStart.X.Offset + delta.X, 0, camSize.X - WIN_W),
+            0, math.clamp(winStart.Y.Offset + delta.Y, 0, camSize.Y - WIN_H)
+        )
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
