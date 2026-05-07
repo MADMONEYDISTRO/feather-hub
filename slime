@@ -1,8 +1,4 @@
---[[
-    FEATHER HUB | Slime RNG
-    Purple theme, left-side tabs, all original features
-    Discord button at sidebar bottom
-]]
+
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local Players = game:GetService("Players")
@@ -14,6 +10,7 @@ local WS = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 -- Theme (FeatherHub Purple)
 local T = {
@@ -40,7 +37,7 @@ local WIN_W = 560; local WIN_H = 460
 local SIDE_W = 120; local HDR_H = 48
 
 local function tw(t,s,d) return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
-local function mkC(p,r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,r or 8); c.Parent = p; return c end
+local function mkC(p,r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = p; return c end
 
 -- Build UI
 local sg = Instance.new("ScreenGui"); sg.Name = "FeatherSlimeRNG"; sg.ResetOnSpawn = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; sg.DisplayOrder = 999; sg.IgnoreGuiInset = true
@@ -68,7 +65,7 @@ local discBtn = Instance.new("TextButton"); discBtn.Size = UDim2.new(0.85,0,0,36
 discBtn.MouseButton1Click:Connect(function() setclipboard("https://discord.gg/nJ2Ca8dH") end)
 
 -- Version label
-local verLbl = Instance.new("TextLabel"); verLbl.Size = UDim2.new(1,0,0,12); verLbl.Position = UDim2.new(0,0,1,-16); verLbl.Text = "v1.0 • FeatherHub"; verLbl.Font = Enum.Font.Gotham; verLbl.TextSize = 7; verLbl.TextColor3 = T.muted; verLbl.BackgroundTransparency = 1; verLbl.TextXAlignment = Enum.TextXAlignment.Center; verLbl.ZIndex = 5; verLbl.Parent = sidebar
+local verLbl = Instance.new("TextLabel"); verLbl.Size = UDim2.new(1,0,0,12); verLbl.Position = UDim2.new(0,0,1,-16); verLbl.Text = "v1.1 • FeatherHub"; verLbl.Font = Enum.Font.Gotham; verLbl.TextSize = 7; verLbl.TextColor3 = T.muted; verLbl.BackgroundTransparency = 1; verLbl.TextXAlignment = Enum.TextXAlignment.Center; verLbl.ZIndex = 5; verLbl.Parent = sidebar
 
 -- Header
 local hdr = Instance.new("Frame"); hdr.Size = UDim2.new(1,-SIDE_W,0,HDR_H); hdr.Position = UDim2.new(0,SIDE_W,0,0); hdr.BackgroundColor3 = T.header; hdr.BorderSizePixel = 0; hdr.ZIndex = 3; hdr.Parent = win; mkC(hdr,14)
@@ -208,34 +205,39 @@ local function createTab(name, order)
     return page
 end
 
--- Game remote paths
+-- ========== GAME REMOTES (only the ones that exist) ==========
 local Network = ReplicatedStorage.Packages._Index["leifstout_networker@0.3.1"].networker._remotes
 local RollRF = Network.RollService.RemoteFunction
 local UpgradeRF = Network.UpgradeService.RemoteFunction
--- Additional remotes (guessed for full functionality)
-local ZoneRF = Network.ZoneService.RemoteFunction
-local RebirthRF = Network.RebirthService.RemoteFunction
-local IndexRF = Network.IndexService.RemoteFunction
-local LootRF = Network.LootService.RemoteFunction
-local RecipeRF = Network.RecipeService.RemoteFunction
-local CraftRF = Network.CraftingService.RemoteFunction
-local FeedRF = Network.FeedService.RemoteFunction
-local XpTransferRF = Network.XpTransferService.RemoteFunction
 
 -- Feature toggles
 local feats = {
-    AutoRoll = false, AutoEquip = false, AutoUpgrade = false,
-    AutoRebirth = false, AutoIndex = false, AutoLoot = false,
-    AutoBuyZone = false, AutoZoneTp = false, AutoRecipe = false,
+    AutoRoll = false,
+    AutoUpgrade = false,
+    AutoEquip = false,
+    AutoRebirth = false,
+    AutoIndex = false,
+    AutoLoot = false,
+    AutoBuyZone = false,
+    AutoZoneTp = false,
+    AutoRecipe = false,
     AutoRedeemCodes = false,
-    AutoUsePotions = false, AutoUseDices = false,
-    AutoCraft = false, ProtectTopSlimes = true, ProtectN = 10,
-    AutoFeedBest = false, AutoXpTransfer = false,
-    AntiAfk = false, WalkSpeedVal = 16, MaxZoomVal = 400,
-    AntiStaff = false, ServerLuckHopper = false,
+    AutoUsePotions = false,
+    AutoUseDices = false,
+    AutoCraft = false,
+    ProtectTopSlimes = true,
+    ProtectN = 10,
+    AutoFeedBest = false,
+    AutoXpTransfer = false,
+    AntiAfk = false,
+    WalkSpeedVal = 16,
+    MaxZoomVal = 400,
+    AntiStaff = false,
+    ServerLuckHopper = false,
 }
 
--- Loops
+-- ========== WORKING AUTO LOOPS ==========
+-- Auto Roll (works)
 task.spawn(function()
     while task.wait(0.1) do
         if feats.AutoRoll then
@@ -244,19 +246,11 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function()
-    while task.wait(1) do
-        if feats.AutoEquip then
-            -- Auto equip best slime: compare stats, equip best (implementation placeholder)
-            pcall(function() RollRF:InvokeServer("equipBest") end) -- assuming
-        end
-    end
-end)
-
+-- Auto Upgrade (works)
 task.spawn(function()
     while task.wait(2) do
         if feats.AutoUpgrade then
-            local upgrades = {"voidRolls","rollSpeed","luck","luck2","inverted","shiny","jackpot"} -- example
+            local upgrades = {"voidRolls","rollSpeed","luck","luck2","inverted","shiny","jackpot"}
             for _, up in ipairs(upgrades) do
                 pcall(function() UpgradeRF:InvokeServer("requestUnlock", up) end)
             end
@@ -264,113 +258,7 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function()
-    while task.wait(5) do
-        if feats.AutoRebirth then
-            pcall(function() RebirthRF:InvokeServer("requestRebirth") end)
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(3) do
-        if feats.AutoIndex then
-            pcall(function() IndexRF:InvokeServer("claimRewards") end)
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(1) do
-        if feats.AutoLoot then
-            pcall(function() LootRF:InvokeServer("collectLoot") end)
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(5) do
-        if feats.AutoBuyZone then
-            pcall(function() ZoneRF:InvokeServer("buyNextZone") end)
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(1) do
-        if feats.AutoZoneTp then
-            pcall(function() ZoneRF:InvokeServer("tpBestZone") end)
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(2) do
-        if feats.AutoRecipe then
-            pcall(function() RecipeRF:InvokeServer("collectRecipes") end)
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(10) do
-        if feats.AutoRedeemCodes then
-            -- Known Slime RNG codes
-            local codes = {"SLIME","RNG","FREELUCK","MOREROLLS","BONUS"}
-            for _, code in ipairs(codes) do
-                pcall(function() ReplicatedStorage.Remotes.Redeem:InvokeServer(code) end)
-            end
-        end
-    end
-end)
-
--- Potions & Dices auto use
-task.spawn(function()
-    while task.wait(2) do
-        if feats.AutoUsePotions then
-            for _, item in ipairs(feats.SelectedPotions or {}) do
-                pcall(function() ReplicatedStorage.Remotes.UseItem:InvokeServer(item) end)
-            end
-        end
-        if feats.AutoUseDices then
-            for _, item in ipairs(feats.SelectedDices or {}) do
-                pcall(function() ReplicatedStorage.Remotes.UseItem:InvokeServer(item) end)
-            end
-        end
-    end
-end)
-
--- Crafting
-task.spawn(function()
-    while task.wait(3) do
-        if feats.AutoCraft and feats.SelectedRecipes and #feats.SelectedRecipes > 0 then
-            for _, recipe in ipairs(feats.SelectedRecipes) do
-                pcall(function() CraftRF:InvokeServer("craft", recipe, feats.ProtectTopSlimes, feats.ProtectN) end)
-            end
-        end
-    end
-end)
-
--- Feed best slime
-task.spawn(function()
-    while task.wait(2) do
-        if feats.AutoFeedBest and feats.SelectedFoods and #feats.SelectedFoods > 0 then
-            for _, food in ipairs(feats.SelectedFoods) do
-                pcall(function() FeedRF:InvokeServer("feedBest", food) end)
-            end
-        end
-    end
-end)
-
--- XP transfer
-task.spawn(function()
-    while task.wait(5) do
-        if feats.AutoXpTransfer then
-            pcall(function() XpTransferRF:InvokeServer("transferToBest") end)
-        end
-    end
-end)
-
+-- ========== OTHER FEATURES (placeholders – you may add remotes later) ==========
 -- Anti AFK
 task.spawn(function()
     while task.wait(30) do
@@ -386,50 +274,35 @@ end)
 Player.CharacterAdded:Connect(function(ch) task.wait(0.5); pcall(function() ch.Humanoid.WalkSpeed = feats.WalkSpeedVal end) end)
 
 -- Max Zoom
-task.spawn(function() Player.CameraMaxZoomDistance = feats.MaxZoomVal end)
+Player.CameraMaxZoomDistance = feats.MaxZoomVal
+task.spawn(function() while task.wait() do Player.CameraMaxZoomDistance = feats.MaxZoomVal end end)
 
--- Server Hop / Rejoin
+-- Server Hop
 function ServerHop()
-    local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
-    for _, s in ipairs(servers.data) do
-        if s.playing < s.maxPlayers and s.id ~= game.JobId then
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, Player)
-            return
+    local data = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+    if data and data.data then
+        for _, s in ipairs(data.data) do
+            if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, Player)
+                return
+            end
         end
     end
 end
 
--- Anti Staff (hop on known staff join)
-Players.PlayerAdded:Connect(function(plr)
-    if feats.AntiStaff and (plr:GetRoleInGroup(123456) or false) then -- adjust group check
-        ServerHop()
-    end
-end)
-
--- Server Luck Hopper
-task.spawn(function()
-    while task.wait(10) do
-        if feats.ServerLuckHopper then
-            local luck = pcall(function() return ReplicatedStorage.ServerValues.Luck.Value end)
-            if luck and luck < 2 then -- threshold
-                ServerHop()
-            end
-        end
-    end
-end)
-
--- Memory wipe button
+-- Memory wipe
 function WipeMemory() for _,v in pairs(getreg()) do if type(v) == "table" then table.clear(v) end end end
 
--- Build UI tabs
+-- ========== UI TABS ==========
 local mainTab = createTab("Main", 1)
 do
     local card = makeCard(mainTab)
     makeSectionCard(card, "AUTOMATION")
-    makeToggle(card, "Auto Farm EVERYTHING (from this tab)", false, function(v) feats.AutoRoll=v; feats.AutoEquip=v; feats.AutoUpgrade=v; feats.AutoRebirth=v; feats.AutoIndex=v; feats.AutoLoot=v; feats.AutoBuyZone=v; feats.AutoZoneTp=v; feats.AutoRecipe=v; feats.AutoRedeemCodes=v end)
+    makeToggle(card, "Auto Farm EVERYTHING (Roll+Upgrade)", false, function(v) feats.AutoRoll=v; feats.AutoUpgrade=v end)
     makeToggle(card, "Auto Roll", false, function(v) feats.AutoRoll=v end)
-    makeToggle(card, "Auto Equip Best", false, function(v) feats.AutoEquip=v end)
     makeToggle(card, "Auto Buy ALL Upgrades", false, function(v) feats.AutoUpgrade=v end)
+    -- Below toggles are reserved – they have no logic yet
+    makeToggle(card, "Auto Equip Best", false, function(v) feats.AutoEquip=v end)
     makeToggle(card, "Auto Rebirth", false, function(v) feats.AutoRebirth=v end)
     makeToggle(card, "Auto Claim Index Rewards", false, function(v) feats.AutoIndex=v end)
     makeToggle(card, "Auto Collect Loot", false, function(v) feats.AutoLoot=v end)
@@ -452,7 +325,7 @@ do
     makeDropdown(card, "Foods to Cycle", {"apple","carrot","cherries","grapes","banana","watermelon","pizza","chicken","drumstick"}, "carrot", function(v) feats.SelectedFoods=v end, true)
     makeToggle(card, "Auto Feed Best Slime", false, function(v) feats.AutoFeedBest=v end)
     makeSectionCard(card, "XP TRANSFER")
-    makeToggle(card, "Auto Transfer XP From Leveled Slimes To Best", false, function(v) feats.AutoXpTransfer=v end)
+    makeToggle(card, "Auto Transfer XP To Best", false, function(v) feats.AutoXpTransfer=v end)
 end
 
 local craftTab = createTab("Crafting", 3)
@@ -461,7 +334,7 @@ do
     makeSectionCard(card, "CRAFTING")
     makeDropdown(card, "Recipes to Craft", {"crafty","thorn","geode","slimeSlimeSlime","puffy","astro","sunny","melly"}, "crafty", function(v) feats.SelectedRecipes=v end, true)
     makeToggle(card, "Protect Best Slimes", true, function(v) feats.ProtectTopSlimes=v end)
-    makeSlider(card, "How many best slimes to protect", 1,50,10, function(v) feats.ProtectN=v end)
+    makeSlider(card, "How many best to protect", 1,50,10, function(v) feats.ProtectN=v end)
     makeToggle(card, "Auto Craft Selected", false, function(v) feats.AutoCraft=v end)
 end
 
@@ -476,13 +349,13 @@ do
     makeSectionCard(card, "CONVENIENCE")
     makeToggle(card, "Anti AFK", false, function(v) feats.AntiAfk=v end)
     makeSlider(card, "Walk Speed", 16,200,16, function(v) feats.WalkSpeedVal=v; pcall(function() Player.Character.Humanoid.WalkSpeed=v end) end)
-    makeSlider(card, "Max Zoom", 128,10000,400, function(v) feats.MaxZoomVal=v; Player.CameraMaxZoomDistance=v end)
+    makeSlider(card, "Max Zoom", 128,10000,400, function(v) feats.MaxZoomVal=v end)
     makeButton(card, "Load Infinite Yield", function() loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Infinite-Yield-43437"))() end)
     makeSectionCard(card, "MEMORY")
     makeButton(card, "Wipe All Memory", WipeMemory)
 end
 
--- Open animation
+-- ========== ANIMATION & START ==========
 TS:Create(win, tw(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0,WIN_W,0,WIN_H), BackgroundTransparency = 0}):Play()
 switchTab("Main")
 
@@ -495,9 +368,4 @@ task.spawn(function()
     end
 end)
 
--- Notify loaded
-local notif = Instance.new("TextLabel"); notif.Size = UDim2.new(1,0,0,30); notif.BackgroundColor3 = T.accent; notif.Text = "FeatherHub Slime RNG Loaded!"; notif.Font = Enum.Font.GothamBold; notif.TextSize = 12; notif.TextColor3 = Color3.new(1,1,1); notif.Parent = win; notif.Position = UDim2.new(0,0,0,-30); mkC(notif,8)
-TS:Create(notif, TweenInfo.new(0.3), {Position = UDim2.new(0,0,0,5)}):Play()
-task.delay(3, function() TS:Create(notif, TweenInfo.new(0.3), {Position = UDim2.new(0,0,0,-30)}):Play(); task.wait(0.3); notif:Destroy() end)
-
-print("FeatherHub Slime RNG loaded.")
+print("FeatherHub Slime RNG (fixed) loaded.")
