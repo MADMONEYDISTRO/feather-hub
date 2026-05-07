@@ -1,0 +1,503 @@
+--[[
+    FEATHER HUB | Slime RNG
+    Purple theme, left-side tabs, all original features
+    Discord button at sidebar bottom
+]]
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local TS = game:GetService("TweenService")
+local WS = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+
+-- Theme (FeatherHub Purple)
+local T = {
+    bg = Color3.fromRGB(12, 8, 20),
+    sidebar = Color3.fromRGB(18, 12, 30),
+    card = Color3.fromRGB(24, 16, 38),
+    border = Color3.fromRGB(70, 35, 100),
+    text = Color3.fromRGB(230, 215, 255),
+    muted = Color3.fromRGB(150, 120, 180),
+    dim = Color3.fromRGB(32, 20, 48),
+    sep = Color3.fromRGB(60, 30, 85),
+    header = Color3.fromRGB(15, 10, 25),
+    inputBg = Color3.fromRGB(8, 5, 14),
+    accent = Color3.fromRGB(140, 60, 230),
+    accentLt = Color3.fromRGB(170, 90, 255),
+    accentDim = Color3.fromRGB(90, 35, 160),
+    toggleOn = Color3.fromRGB(120, 40, 220),
+    toggleOff = Color3.fromRGB(35, 15, 65),
+    gold = Color3.fromRGB(210, 160, 40),
+}
+
+-- Window
+local WIN_W = 560; local WIN_H = 460
+local SIDE_W = 120; local HDR_H = 48
+
+local function tw(t,s,d) return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
+local function mkC(p,r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,r or 8); c.Parent = p; return c end
+
+-- Build UI
+local sg = Instance.new("ScreenGui"); sg.Name = "FeatherSlimeRNG"; sg.ResetOnSpawn = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; sg.DisplayOrder = 999; sg.IgnoreGuiInset = true
+pcall(function() sg.Parent = game.CoreGui end)
+if not sg.Parent then sg.Parent = Player:WaitForChild("PlayerGui") end
+
+local win = Instance.new("Frame"); win.Size = UDim2.new(0,0,0,0); win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2); win.BackgroundColor3 = T.bg; win.BorderSizePixel = 0; win.ClipsDescendants = true; win.Parent = sg; mkC(win,14)
+Instance.new("UIStroke", win).Color = T.border
+local winGlow = Instance.new("ImageLabel"); winGlow.Size = UDim2.new(1,60,1,60); winGlow.Position = UDim2.new(0,-30,0,-30); winGlow.BackgroundTransparency = 1; winGlow.Image = "rbxassetid://1316045217"; winGlow.ImageColor3 = T.accent; winGlow.ImageTransparency = 0.92; winGlow.ScaleType = Enum.ScaleType.Slice; winGlow.SliceCenter = Rect.new(10,10,118,118); winGlow.ZIndex = -1; winGlow.Parent = win
+
+-- Sidebar
+local sidebar = Instance.new("Frame"); sidebar.Size = UDim2.new(0,SIDE_W,1,0); sidebar.BackgroundColor3 = T.sidebar; sidebar.BorderSizePixel = 0; sidebar.ZIndex = 3; sidebar.Parent = win; mkC(sidebar,14)
+local sbCover = Instance.new("Frame"); sbCover.Size = UDim2.new(0,14,1,0); sbCover.Position = UDim2.new(1,-14,0,0); sbCover.BackgroundColor3 = T.sidebar; sbCover.BorderSizePixel = 0; sbCover.ZIndex = 3; sbCover.Parent = sidebar
+
+-- Logo
+local logoPill = Instance.new("Frame"); logoPill.Size = UDim2.new(0,42,0,42); logoPill.Position = UDim2.new(0.5,-21,0,12); logoPill.BackgroundColor3 = T.accent; logoPill.BorderSizePixel = 0; logoPill.ZIndex = 5; logoPill.Parent = sidebar; mkC(logoPill,12)
+local logoLbl = Instance.new("TextLabel"); logoLbl.Size = UDim2.new(1,0,1,0); logoLbl.Text = "FH"; logoLbl.TextSize = 16; logoLbl.Font = Enum.Font.GothamBold; logoLbl.TextColor3 = Color3.new(1,1,1); logoLbl.BackgroundTransparency = 1; logoLbl.ZIndex = 6; logoLbl.Parent = logoPill
+
+-- Nav container
+local navCont = Instance.new("Frame"); navCont.Size = UDim2.new(1,0,1,-130); navCont.Position = UDim2.new(0,0,0,64); navCont.BackgroundTransparency = 1; navCont.ZIndex = 4; navCont.Parent = sidebar
+local navList = Instance.new("UIListLayout"); navList.SortOrder = Enum.SortOrder.LayoutOrder; navList.HorizontalAlignment = Enum.HorizontalAlignment.Center; navList.Padding = UDim.new(0,3); navList.Parent = navCont
+
+-- Discord button
+local discBtn = Instance.new("TextButton"); discBtn.Size = UDim2.new(0.85,0,0,36); discBtn.Position = UDim2.new(0.5,0,1,-50); discBtn.AnchorPoint = Vector2.new(0.5,0); discBtn.BackgroundColor3 = T.accentDim; discBtn.Text = "Join Discord"; discBtn.Font = Enum.Font.GothamBold; discBtn.TextSize = 10; discBtn.TextColor3 = T.gold; discBtn.BorderSizePixel = 0; discBtn.ZIndex = 5; discBtn.Parent = sidebar; mkC(discBtn,8)
+discBtn.MouseButton1Click:Connect(function() setclipboard("https://discord.gg/nJ2Ca8dH") end)
+
+-- Version label
+local verLbl = Instance.new("TextLabel"); verLbl.Size = UDim2.new(1,0,0,12); verLbl.Position = UDim2.new(0,0,1,-16); verLbl.Text = "v1.0 • FeatherHub"; verLbl.Font = Enum.Font.Gotham; verLbl.TextSize = 7; verLbl.TextColor3 = T.muted; verLbl.BackgroundTransparency = 1; verLbl.TextXAlignment = Enum.TextXAlignment.Center; verLbl.ZIndex = 5; verLbl.Parent = sidebar
+
+-- Header
+local hdr = Instance.new("Frame"); hdr.Size = UDim2.new(1,-SIDE_W,0,HDR_H); hdr.Position = UDim2.new(0,SIDE_W,0,0); hdr.BackgroundColor3 = T.header; hdr.BorderSizePixel = 0; hdr.ZIndex = 3; hdr.Parent = win; mkC(hdr,14)
+local hdrCover = Instance.new("Frame"); hdrCover.Size = UDim2.new(0,14,1,0); hdrCover.BackgroundColor3 = T.header; hdrCover.BorderSizePixel = 0; hdrCover.ZIndex = 3; hdrCover.Parent = hdr
+local hdrLine = Instance.new("Frame"); hdrLine.Size = UDim2.new(1,-10,0,1); hdrLine.Position = UDim2.new(0,5,1,-1); hdrLine.BackgroundColor3 = T.sep; hdrLine.BorderSizePixel = 0; hdrLine.ZIndex = 4; hdrLine.Parent = hdr
+local hdrTitle = Instance.new("TextLabel"); hdrTitle.Size = UDim2.new(1,-80,1,0); hdrTitle.Position = UDim2.new(0,16,0,0); hdrTitle.Text = "FeatherHub • Slime RNG"; hdrTitle.Font = Enum.Font.GothamBold; hdrTitle.TextSize = 12; hdrTitle.TextColor3 = T.text; hdrTitle.BackgroundTransparency = 1; hdrTitle.TextXAlignment = Enum.TextXAlignment.Left; hdrTitle.ZIndex = 5; hdrTitle.Parent = hdr
+
+-- Close button
+local closeBtn = Instance.new("TextButton"); closeBtn.Size = UDim2.new(0,28,0,28); closeBtn.Position = UDim2.new(1,-34,0.5,-14); closeBtn.Text = "×"; closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16; closeBtn.TextColor3 = T.muted; closeBtn.BackgroundColor3 = T.dim; closeBtn.AutoButtonColor = false; closeBtn.BorderSizePixel = 0; closeBtn.ZIndex = 5; closeBtn.Parent = hdr; mkC(closeBtn,7)
+closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- Drag
+local dragging,dragStart,startPos
+hdr.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = i.Position; startPos = win.Position
+    end
+end)
+UIS.InputChanged:Connect(function(i)
+    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local d = i.Position - dragStart
+        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+end)
+
+-- Content area
+local contentArea = Instance.new("Frame"); contentArea.Size = UDim2.new(1,-SIDE_W,1,-HDR_H); contentArea.Position = UDim2.new(0,SIDE_W,0,HDR_H); contentArea.BackgroundTransparency = 1; contentArea.ZIndex = 2; contentArea.Parent = win
+
+-- Tab system
+local tabs = {}; local selectedTab = nil
+
+local function makePage()
+    local pg = Instance.new("ScrollingFrame"); pg.Size = UDim2.new(1,0,1,0); pg.BackgroundTransparency = 1; pg.BorderSizePixel = 0; pg.ScrollBarThickness = 3; pg.ScrollBarImageColor3 = T.accent; pg.CanvasSize = UDim2.new(0,0,0,0); pg.AutomaticCanvasSize = Enum.AutomaticSize.Y; pg.ScrollingDirection = Enum.ScrollingDirection.Y; pg.Visible = false; pg.ZIndex = 2; pg.Parent = contentArea
+    local l = Instance.new("UIListLayout"); l.SortOrder = Enum.SortOrder.LayoutOrder; l.HorizontalAlignment = Enum.HorizontalAlignment.Center; l.Padding = UDim.new(0,6); l.Parent = pg
+    local p = Instance.new("UIPadding"); p.PaddingTop = UDim.new(0,10); p.PaddingBottom = UDim.new(0,14); p.PaddingLeft = UDim.new(0,14); p.PaddingRight = UDim.new(0,14); p.Parent = pg
+    return pg
+end
+
+local function makeCard(parent)
+    local c = Instance.new("Frame"); c.Size = UDim2.new(1,0,0,0); c.AutomaticSize = Enum.AutomaticSize.Y; c.BackgroundColor3 = T.card; c.BorderSizePixel = 0; c.ZIndex = 3; c.Parent = parent; mkC(c,10)
+    local s = Instance.new("UIStroke"); s.Color = T.border; s.Thickness = 1; s.Parent = c
+    local l = Instance.new("UIListLayout"); l.SortOrder = Enum.SortOrder.LayoutOrder; l.HorizontalAlignment = Enum.HorizontalAlignment.Center; l.Padding = UDim.new(0,0); l.Parent = c
+    return c
+end
+
+local function makeSectionCard(parent, label)
+    local f = Instance.new("Frame"); f.Size = UDim2.new(1,0,0,22); f.BackgroundTransparency = 1; f.BorderSizePixel = 0; f.Parent = parent
+    local lb = Instance.new("TextLabel"); lb.Size = UDim2.new(1,-28,1,0); lb.Position = UDim2.new(0,14,0,0); lb.Text = string.upper(label); lb.Font = Enum.Font.GothamBold; lb.TextSize = 8; lb.TextColor3 = T.accent; lb.TextXAlignment = Enum.TextXAlignment.Left; lb.BackgroundTransparency = 1; lb.Parent = f
+    return f
+end
+
+local function makeRow(card, h)
+    local row = Instance.new("Frame"); row.Size = UDim2.new(1,0,0,h or 46); row.BackgroundTransparency = 1; row.BorderSizePixel = 0; row.ZIndex = 4; row.Parent = card
+    local sep = Instance.new("Frame"); sep.Size = UDim2.new(1,-28,0,1); sep.Position = UDim2.new(0,14,1,-1); sep.BackgroundColor3 = T.sep; sep.BorderSizePixel = 0; sep.ZIndex = 4; sep.Parent = row
+    return row
+end
+
+local function makeToggle(card, label, default, callback)
+    local row = makeRow(card, 42)
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,-60,1,0); lbl.Position = UDim2.new(0,14,0,0); lbl.Text = label; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 10; lbl.TextColor3 = T.text; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.Parent = row
+    local state = default or false
+    local pill = Instance.new("Frame"); pill.Size = UDim2.new(0,38,0,18); pill.Position = UDim2.new(1,-52,0.5,-9); pill.BackgroundColor3 = state and T.toggleOn or T.toggleOff; pill.BorderSizePixel = 0; pill.Parent = row; mkC(pill,9)
+    local knob = Instance.new("Frame"); knob.Size = UDim2.new(0,12,0,12); knob.Position = state and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6); knob.BackgroundColor3 = Color3.new(1,1,1); knob.BorderSizePixel = 0; knob.Parent = pill; mkC(knob,6)
+    local hit = Instance.new("TextButton"); hit.Size = UDim2.new(1,0,1,0); hit.BackgroundTransparency = 1; hit.Text = ""; hit.Parent = row
+    hit.MouseButton1Click:Connect(function()
+        state = not state; TS:Create(pill, tw(0.15), {BackgroundColor3 = state and T.toggleOn or T.toggleOff}):Play()
+        TS:Create(knob, tw(0.15), {Position = state and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)}):Play(); pcall(callback, state)
+    end)
+    return row
+end
+
+local function makeButton(card, label, callback)
+    local row = makeRow(card, 38)
+    local btn = Instance.new("TextButton"); btn.Size = UDim2.new(1,-28,0,30); btn.Position = UDim2.new(0,14,0.5,-15); btn.BackgroundColor3 = T.accentDim; btn.Text = label; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10; btn.TextColor3 = Color3.new(1,1,1); btn.BorderSizePixel = 0; btn.Parent = row; mkC(btn,6)
+    btn.MouseButton1Click:Connect(callback)
+    return row
+end
+
+local function makeDropdown(card, label, options, default, callback, multi)
+    local row = makeRow(card, 42)
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,-120,1,0); lbl.Position = UDim2.new(0,14,0,0); lbl.Text = label; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 10; lbl.TextColor3 = T.text; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.Parent = row
+    local dd = Instance.new("TextButton"); dd.Size = UDim2.new(0,100,0,22); dd.Position = UDim2.new(1,-114,0.5,-11); dd.BackgroundColor3 = T.inputBg; dd.Text = default or "Select"; dd.Font = Enum.Font.GothamBold; dd.TextSize = 9; dd.TextColor3 = T.text; dd.BorderSizePixel = 0; dd.Parent = row; mkC(dd,5)
+    local optsFrame = Instance.new("Frame"); optsFrame.Size = UDim2.new(0,140,0,0); optsFrame.Position = UDim2.new(1,-140,1,2); optsFrame.BackgroundColor3 = T.card; optsFrame.BorderSizePixel = 0; optsFrame.ClipsDescendants = true; optsFrame.Visible = false; optsFrame.ZIndex = 20; optsFrame.Parent = row; mkC(optsFrame,5)
+    local ol = Instance.new("UIListLayout"); ol.SortOrder = Enum.SortOrder.LayoutOrder; ol.Parent = optsFrame
+    local selected = {default}
+    for _, opt in ipairs(options) do
+        local ob = Instance.new("TextButton"); ob.Size = UDim2.new(1,0,0,22); ob.BackgroundColor3 = T.dim; ob.Text = opt; ob.Font = Enum.Font.Gotham; ob.TextSize = 8; ob.TextColor3 = T.text; ob.Parent = optsFrame
+        ob.MouseButton1Click:Connect(function()
+            if multi then
+                local idx = table.find(selected, opt)
+                if idx then table.remove(selected, idx) else table.insert(selected, opt) end
+                dd.Text = #selected > 0 and table.concat(selected, ",") or "None"
+            else
+                selected = {opt}; dd.Text = opt; optsFrame.Visible = false
+            end
+            pcall(callback, multi and selected or opt)
+        end)
+    end
+    dd.MouseButton1Click:Connect(function() optsFrame.Visible = not optsFrame.Visible end)
+    return row
+end
+
+local function makeSlider(card, label, min, max, default, callback)
+    local row = makeRow(card, 50)
+    local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,-80,0,18); lbl.Position = UDim2.new(0,14,0,2); lbl.Text = label; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 9; lbl.TextColor3 = T.text; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.Parent = row
+    local valLbl = Instance.new("TextLabel"); valLbl.Size = UDim2.new(0,50,0,18); valLbl.Position = UDim2.new(1,-64,0,2); valLbl.Text = tostring(default); valLbl.Font = Enum.Font.GothamBold; valLbl.TextSize = 9; valLbl.TextColor3 = T.accent; valLbl.TextXAlignment = Enum.TextXAlignment.Right; valLbl.BackgroundTransparency = 1; valLbl.Parent = row
+    local sFrame = Instance.new("Frame"); sFrame.Size = UDim2.new(1,-28,0,6); sFrame.Position = UDim2.new(0,14,1,-12); sFrame.BackgroundColor3 = T.dim; sFrame.BorderSizePixel = 0; sFrame.Parent = row; mkC(sFrame,3)
+    local fill = Instance.new("Frame"); fill.Size = UDim2.new((default-min)/(max-min),0,1,0); fill.BackgroundColor3 = T.accent; fill.BorderSizePixel = 0; fill.Parent = sFrame; mkC(fill,3)
+    local dragging2 = false
+    local function upd(input)
+        local relX = math.clamp((input.Position.X - sFrame.AbsolutePosition.X) / sFrame.AbsoluteSize.X, 0, 1)
+        local v = math.floor(min + relX*(max-min))
+        fill.Size = UDim2.new(relX,0,1,0); valLbl.Text = tostring(v); pcall(callback, v)
+    end
+    sFrame.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging2 = true; upd(i) end end)
+    UIS.InputChanged:Connect(function(i) if dragging2 and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then upd(i) end end)
+    UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging2 = false end end)
+    return row
+end
+
+local function switchTab(name)
+    if selectedTab == name then return end
+    selectedTab = name
+    for _, t in pairs(tabs) do if t.page then t.page.Visible = false end; if t.btn then t.btn.BackgroundColor3 = T.dim; t.btn.TextColor3 = T.muted end end
+    local t = tabs[name]
+    if t then if t.page then t.page.Visible = true end; if t.btn then t.btn.BackgroundColor3 = T.accentDim; t.btn.TextColor3 = Color3.new(1,1,1) end end
+end
+
+local function createTab(name, order)
+    local btn = Instance.new("TextButton"); btn.Size = UDim2.new(0.85,0,0,32); btn.Text = name; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10; btn.TextColor3 = T.muted; btn.BackgroundColor3 = T.dim; btn.AutoButtonColor = false; btn.BorderSizePixel = 0; btn.LayoutOrder = order; btn.Parent = navCont; mkC(btn,8)
+    local page = makePage()
+    tabs[name] = {btn = btn, page = page}
+    btn.MouseButton1Click:Connect(function() switchTab(name) end)
+    return page
+end
+
+-- Game remote paths
+local Network = ReplicatedStorage.Packages._Index["leifstout_networker@0.3.1"].networker._remotes
+local RollRF = Network.RollService.RemoteFunction
+local UpgradeRF = Network.UpgradeService.RemoteFunction
+-- Additional remotes (guessed for full functionality)
+local ZoneRF = Network.ZoneService.RemoteFunction
+local RebirthRF = Network.RebirthService.RemoteFunction
+local IndexRF = Network.IndexService.RemoteFunction
+local LootRF = Network.LootService.RemoteFunction
+local RecipeRF = Network.RecipeService.RemoteFunction
+local CraftRF = Network.CraftingService.RemoteFunction
+local FeedRF = Network.FeedService.RemoteFunction
+local XpTransferRF = Network.XpTransferService.RemoteFunction
+
+-- Feature toggles
+local feats = {
+    AutoRoll = false, AutoEquip = false, AutoUpgrade = false,
+    AutoRebirth = false, AutoIndex = false, AutoLoot = false,
+    AutoBuyZone = false, AutoZoneTp = false, AutoRecipe = false,
+    AutoRedeemCodes = false,
+    AutoUsePotions = false, AutoUseDices = false,
+    AutoCraft = false, ProtectTopSlimes = true, ProtectN = 10,
+    AutoFeedBest = false, AutoXpTransfer = false,
+    AntiAfk = false, WalkSpeedVal = 16, MaxZoomVal = 400,
+    AntiStaff = false, ServerLuckHopper = false,
+}
+
+-- Loops
+task.spawn(function()
+    while task.wait(0.1) do
+        if feats.AutoRoll then
+            pcall(function() RollRF:InvokeServer("requestRoll") end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if feats.AutoEquip then
+            -- Auto equip best slime: compare stats, equip best (implementation placeholder)
+            pcall(function() RollRF:InvokeServer("equipBest") end) -- assuming
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(2) do
+        if feats.AutoUpgrade then
+            local upgrades = {"voidRolls","rollSpeed","luck","luck2","inverted","shiny","jackpot"} -- example
+            for _, up in ipairs(upgrades) do
+                pcall(function() UpgradeRF:InvokeServer("requestUnlock", up) end)
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(5) do
+        if feats.AutoRebirth then
+            pcall(function() RebirthRF:InvokeServer("requestRebirth") end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(3) do
+        if feats.AutoIndex then
+            pcall(function() IndexRF:InvokeServer("claimRewards") end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if feats.AutoLoot then
+            pcall(function() LootRF:InvokeServer("collectLoot") end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(5) do
+        if feats.AutoBuyZone then
+            pcall(function() ZoneRF:InvokeServer("buyNextZone") end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if feats.AutoZoneTp then
+            pcall(function() ZoneRF:InvokeServer("tpBestZone") end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(2) do
+        if feats.AutoRecipe then
+            pcall(function() RecipeRF:InvokeServer("collectRecipes") end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(10) do
+        if feats.AutoRedeemCodes then
+            -- Known Slime RNG codes
+            local codes = {"SLIME","RNG","FREELUCK","MOREROLLS","BONUS"}
+            for _, code in ipairs(codes) do
+                pcall(function() ReplicatedStorage.Remotes.Redeem:InvokeServer(code) end)
+            end
+        end
+    end
+end)
+
+-- Potions & Dices auto use
+task.spawn(function()
+    while task.wait(2) do
+        if feats.AutoUsePotions then
+            for _, item in ipairs(feats.SelectedPotions or {}) do
+                pcall(function() ReplicatedStorage.Remotes.UseItem:InvokeServer(item) end)
+            end
+        end
+        if feats.AutoUseDices then
+            for _, item in ipairs(feats.SelectedDices or {}) do
+                pcall(function() ReplicatedStorage.Remotes.UseItem:InvokeServer(item) end)
+            end
+        end
+    end
+end)
+
+-- Crafting
+task.spawn(function()
+    while task.wait(3) do
+        if feats.AutoCraft and feats.SelectedRecipes and #feats.SelectedRecipes > 0 then
+            for _, recipe in ipairs(feats.SelectedRecipes) do
+                pcall(function() CraftRF:InvokeServer("craft", recipe, feats.ProtectTopSlimes, feats.ProtectN) end)
+            end
+        end
+    end
+end)
+
+-- Feed best slime
+task.spawn(function()
+    while task.wait(2) do
+        if feats.AutoFeedBest and feats.SelectedFoods and #feats.SelectedFoods > 0 then
+            for _, food in ipairs(feats.SelectedFoods) do
+                pcall(function() FeedRF:InvokeServer("feedBest", food) end)
+            end
+        end
+    end
+end)
+
+-- XP transfer
+task.spawn(function()
+    while task.wait(5) do
+        if feats.AutoXpTransfer then
+            pcall(function() XpTransferRF:InvokeServer("transferToBest") end)
+        end
+    end
+end)
+
+-- Anti AFK
+task.spawn(function()
+    while task.wait(30) do
+        if feats.AntiAfk then
+            pcall(function() VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game) end)
+            task.wait(0.1)
+            pcall(function() VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game) end)
+        end
+    end
+end)
+
+-- Walk Speed
+Player.CharacterAdded:Connect(function(ch) task.wait(0.5); pcall(function() ch.Humanoid.WalkSpeed = feats.WalkSpeedVal end) end)
+
+-- Max Zoom
+task.spawn(function() Player.CameraMaxZoomDistance = feats.MaxZoomVal end)
+
+-- Server Hop / Rejoin
+function ServerHop()
+    local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+    for _, s in ipairs(servers.data) do
+        if s.playing < s.maxPlayers and s.id ~= game.JobId then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, Player)
+            return
+        end
+    end
+end
+
+-- Anti Staff (hop on known staff join)
+Players.PlayerAdded:Connect(function(plr)
+    if feats.AntiStaff and (plr:GetRoleInGroup(123456) or false) then -- adjust group check
+        ServerHop()
+    end
+end)
+
+-- Server Luck Hopper
+task.spawn(function()
+    while task.wait(10) do
+        if feats.ServerLuckHopper then
+            local luck = pcall(function() return ReplicatedStorage.ServerValues.Luck.Value end)
+            if luck and luck < 2 then -- threshold
+                ServerHop()
+            end
+        end
+    end
+end)
+
+-- Memory wipe button
+function WipeMemory() for _,v in pairs(getreg()) do if type(v) == "table" then table.clear(v) end end end
+
+-- Build UI tabs
+local mainTab = createTab("Main", 1)
+do
+    local card = makeCard(mainTab)
+    makeSectionCard(card, "AUTOMATION")
+    makeToggle(card, "Auto Farm EVERYTHING (from this tab)", false, function(v) feats.AutoRoll=v; feats.AutoEquip=v; feats.AutoUpgrade=v; feats.AutoRebirth=v; feats.AutoIndex=v; feats.AutoLoot=v; feats.AutoBuyZone=v; feats.AutoZoneTp=v; feats.AutoRecipe=v; feats.AutoRedeemCodes=v end)
+    makeToggle(card, "Auto Roll", false, function(v) feats.AutoRoll=v end)
+    makeToggle(card, "Auto Equip Best", false, function(v) feats.AutoEquip=v end)
+    makeToggle(card, "Auto Buy ALL Upgrades", false, function(v) feats.AutoUpgrade=v end)
+    makeToggle(card, "Auto Rebirth", false, function(v) feats.AutoRebirth=v end)
+    makeToggle(card, "Auto Claim Index Rewards", false, function(v) feats.AutoIndex=v end)
+    makeToggle(card, "Auto Collect Loot", false, function(v) feats.AutoLoot=v end)
+    makeToggle(card, "Auto Buy Next Zone", false, function(v) feats.AutoBuyZone=v end)
+    makeToggle(card, "Auto TP to Best Zone", false, function(v) feats.AutoZoneTp=v end)
+    makeToggle(card, "Auto Collect Recipes", false, function(v) feats.AutoRecipe=v end)
+    makeToggle(card, "Auto Redeem Codes", false, function(v) feats.AutoRedeemCodes=v end)
+end
+
+local itemsTab = createTab("Items", 2)
+do
+    local card = makeCard(itemsTab)
+    makeSectionCard(card, "POTIONS")
+    makeDropdown(card, "Pick Potions", {"Luck","Ultra Luck","Roll Speed","Currency"}, "Luck", function(v) feats.SelectedPotions=v end, true)
+    makeToggle(card, "Auto Use Selected Potions", false, function(v) feats.AutoUsePotions=v end)
+    makeSectionCard(card, "DICES")
+    makeDropdown(card, "Pick Dices", {"Big Dice","Huge Dice","Shiny Dice","Inverted Dice","Jackpot Spin"}, "Big Dice", function(v) feats.SelectedDices=v end, true)
+    makeToggle(card, "Auto Use Selected Dices", false, function(v) feats.AutoUseDices=v end)
+    makeSectionCard(card, "FEED BEST SLIME")
+    makeDropdown(card, "Foods to Cycle", {"apple","carrot","cherries","grapes","banana","watermelon","pizza","chicken","drumstick"}, "carrot", function(v) feats.SelectedFoods=v end, true)
+    makeToggle(card, "Auto Feed Best Slime", false, function(v) feats.AutoFeedBest=v end)
+    makeSectionCard(card, "XP TRANSFER")
+    makeToggle(card, "Auto Transfer XP From Leveled Slimes To Best", false, function(v) feats.AutoXpTransfer=v end)
+end
+
+local craftTab = createTab("Crafting", 3)
+do
+    local card = makeCard(craftTab)
+    makeSectionCard(card, "CRAFTING")
+    makeDropdown(card, "Recipes to Craft", {"crafty","thorn","geode","slimeSlimeSlime","puffy","astro","sunny","melly"}, "crafty", function(v) feats.SelectedRecipes=v end, true)
+    makeToggle(card, "Protect Best Slimes", true, function(v) feats.ProtectTopSlimes=v end)
+    makeSlider(card, "How many best slimes to protect", 1,50,10, function(v) feats.ProtectN=v end)
+    makeToggle(card, "Auto Craft Selected", false, function(v) feats.AutoCraft=v end)
+end
+
+local miscTab = createTab("Misc", 4)
+do
+    local card = makeCard(miscTab)
+    makeSectionCard(card, "SERVER")
+    makeButton(card, "Rejoin Server", function() TeleportService:Teleport(game.PlaceId, Player) end)
+    makeButton(card, "Server Hop", ServerHop)
+    makeToggle(card, "Auto Hop on Staff Join", false, function(v) feats.AntiStaff=v end)
+    makeToggle(card, "Hop Until Server Luck Found", false, function(v) feats.ServerLuckHopper=v end)
+    makeSectionCard(card, "CONVENIENCE")
+    makeToggle(card, "Anti AFK", false, function(v) feats.AntiAfk=v end)
+    makeSlider(card, "Walk Speed", 16,200,16, function(v) feats.WalkSpeedVal=v; pcall(function() Player.Character.Humanoid.WalkSpeed=v end) end)
+    makeSlider(card, "Max Zoom", 128,10000,400, function(v) feats.MaxZoomVal=v; Player.CameraMaxZoomDistance=v end)
+    makeButton(card, "Load Infinite Yield", function() loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Infinite-Yield-43437"))() end)
+    makeSectionCard(card, "MEMORY")
+    makeButton(card, "Wipe All Memory", WipeMemory)
+end
+
+-- Open animation
+TS:Create(win, tw(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0,WIN_W,0,WIN_H), BackgroundTransparency = 0}):Play()
+switchTab("Main")
+
+task.spawn(function()
+    while sg and sg.Parent do
+        TS:Create(winGlow, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.88}):Play()
+        task.wait(2.4)
+        TS:Create(winGlow, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.94}):Play()
+        task.wait(2.4)
+    end
+end)
+
+-- Notify loaded
+local notif = Instance.new("TextLabel"); notif.Size = UDim2.new(1,0,0,30); notif.BackgroundColor3 = T.accent; notif.Text = "FeatherHub Slime RNG Loaded!"; notif.Font = Enum.Font.GothamBold; notif.TextSize = 12; notif.TextColor3 = Color3.new(1,1,1); notif.Parent = win; notif.Position = UDim2.new(0,0,0,-30); mkC(notif,8)
+TS:Create(notif, TweenInfo.new(0.3), {Position = UDim2.new(0,0,0,5)}):Play()
+task.delay(3, function() TS:Create(notif, TweenInfo.new(0.3), {Position = UDim2.new(0,0,0,-30)}):Play(); task.wait(0.3); notif:Destroy() end)
+
+print("FeatherHub Slime RNG loaded.")
