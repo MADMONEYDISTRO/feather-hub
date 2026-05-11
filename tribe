@@ -1,0 +1,645 @@
+--[[
+    FeatherHub – Tribe Survival
+    Features: AutoEat, Player Tracer, Highlight Traps, Join Dungeon
+    Version 1.0
+--]]
+
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ===================== FeatherHub Theme =====================
+local T = {
+    bg = Color3.fromRGB(13,13,18),
+    sidebar = Color3.fromRGB(18,18,25),
+    card = Color3.fromRGB(23,23,32),
+    border = Color3.fromRGB(42,42,58),
+    text = Color3.fromRGB(228,228,240),
+    muted = Color3.fromRGB(95,95,118),
+    dim = Color3.fromRGB(30,30,44),
+    sep = Color3.fromRGB(34,34,50),
+    header = Color3.fromRGB(16,16,22),
+    inputBg = Color3.fromRGB(9,9,15),
+    accent = Color3.fromRGB(110,95,210),
+    accentLt = Color3.fromRGB(135,115,235),
+    accentDim = Color3.fromRGB(65,55,130),
+    special = Color3.fromRGB(110,95,210),
+    green = Color3.fromRGB(90,195,145),
+    red = Color3.fromRGB(210,75,95),
+    gold = Color3.fromRGB(185,150,60),
+}
+local function tw(t,s,d) return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
+
+-- ===================== FeatherHub UI Library =====================
+local UI = {}
+local sg, win, sidebar, hdr, content, navCont, pages, activeTab, navBtns, hdrTitle
+local WIN_W, WIN_H, SIDE_W, HDR_H = 490, 440, 108, 48
+
+function UI:CreateWindow(name)
+    sg = Instance.new("ScreenGui")
+    sg.Name = "FeatherHub_Tribe"
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.DisplayOrder = 999
+    sg.IgnoreGuiInset = true
+    if not pcall(function() sg.Parent = CoreGui end) then
+        sg.Parent = PlayerGui
+    end
+
+    win = Instance.new("Frame")
+    win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+    win.BackgroundColor3 = T.bg
+    win.BorderSizePixel = 0
+    win.ClipsDescendants = true
+    win.Parent = sg
+    Instance.new("UICorner", win).CornerRadius = UDim.new(0,16)
+    local winStroke = Instance.new("UIStroke")
+    winStroke.Color = T.border
+    winStroke.Thickness = 1
+    winStroke.Parent = win
+
+    sidebar = Instance.new("Frame")
+    sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
+    sidebar.BackgroundColor3 = T.sidebar
+    sidebar.BorderSizePixel = 0
+    sidebar.ZIndex = 3
+    sidebar.Parent = win
+    Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0,16)
+    local sbCover = Instance.new("Frame")
+    sbCover.Size = UDim2.new(0,16,1,0)
+    sbCover.Position = UDim2.new(1,-16,0,0)
+    sbCover.BackgroundColor3 = T.sidebar
+    sbCover.BorderSizePixel = 0
+    sbCover.ZIndex = 3
+    sbCover.Parent = sidebar
+
+    local logo = Instance.new("Frame")
+    logo.Size = UDim2.new(0,40,0,40)
+    logo.Position = UDim2.new(0.5,-20,0,12)
+    logo.BackgroundColor3 = T.accent
+    logo.BorderSizePixel = 0
+    logo.ZIndex = 5
+    logo.Parent = sidebar
+    Instance.new("UICorner", logo).CornerRadius = UDim.new(0,11)
+    local logoF = Instance.new("TextLabel")
+    logoF.Size = UDim2.new(1,0,1,0)
+    logoF.Text = "F"
+    logoF.TextSize = 20
+    logoF.Font = Enum.Font.GothamBold
+    logoF.TextColor3 = Color3.new(1,1,1)
+    logoF.BackgroundTransparency = 1
+    logoF.ZIndex = 6
+    logoF.Parent = logo
+
+    navCont = Instance.new("Frame")
+    navCont.Size = UDim2.new(1,0,1,-100)
+    navCont.Position = UDim2.new(0,0,0,68)
+    navCont.BackgroundTransparency = 1
+    navCont.ZIndex = 4
+    navCont.Parent = sidebar
+    local navList = Instance.new("UIListLayout")
+    navList.SortOrder = Enum.SortOrder.LayoutOrder
+    navList.VerticalAlignment = Enum.VerticalAlignment.Top
+    navList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    navList.Padding = UDim.new(0,4)
+    navList.Parent = navCont
+
+    hdr = Instance.new("Frame")
+    hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
+    hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
+    hdr.BackgroundColor3 = T.header
+    hdr.BorderSizePixel = 0
+    hdr.ZIndex = 3
+    hdr.Parent = win
+    Instance.new("UICorner", hdr).CornerRadius = UDim.new(0,16)
+    local hdrLC = Instance.new("Frame")
+    hdrLC.Size = UDim2.new(0,16,1,0)
+    hdrLC.BackgroundColor3 = T.header
+    hdrLC.BorderSizePixel = 0
+    hdrLC.ZIndex = 3
+    hdrLC.Parent = hdr
+    local hdrBC = Instance.new("Frame")
+    hdrBC.Size = UDim2.new(0,16,0,16)
+    hdrBC.Position = UDim2.new(1,-16,1,-16)
+    hdrBC.BackgroundColor3 = T.header
+    hdrBC.BorderSizePixel = 0
+    hdrBC.ZIndex = 3
+    hdrBC.Parent = hdr
+    local hdrLine = Instance.new("Frame")
+    hdrLine.Size = UDim2.new(1,-10,0,1)
+    hdrLine.Position = UDim2.new(0,5,1,-1)
+    hdrLine.BackgroundColor3 = T.sep
+    hdrLine.BorderSizePixel = 0
+    hdrLine.ZIndex = 4
+    hdrLine.Parent = hdr
+
+    hdrTitle = Instance.new("TextLabel")
+    hdrTitle.Size = UDim2.new(1,-100,1,0)
+    hdrTitle.Position = UDim2.new(0,16,0,0)
+    hdrTitle.Text = name
+    hdrTitle.Font = Enum.Font.GothamBold
+    hdrTitle.TextSize = 13
+    hdrTitle.TextColor3 = T.text
+    hdrTitle.BackgroundTransparency = 1
+    hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+    hdrTitle.ZIndex = 5
+    hdrTitle.Parent = hdr
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0,28,0,28)
+    closeBtn.Position = UDim2.new(1,-34,0.5,-14)
+    closeBtn.Text = "×"
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 16
+    closeBtn.TextColor3 = T.muted
+    closeBtn.BackgroundColor3 = T.dim
+    closeBtn.BorderSizePixel = 0
+    closeBtn.AutoButtonColor = false
+    closeBtn.ZIndex = 5
+    closeBtn.Parent = hdr
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,7)
+    closeBtn.MouseEnter:Connect(function()
+        TweenService:Create(closeBtn, tw(), {BackgroundColor3=T.red, TextColor3=Color3.new(1,1,1)}):Play()
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        TweenService:Create(closeBtn, tw(), {BackgroundColor3=T.dim, TextColor3=T.muted}):Play()
+    end)
+    closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+    content = Instance.new("Frame")
+    content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
+    content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
+    content.BackgroundTransparency = 1
+    content.BorderSizePixel = 0
+    content.ZIndex = 2
+    content.ClipsDescendants = true
+    content.Parent = win
+
+    pages = {}
+    activeTab = 0
+    navBtns = {}
+
+    -- Drag functionality
+    local dragging, dragReady, dragInput, dragStart, startPos, holdThread = false, false, nil, nil, nil, nil
+    hdr.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragStart = i.Position
+            startPos = win.Position
+            dragReady = false
+            dragging = false
+            holdThread = task.delay(0.14, function() dragReady = true end)
+        end
+    end)
+    hdr.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
+            dragInput = i
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i == dragInput and dragReady then
+            dragging = true
+            local d = i.Position - dragStart
+            local vp = Workspace.CurrentCamera.ViewportSize
+            win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + d.X, 0, vp.X - WIN_W), 0, math.clamp(startPos.Y.Offset + d.Y, 0, vp.Y - WIN_H))
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+            dragReady = false
+            if holdThread then task.cancel(holdThread); holdThread = nil end
+        end
+    end)
+
+    local vp = Workspace.CurrentCamera.ViewportSize
+    win.Position = UDim2.new(0, (vp.X-WIN_W)/2, 0, (vp.Y-WIN_H)/2)
+
+    return self
+end
+
+function UI:AddTab(name)
+    local idx = #pages + 1
+    local pg = Instance.new("ScrollingFrame")
+    pg.Size = UDim2.new(1,0,1,0)
+    pg.BackgroundTransparency = 1
+    pg.BorderSizePixel = 0
+    pg.ScrollBarThickness = 3
+    pg.ScrollBarImageColor3 = T.accent
+    pg.CanvasSize = UDim2.new(0,0,0,0)
+    pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    pg.ScrollingDirection = Enum.ScrollingDirection.Y
+    pg.ElasticBehavior = Enum.ElasticBehavior.Never
+    pg.Visible = false
+    pg.ZIndex = 2
+    pg.Parent = content
+    local layout = Instance.new("UIListLayout", pg)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Padding = UDim.new(0,7)
+    Instance.new("UIPadding", pg).PaddingTop = UDim.new(0,12)
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        pg.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 24)
+    end)
+    pages[idx] = pg
+
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(0.85,0,0,38)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder = idx
+    row.ZIndex = 4
+    row.Parent = navCont
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(0,3,0.45,0)
+    bar.Position = UDim2.new(0,0,0.275,0)
+    bar.BackgroundColor3 = T.accent
+    bar.BackgroundTransparency = 1
+    bar.BorderSizePixel = 0
+    bar.ZIndex = 5
+    bar.Parent = row
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1,0)
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1,-5,1,-6)
+    bg.Position = UDim2.new(0,5,0,3)
+    bg.BackgroundColor3 = T.dim
+    bg.BackgroundTransparency = 0
+    bg.BorderSizePixel = 0
+    bg.ZIndex = 4
+    bg.Parent = row
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0,8)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,-14,1,0)
+    lbl.Position = UDim2.new(0,10,0,0)
+    lbl.Text = name
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 7
+    lbl.TextColor3 = T.text
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 5
+    lbl.Parent = row
+    local hit = Instance.new("TextButton")
+    hit.Size = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.ZIndex = 6
+    hit.Parent = row
+    hit.MouseButton1Click:Connect(function() UI:SetTab(idx) end)
+    navBtns[idx] = {bg = bg, lbl = lbl, bar = bar}
+    return pg
+end
+
+function UI:SetTab(idx)
+    if activeTab == idx then return end
+    if activeTab ~= 0 then pages[activeTab].Visible = false end
+    pages[idx].Visible = true
+    pages[idx].CanvasPosition = Vector2.new(0,0)
+    local names = {"Heal", "Visuals"}
+    hdrTitle.Text = "FeatherHub [ " .. names[idx] .. " ]"
+    for i,btn in ipairs(navBtns) do
+        local on = i == idx
+        TweenService:Create(btn.bg, tw(0.16), {
+            BackgroundColor3 = on and T.accent or T.dim,
+            BackgroundTransparency = on and 0.12 or 0
+        }):Play()
+        TweenService:Create(btn.lbl, tw(0.16), {
+            TextColor3 = on and Color3.new(1,1,1) or T.text
+        }):Play()
+        btn.bar.BackgroundTransparency = on and 0 or 1
+    end
+    activeTab = idx
+end
+
+function UI:AddSection(parent, text)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1,0,0,22)
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+    frame.ZIndex = 3
+    frame.Parent = parent
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,0,1,0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = T.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 3
+    lbl.Parent = frame
+    local line = Instance.new("Frame")
+    line.Size = UDim2.new(0,28,0,2)
+    line.Position = UDim2.new(0,0,1,-2)
+    line.BackgroundColor3 = T.accent
+    line.BorderSizePixel = 0
+    line.ZIndex = 3
+    line.Parent = frame
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1,0)
+    return frame
+end
+
+function UI:AddToggle(parent, text, default, callback)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1,0,0,44)
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    card.ZIndex = 3
+    card.Parent = parent
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0,11)
+    Instance.new("UIStroke", card).Color = T.border
+    card.UIStroke.Thickness = 1
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.65,0,1,0)
+    lbl.Position = UDim2.new(0,16,0,0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 5
+    lbl.Parent = card
+    local track = Instance.new("TextButton")
+    track.Size = UDim2.new(0,38,0,20)
+    track.Position = UDim2.new(1,-52,0.5,-10)
+    track.BackgroundColor3 = default and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ""
+    track.ZIndex = 5
+    track.Parent = card
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0,16,0,16)
+    knob.Position = default and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 6
+    knob.Parent = track
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+    local state = default
+    local function update(v)
+        state = v
+        TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)}):Play()
+        callback(state)
+    end
+    track.MouseButton1Click:Connect(function() update(not state) end)
+    if default then update(default) end
+end
+
+function UI:AddButton(parent, text, callback)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1,0,0,44)
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    card.ZIndex = 3
+    card.Parent = parent
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0,11)
+    Instance.new("UIStroke", card).Color = T.border
+    card.UIStroke.Thickness = 1
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,-28,0,36)
+    btn.Position = UDim2.new(0,14,0.5,-18)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    btn.Parent = card
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, tw(), {BackgroundColor3=T.accentLt}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, tw(), {BackgroundColor3=T.accent}):Play()
+    end)
+    btn.MouseButton1Click:Connect(callback)
+end
+
+-- ===================== Global State & Helper =====================
+local eu = LocalPlayer
+local Gokka = loadstring(game:HttpGet("https://raw.githubusercontent.com/Moligrafi001/Triangulare/main/extra/Gokka.lua"))()
+
+getgenv().PlayerESP = false
+getgenv().StrucESP = false
+getgenv().AutoEat = false
+local Settings = {
+    Food = "Comida",
+    Blatant = false,
+    Eating = false
+}
+
+-- ===================== Functions (from original) =====================
+local function SetTracer(state, parent, color)
+    local origin = eu.Character.HumanoidRootPart:FindFirstChild("Origin")
+    if not origin then
+        origin = Instance.new("Attachment")
+        origin.Name = "Origin"
+        origin.Parent = eu.Character.HumanoidRootPart
+    end
+    
+    local beam = parent:FindFirstChild("Tracer")
+    if beam then
+        if beam.Enabled ~= state then beam.Enabled = state end
+        local seq = ColorSequence.new(color)
+        if beam.Color ~= seq then beam.Color = seq end
+        if beam.Attachment0 ~= origin then beam.Attachment0 = origin end
+        return
+    end
+    
+    local attachment1 = Instance.new("Attachment", parent)
+    beam = Instance.new("Beam")
+    beam.Name = "Tracer"
+    beam.Attachment0 = origin
+    beam.Attachment1 = attachment1
+    beam.Color = ColorSequence.new(color)
+    beam.FaceCamera = true
+    beam.Width0 = 0.15
+    beam.Width1 = 0.15
+    beam.Enabled = state
+    beam.Parent = parent
+end
+
+local function SetHighlight(state, parent)
+    local name = "Triangulare_Highlight"
+    local color = Color3.fromRGB(255, 0, 0)
+    
+    local existing = parent:FindFirstChild(name)
+    if existing and existing.Enabled ~= state then
+        existing.Enabled = state
+        return
+    end
+
+    local highlight = parent:FindFirstChild(name) or Instance.new("Highlight")
+    highlight.Name = name
+    highlight.Parent = parent
+    highlight.FillColor = color
+    highlight.OutlineColor = Color3.new(1, 1, 1)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0.6
+    highlight.Adornee = parent
+end
+
+local function SetEat(char)
+    Gokka:Connect({
+        Name = "AutoEat",
+        Signal = eu.Character.Humanoid.HealthChanged,
+        Callback = function(vidaAtual)
+            local SafeMode = not Settings.Blatant
+            if not getgenv().AutoEat or vidaAtual == 1 or (SafeMode and Settings.Eating) then return end
+            
+            char = char or eu.Character
+            local humanoid = char and char:FindFirstChild("Humanoid")
+            if not humanoid then return end
+            if vidaAtual >= humanoid.MaxHealth then return end
+            
+            local function ScanFoodIn(where)
+                for _, f in ipairs(eu[where]:GetChildren()) do
+                    if f:FindFirstChild("FoodScripts") and f:FindFirstChild("Stats") then
+                        return f
+                    end
+                end
+            end
+            
+            local food = eu.Backpack:FindFirstChild(Settings.Food) or eu.Character:FindFirstChild(Settings.Food)
+            if not food then
+                local f = ScanFoodIn("Backpack") or ScanFoodIn("Character")
+                if not f then return end
+                Settings.Food, food = f.Name, f
+            end
+            
+            if char.Resources:GetAttribute("Food") < food.Stats:GetAttribute("FoodCost") then return end
+            
+            if SafeMode then Settings.Eating = true end
+            food.FoodScripts.Eat:InvokeServer()
+            if SafeMode then
+                task.wait(0.01)
+                Settings.Eating = false
+            end
+        end
+    })
+end
+
+-- AutoSwipe (unchanged)
+local function AutoSwipe()
+    task.spawn(function()
+        local IsDescendantOf = game.IsDescendantOf
+        local hooks = {}
+        hooks.__namecall = hookmetamethod(game, "__namecall", function(self, ...)
+            if getnamecallmethod() ~= "FireServer" or not (self.ClassName == "RemoteEvent" and self.Name == "Swing") then
+                return hooks.__namecall(self, ...)
+            end
+            
+            local arg1, arg2 = ...
+            if not arg1 or not arg2 or typeof(arg1) ~= "CFrame" or type(arg2) ~= "table" then
+                return hooks.__namecall(self, ...)
+            end
+        
+            local firstObj = arg2[1]
+            if not firstObj then return hooks.__namecall(self, ...) end
+            
+            if IsDescendantOf(firstObj, workspace.Characters) or IsDescendantOf(firstObj, workspace.Resources) then
+                ReplicatedStorage.Remotes.Hats.EquipHat:FireServer("Dark Hood")
+                return hooks.__namecall(self, ...)
+            end
+            
+            return hooks.__namecall(self, ...)
+        end)
+    end)
+end
+
+Gokka:Connect({
+    Name = "SetEatOnLoad",
+    Signal = eu.CharacterAdded,
+    Callback = function(char)
+        char:WaitForChild("Humanoid")
+        SetEat(char)
+    end
+})
+
+-- ===================== Build FeatherHub UI =====================
+local Window = UI:CreateWindow("FeatherHub | Tribe Survival")
+local tabHeal = UI:AddTab("Heal")
+local tabVisuals = UI:AddTab("Visuals")
+
+-- Heal Tab
+UI:AddSection(tabHeal, "Heal")
+UI:AddToggle(tabHeal, "Auto Eat", false, function(state)
+    getgenv().AutoEat = state
+    if not state then
+        Settings.Food = "Comida"
+        Gokka:Disconnect("AutoEat")
+        return
+    end
+    SetEat()
+end)
+UI:AddToggle(tabHeal, "Blatant Mode", false, function(state)
+    Settings.Blatant = state
+end)
+
+-- Visuals Tab
+UI:AddSection(tabVisuals, "Players")
+UI:AddToggle(tabVisuals, "Player Tracer", false, function(state)
+    getgenv().PlayerESP = state
+    local function Set(state)
+        local MyTribe = eu:GetAttribute("ActiveTribe")
+        for _, p in pairs(Players:GetPlayers()) do
+            pcall(function()
+                SetTracer(state, p.Character.HumanoidRootPart, MyTribe and p:GetAttribute("ActiveTribe") == MyTribe and Color3.fromRGB(255, 0, 255) or Color3.fromRGB(255, 0, 0))
+            end)
+        end
+    end
+    
+    if not state then return Set(false) end
+    while getgenv().PlayerESP do
+        Set(true)
+        task.wait(1)
+    end
+end)
+
+UI:AddSection(tabVisuals, "Structures")
+UI:AddButton(tabVisuals, "Join Dungeon", function()
+    local root = eu.Character.HumanoidRootPart
+    local door = workspace.Map.DungeonEnter.DungeonEntrance.Door
+    firetouchinterest(door, root, 0)
+    firetouchinterest(door, root, 1)
+end)
+
+UI:AddToggle(tabVisuals, "Highlight Trap", false, function(state)
+    getgenv().StrucESP = state
+    local function Set(state)
+        for _, p in pairs(workspace.Structures:GetChildren()) do
+            pcall(function()
+                if string.find(p.Name, "Trap") and p:FindFirstChild("Visual") then
+                    if state then
+                        if p.Visual.Transparency ~= 0 then p.Visual.Transparency = 0 end
+                    else
+                        if p.Visual.Transparency ~= 1 then p.Visual.Transparency = 1 end
+                    end
+                end
+            end)
+        end
+    end
+    
+    if not state then return Set(false) end
+    while getgenv().StrucESP do
+        Set(true)
+        task.wait(1)
+    end
+end)
+
+-- ===================== Final =====================
+AutoSwipe()  -- initialize auto hat equip
+UI:SetTab(1)
