@@ -1,849 +1,660 @@
--- Configuration
-local CLICK_INTERVAL = 0.1
-local ROTATION_SPEED = 5 -- Degrees per frame
-local LOW_HP_THRESHOLD = 15
-local TELEPORT_CFRAME = CFrame.new(
-    Vector3.new(998.1488, 27.6000, 8.6352),
-    Vector3.new(0.9661, 0.0000, -0.2580)
-)
+-- Killstreak v8 [FeatherHub] – Original Rotation Kill Aura + All New Features
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local CoreGui = game:GetService("CoreGui")
 
--- Variables
-local toggle = false
-local safezoneToggle = false
-local connection, clickConnection, safezoneConnection
-local player = game.Players.LocalPlayer
-local mouse = player:GetMouse()
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Store UI position for persistence
-local uiPosition = {
-    X = 0.5,
-    Y = 0.5
+-- ===================== Theme =====================
+local T = {
+    bg = Color3.fromRGB(13,13,18),
+    card = Color3.fromRGB(23,23,32),
+    border = Color3.fromRGB(42,42,58),
+    text = Color3.fromRGB(228,228,240),
+    muted = Color3.fromRGB(95,95,118),
+    dim = Color3.fromRGB(30,30,44),
+    sep = Color3.fromRGB(34,34,50),
+    header = Color3.fromRGB(16,16,22),
+    inputBg = Color3.fromRGB(9,9,15),
+    accent = Color3.fromRGB(110,95,210),
+    accentLt = Color3.fromRGB(135,115,235),
+    accentDim = Color3.fromRGB(65,55,130),
+    green = Color3.fromRGB(90,195,145),
+    red = Color3.fromRGB(210,75,95),
+    gold = Color3.fromRGB(185,150,60),
 }
+local function tw(t,s,d) return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
 
--- UI Theme Configuration
-local UI_THEMES = {
-    Dark = {
-        Background = Color3.fromRGB(25, 25, 35),
-        Secondary = Color3.fromRGB(35, 35, 45),
-        Accent = Color3.fromRGB(0, 120, 215),
-        Text = Color3.fromRGB(240, 240, 240),
-        Success = Color3.fromRGB(60, 180, 100),
-        Warning = Color3.fromRGB(255, 180, 50),
-        Danger = Color3.fromRGB(220, 60, 60)
-    },
-    Light = {
-        Background = Color3.fromRGB(245, 245, 245),
-        Secondary = Color3.fromRGB(230, 230, 230),
-        Accent = Color3.fromRGB(0, 120, 215),
-        Text = Color3.fromRGB(30, 30, 30),
-        Success = Color3.fromRGB(60, 180, 100),
-        Warning = Color3.fromRGB(255, 140, 0),
-        Danger = Color3.fromRGB(220, 60, 60)
-    },
-    Purple = {
-        Background = Color3.fromRGB(35, 25, 45),
-        Secondary = Color3.fromRGB(45, 35, 55),
-        Accent = Color3.fromRGB(160, 100, 220),
-        Text = Color3.fromRGB(240, 240, 240),
-        Success = Color3.fromRGB(100, 200, 100),
-        Warning = Color3.fromRGB(255, 180, 50),
-        Danger = Color3.fromRGB(220, 60, 60)
-    }
-}
+-- ===================== UI Library =====================
+local UI = {}
+local sg, win, hdr, content
+local WIN_W, WIN_H, HDR_H = 340, 440, 42
 
-local currentTheme = "Dark"
-local uiHotkey = Enum.KeyCode.RightShift
-local mobileMode = false
-local uiVisible = true
+function UI:CreateWindow(name)
+    sg = Instance.new("ScreenGui")
+    sg.Name = "FeatherHub_Killstreak"
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.DisplayOrder = 999
+    sg.IgnoreGuiInset = true
+    if not pcall(function() sg.Parent = CoreGui end) then sg.Parent = PlayerGui end
 
--- Create UI with persistence
-local function createUI()
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "RotationUIV2"
-    screenGui.ResetOnSpawn = false -- This keeps UI after respawn
-    screenGui.Parent = player:WaitForChild("PlayerGui")
+    win = Instance.new("Frame")
+    win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+    win.BackgroundColor3 = T.bg
+    win.BorderSizePixel = 0
+    win.ClipsDescendants = true
+    win.Parent = sg
+    Instance.new("UICorner", win).CornerRadius = UDim.new(0,16)
+    Instance.new("UIStroke", win).Color = T.border
+    win.UIStroke.Thickness = 1
 
-    -- Mobile Icon (only visible when minimized and mobile mode is on)
-    local mobileIcon = Instance.new("ImageButton")
-    mobileIcon.Name = "MobileIcon"
-    mobileIcon.Size = UDim2.new(0, 50, 0, 50)
-    mobileIcon.Position = UDim2.new(0, 20, 0.5, -25)
-    mobileIcon.BackgroundColor3 = UI_THEMES[currentTheme].Accent
-    mobileIcon.Image = "rbxassetid://7072718263" -- Gear icon
-    mobileIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
-    mobileIcon.Visible = false
-    mobileIcon.Parent = screenGui
+    hdr = Instance.new("Frame")
+    hdr.Size = UDim2.new(1,0,0,HDR_H)
+    hdr.BackgroundColor3 = T.header
+    hdr.BorderSizePixel = 0
+    hdr.ZIndex = 3
+    hdr.Parent = win
+    Instance.new("UICorner", hdr).CornerRadius = UDim.new(0,16)
+    local hdrCover = Instance.new("Frame")
+    hdrCover.Size = UDim2.new(0,16,1,0)
+    hdrCover.BackgroundColor3 = T.header
+    hdrCover.BorderSizePixel = 0
+    hdrCover.ZIndex = 3
+    hdrCover.Parent = hdr
+    local hdrCover2 = Instance.new("Frame")
+    hdrCover2.Size = UDim2.new(0,16,0,16)
+    hdrCover2.Position = UDim2.new(1,-16,1,-16)
+    hdrCover2.BackgroundColor3 = T.header
+    hdrCover2.BorderSizePixel = 0
+    hdrCover2.ZIndex = 3
+    hdrCover2.Parent = hdr
+    local hdrLine = Instance.new("Frame")
+    hdrLine.Size = UDim2.new(1,-10,0,1)
+    hdrLine.Position = UDim2.new(0,5,1,-1)
+    hdrLine.BackgroundColor3 = T.sep
+    hdrLine.BorderSizePixel = 0
+    hdrLine.ZIndex = 4
+    hdrLine.Parent = hdr
 
-    local mobileIconCorner = Instance.new("UICorner")
-    mobileIconCorner.CornerRadius = UDim.new(1, 0)
-    mobileIconCorner.Parent = mobileIcon
+    local title = Instance.new("TextLabel", hdr)
+    title.Size = UDim2.new(1,-80,1,0)
+    title.Position = UDim2.new(0,16,0,0)
+    title.Text = name
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 13
+    title.TextColor3 = T.text
+    title.BackgroundTransparency = 1
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.ZIndex = 5
 
-    -- Main Container
-    local mainContainer = Instance.new("Frame")
-    mainContainer.Name = "MainContainer"
-    mainContainer.Size = UDim2.new(0, 320, 0, 400)
-    mainContainer.Position = UDim2.new(uiPosition.X, -160, uiPosition.Y, -200)
-    mainContainer.AnchorPoint = Vector2.new(0.5, 0.5)
-    mainContainer.BackgroundColor3 = UI_THEMES[currentTheme].Background
-    mainContainer.BackgroundTransparency = 0.05
-    mainContainer.Visible = uiVisible
-    mainContainer.Parent = screenGui
+    local closeBtn = Instance.new("TextButton", hdr)
+    closeBtn.Size = UDim2.new(0,24,0,24)
+    closeBtn.Position = UDim2.new(1,-30,0.5,-12)
+    closeBtn.Text = "×"
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 14
+    closeBtn.TextColor3 = T.muted
+    closeBtn.BackgroundColor3 = T.dim
+    closeBtn.BorderSizePixel = 0
+    closeBtn.AutoButtonColor = false
+    closeBtn.ZIndex = 5
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,6)
+    closeBtn.MouseEnter:Connect(function()
+        TweenService:Create(closeBtn, tw(), {BackgroundColor3=T.red, TextColor3=Color3.new(1,1,1)}):Play()
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        TweenService:Create(closeBtn, tw(), {BackgroundColor3=T.dim, TextColor3=T.muted}):Play()
+    end)
+    closeBtn.MouseButton1Click:Connect(function() sg:Destroy() end)
 
-    local containerCorner = Instance.new("UICorner")
-    containerCorner.CornerRadius = UDim.new(0, 12)
-    containerCorner.Parent = mainContainer
+    content = Instance.new("Frame", win)
+    content.Size = UDim2.new(1,0,1,-HDR_H)
+    content.Position = UDim2.new(0,0,0,HDR_H)
+    content.BackgroundTransparency = 1
+    content.BorderSizePixel = 0
+    content.ZIndex = 2
+    content.ClipsDescendants = true
 
-    local containerShadow = Instance.new("ImageLabel")
-    containerShadow.Name = "Shadow"
-    containerShadow.Size = UDim2.new(1, 10, 1, 10)
-    containerShadow.Position = UDim2.new(0, -5, 0, -5)
-    containerShadow.BackgroundTransparency = 1
-    containerShadow.Image = "rbxassetid://5554236805"
-    containerShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    containerShadow.ImageTransparency = 0.8
-    containerShadow.ScaleType = Enum.ScaleType.Slice
-    containerShadow.SliceCenter = Rect.new(10, 10, 118, 118)
-    containerShadow.Parent = mainContainer
-
-    -- Title Bar (for dragging)
-    local titleBar = Instance.new("Frame")
-    titleBar.Name = "TitleBar"
-    titleBar.Size = UDim2.new(1, 0, 0, 40)
-    titleBar.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = mainContainer
-
-    local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 12)
-    titleCorner.Parent = titleBar
-
-    local titleText = Instance.new("TextLabel")
-    titleText.Name = "TitleText"
-    titleText.Size = UDim2.new(1, -80, 1, 0)
-    titleText.Position = UDim2.new(0, 15, 0, 0)
-    titleText.BackgroundTransparency = 1
-    titleText.Text = "FEATHER HUB"
-    titleText.TextColor3 = UI_THEMES[currentTheme].Text
-    titleText.TextSize = 18
-    titleText.Font = Enum.Font.GothamBold
-    titleText.TextXAlignment = Enum.TextXAlignment.Left
-    titleText.Parent = titleBar
-
-    -- Close button
-    local closeButton = Instance.new("TextButton")
-    closeButton.Name = "CloseButton"
-    closeButton.Size = UDim2.new(0, 15, 0, 15)
-    closeButton.Position = UDim2.new(1, -20, 0.5, 0)
-    closeButton.AnchorPoint = Vector2.new(0.5, 0.5)
-    closeButton.BackgroundColor3 = UI_THEMES[currentTheme].Danger
-    closeButton.Text = ""
-    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeButton.TextSize = 20
-    closeButton.Font = Enum.Font.GothamBold
-    closeButton.Parent = titleBar
-
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(1, 0)
-    closeCorner.Parent = closeButton
-
-    -- Content Frame
-    local contentFrame = Instance.new("Frame")
-    contentFrame.Name = "ContentFrame"
-    contentFrame.Size = UDim2.new(1, -20, 1, -60)
-    contentFrame.Position = UDim2.new(0, 10, 0, 50)
-    contentFrame.BackgroundTransparency = 1
-    contentFrame.Parent = mainContainer
-
-    -- Rotation Section
-    local rotationSection = Instance.new("Frame")
-    rotationSection.Name = "RotationSection"
-    rotationSection.Size = UDim2.new(1, 0, 0, 120)
-    rotationSection.BackgroundTransparency = 1
-    rotationSection.Parent = contentFrame
-
-    local rotationTitle = Instance.new("TextLabel")
-    rotationTitle.Name = "RotationTitle"
-    rotationTitle.Size = UDim2.new(1, 0, 0, 30)
-    rotationTitle.BackgroundTransparency = 1
-    rotationTitle.Text = "KILLAURA/ROTS"
-    rotationTitle.TextColor3 = UI_THEMES[currentTheme].Text
-    rotationTitle.TextSize = 14
-    rotationTitle.Font = Enum.Font.GothamSemibold
-    rotationTitle.TextXAlignment = Enum.TextXAlignment.Left
-    rotationTitle.Parent = rotationSection
-
-    local rotationStatus = Instance.new("TextLabel")
-    rotationStatus.Name = "RotationStatus"
-    rotationStatus.Size = UDim2.new(1, 0, 0, 25)
-    rotationStatus.Position = UDim2.new(0, 0, 0, 30)
-    rotationStatus.BackgroundTransparency = 1
-    rotationStatus.Text = "Status: Disabled"
-    rotationStatus.TextColor3 = UI_THEMES[currentTheme].Danger
-    rotationStatus.TextSize = 14
-    rotationTitle.Font = Enum.Font.Gotham
-    rotationStatus.TextXAlignment = Enum.TextXAlignment.Left
-    rotationStatus.Parent = rotationSection
-
-    local rotationToggle = Instance.new("TextButton")
-    rotationToggle.Name = "RotationToggle"
-    rotationToggle.Size = UDim2.new(1, 0, 0, 40)
-    rotationToggle.Position = UDim2.new(0, 0, 0, 60)
-    rotationToggle.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-    rotationToggle.Text = "ENABLE ROTATION"
-    rotationToggle.TextColor3 = UI_THEMES[currentTheme].Text
-    rotationToggle.TextSize = 14
-    rotationToggle.Font = Enum.Font.GothamSemibold
-    rotationToggle.Parent = rotationSection
-
-    local rotationToggleCorner = Instance.new("UICorner")
-    rotationToggleCorner.CornerRadius = UDim.new(0, 8)
-    rotationToggleCorner.Parent = rotationToggle
-
-    -- Safezone Section
-    local safezoneSection = Instance.new("Frame")
-    safezoneSection.Name = "SafezoneSection"
-    safezoneSection.Size = UDim2.new(1, 0, 0, 120)
-    safezoneSection.Position = UDim2.new(0, 0, 0, 130)
-    safezoneSection.BackgroundTransparency = 1
-    safezoneSection.Parent = contentFrame
-
-    local safezoneTitle = Instance.new("TextLabel")
-    safezoneTitle.Name = "SafezoneTitle"
-    safezoneTitle.Size = UDim2.new(1, 0, 0, 30)
-    safezoneTitle.BackgroundTransparency = 1
-    safezoneTitle.Text = "AUTO SAFEZONE"
-    safezoneTitle.TextColor3 = UI_THEMES[currentTheme].Text
-    safezoneTitle.TextSize = 14
-    safezoneTitle.Font = Enum.Font.GothamSemibold
-    safezoneTitle.TextXAlignment = Enum.TextXAlignment.Left
-    safezoneTitle.Parent = safezoneSection
-
-    local healthStatus = Instance.new("TextLabel")
-    healthStatus.Name = "HealthStatus"
-    healthStatus.Size = UDim2.new(1, 0, 0, 25)
-    healthStatus.Position = UDim2.new(0, 0, 0, 30)
-    healthStatus.BackgroundTransparency = 1
-    healthStatus.Text = "Health: Full (100%)"
-    healthStatus.TextColor3 = UI_THEMES[currentTheme].Success
-    healthStatus.TextSize = 14
-    healthStatus.Font = Enum.Font.Gotham
-    healthStatus.TextXAlignment = Enum.TextXAlignment.Left
-    healthStatus.Parent = safezoneSection
-
-    local safezoneToggleBtn = Instance.new("TextButton")
-    safezoneToggleBtn.Name = "SafezoneToggle"
-    safezoneToggleBtn.Size = UDim2.new(1, 0, 0, 40)
-    safezoneToggleBtn.Position = UDim2.new(0, 0, 0, 60)
-    safezoneToggleBtn.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-    safezoneToggleBtn.Text = "SAFEZONE IF LOW"
-    safezoneToggleBtn.TextColor3 = UI_THEMES[currentTheme].Text
-    safezoneToggleBtn.TextSize = 14
-    safezoneToggleBtn.Font = Enum.Font.GothamSemibold
-    safezoneToggleBtn.Parent = safezoneSection
-
-    local safezoneToggleCorner = Instance.new("UICorner")
-    safezoneToggleCorner.CornerRadius = UDim.new(0, 8)
-    safezoneToggleCorner.Parent = safezoneToggleBtn
-
-    -- Settings Button
-    local settingsButton = Instance.new("TextButton")
-    settingsButton.Name = "SettingsButton"
-    settingsButton.Size = UDim2.new(1, 0, 0, 40)
-    settingsButton.Position = UDim2.new(0, 0, 0, 260)
-    settingsButton.BackgroundColor3 = UI_THEMES[currentTheme].Accent
-    settingsButton.Text = "SETTINGS"
-    settingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    settingsButton.TextSize = 14
-    settingsButton.Font = Enum.Font.GothamSemibold
-    settingsButton.Parent = contentFrame
-
-    local settingsButtonCorner = Instance.new("UICorner")
-    settingsButtonCorner.CornerRadius = UDim.new(0, 8)
-    settingsButtonCorner.Parent = settingsButton
-
-    -- Settings Panel (initially hidden)
-    local settingsPanel = Instance.new("Frame")
-    settingsPanel.Name = "SettingsPanel"
-    settingsPanel.Size = UDim2.new(1, 0, 1, 0)
-    settingsPanel.Position = UDim2.new(0, 0, 0, 0)
-    settingsPanel.BackgroundColor3 = UI_THEMES[currentTheme].Background
-    settingsPanel.Visible = false
-    settingsPanel.Parent = mainContainer
-
-    local settingsCorner = Instance.new("UICorner")
-    settingsCorner.CornerRadius = UDim.new(0, 12)
-    settingsCorner.Parent = settingsPanel
-
-    local settingsTitle = Instance.new("TextLabel")
-    settingsTitle.Name = "SettingsTitle"
-    settingsTitle.Size = UDim2.new(1, 0, 0, 40)
-    settingsTitle.BackgroundTransparency = 1
-    settingsTitle.Text = "SETTINGS"
-    settingsTitle.TextColor3 = UI_THEMES[currentTheme].Text
-    settingsTitle.TextSize = 18
-    settingsTitle.Font = Enum.Font.GothamBold
-    settingsTitle.Parent = settingsPanel
-
-    local backButton = Instance.new("TextButton")
-    backButton.Name = "BackButton"
-    backButton.Size = UDim2.new(0, 40, 0, 40)
-    backButton.Position = UDim2.new(0, 10, 0, 0)
-    backButton.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-    backButton.Text = "←"
-    backButton.TextColor3 = UI_THEMES[currentTheme].Text
-    backButton.TextSize = 20
-    backButton.Font = Enum.Font.GothamBold
-    backButton.Parent = settingsPanel
-
-    local backCorner = Instance.new("UICorner")
-    backCorner.CornerRadius = UDim.new(0, 8)
-    backCorner.Parent = backButton
-
-    -- Theme Selection
-    local themeFrame = Instance.new("Frame")
-    themeFrame.Name = "ThemeFrame"
-    themeFrame.Size = UDim2.new(1, -20, 0, 100)
-    themeFrame.Position = UDim2.new(0, 10, 0, 50)
-    themeFrame.BackgroundTransparency = 1
-    themeFrame.Parent = settingsPanel
-
-    local themeTitle = Instance.new("TextLabel")
-    themeTitle.Name = "ThemeTitle"
-    themeTitle.Size = UDim2.new(1, 0, 0, 25)
-    themeTitle.BackgroundTransparency = 1
-    themeTitle.Text = "UI Theme:"
-    themeTitle.TextColor3 = UI_THEMES[currentTheme].Text
-    themeTitle.TextSize = 14
-    themeTitle.Font = Enum.Font.GothamSemibold
-    themeTitle.TextXAlignment = Enum.TextXAlignment.Left
-    themeTitle.Parent = themeFrame
-
-    -- Create theme buttons
-    local themeButtons = {}
-    local themeNames = {"Dark", "Light", "Purple"}
-
-    for i, themeName in ipairs(themeNames) do
-        local themeButton = Instance.new("TextButton")
-        themeButton.Name = themeName .. "Theme"
-        themeButton.Size = UDim2.new(0.3, -5, 0, 40)
-        themeButton.Position = UDim2.new((i-1) * 0.33, 0, 0, 30)
-        themeButton.BackgroundColor3 = UI_THEMES[themeName].Accent
-        themeButton.Text = themeName
-        themeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        themeButton.TextSize = 12
-        themeButton.Font = Enum.Font.Gotham
-        themeButton.Parent = themeFrame
-        
-        local themeCorner = Instance.new("UICorner")
-        themeCorner.CornerRadius = UDim.new(0, 6)
-        themeCorner.Parent = themeButton
-        
-        themeButtons[themeName] = themeButton
-    end
-
-    -- Hotkey Selection
-    local hotkeyFrame = Instance.new("Frame")
-    hotkeyFrame.Name = "HotkeyFrame"
-    hotkeyFrame.Size = UDim2.new(1, -20, 0, 80)
-    hotkeyFrame.Position = UDim2.new(0, 10, 0, 160)
-    hotkeyFrame.BackgroundTransparency = 1
-    hotkeyFrame.Parent = settingsPanel
-
-    local hotkeyTitle = Instance.new("TextLabel")
-    hotkeyTitle.Name = "HotkeyTitle"
-    hotkeyTitle.Size = UDim2.new(1, 0, 0, 25)
-    hotkeyTitle.BackgroundTransparency = 1
-    hotkeyTitle.Text = "UI Hotkey: RightShift"
-    hotkeyTitle.TextColor3 = UI_THEMES[currentTheme].Text
-    hotkeyTitle.TextSize = 14
-    hotkeyTitle.Font = Enum.Font.GothamSemibold
-    hotkeyTitle.TextXAlignment = Enum.TextXAlignment.Left
-    hotkeyTitle.Parent = hotkeyFrame
-
-    local changeHotkeyBtn = Instance.new("TextButton")
-    changeHotkeyBtn.Name = "ChangeHotkey"
-    changeHotkeyBtn.Size = UDim2.new(1, 0, 0, 40)
-    changeHotkeyBtn.Position = UDim2.new(0, 0, 0, 30)
-    changeHotkeyBtn.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-    changeHotkeyBtn.Text = "CHANGE HOTKEY"
-    changeHotkeyBtn.TextColor3 = UI_THEMES[currentTheme].Text
-    changeHotkeyBtn.TextSize = 14
-    changeHotkeyBtn.Font = Enum.Font.GothamSemibold
-    changeHotkeyBtn.Parent = hotkeyFrame
-
-    local hotkeyCorner = Instance.new("UICorner")
-    hotkeyCorner.CornerRadius = UDim.new(0, 8)
-    hotkeyCorner.Parent = changeHotkeyBtn
-
-    -- Mobile Mode Toggle
-    local mobileFrame = Instance.new("Frame")
-    mobileFrame.Name = "MobileFrame"
-    mobileFrame.Size = UDim2.new(1, -20, 0, 60)
-    mobileFrame.Position = UDim2.new(0, 10, 0, 250)
-    mobileFrame.BackgroundTransparency = 1
-    mobileFrame.Parent = settingsPanel
-
-    local mobileToggle = Instance.new("TextButton")
-    mobileToggle.Name = "MobileToggle"
-    mobileToggle.Size = UDim2.new(1, 0, 1, 0)
-    mobileToggle.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-    mobileToggle.Text = "Mobile Mode: OFF"
-    mobileToggle.TextColor3 = UI_THEMES[currentTheme].Text
-    mobileToggle.TextSize = 14
-    mobileToggle.Font = Enum.Font.GothamSemibold
-    mobileToggle.Parent = mobileFrame
-
-    local mobileToggleCorner = Instance.new("UICorner")
-    mobileToggleCorner.CornerRadius = UDim.new(0, 8)
-    mobileToggleCorner.Parent = mobileToggle
-
-    -- Return UI elements for external access
-    return {
-        screenGui = screenGui,
-        mainContainer = mainContainer,
-        titleBar = titleBar,
-        titleText = titleText,
-        closeButton = closeButton,
-        mobileIcon = mobileIcon,
-        rotationToggle = rotationToggle,
-        rotationStatus = rotationStatus,
-        safezoneToggleBtn = safezoneToggleBtn,
-        healthStatus = healthStatus,
-        settingsButton = settingsButton,
-        backButton = backButton,
-        contentFrame = contentFrame,
-        settingsPanel = settingsPanel,
-        themeButtons = themeButtons,
-        changeHotkeyBtn = changeHotkeyBtn,
-        hotkeyTitle = hotkeyTitle,
-        mobileToggle = mobileToggle
-    }
-end
-
--- Create initial UI
-local UI = createUI()
-
--- UI Functions
-function updateTheme()
-    local theme = UI_THEMES[currentTheme]
-    
-    -- Update main container
-    UI.mainContainer.BackgroundColor3 = theme.Background
-    
-    -- Update title bar
-    UI.titleBar.BackgroundColor3 = theme.Secondary
-    UI.titleText.TextColor3 = theme.Text
-    
-    -- Update buttons
-    UI.closeButton.BackgroundColor3 = theme.Danger
-    UI.settingsButton.BackgroundColor3 = theme.Accent
-    
-    -- Update settings panel
-    UI.settingsPanel.BackgroundColor3 = theme.Background
-    UI.settingsPanel:FindFirstChild("SettingsTitle").TextColor3 = theme.Text
-    UI.backButton.BackgroundColor3 = theme.Secondary
-    UI.backButton.TextColor3 = theme.Text
-    
-    -- Update theme buttons
-    for themeName, button in pairs(UI.themeButtons) do
-        button.BackgroundColor3 = UI_THEMES[themeName].Accent
-    end
-    
-    -- Update other settings elements
-    UI.changeHotkeyBtn.BackgroundColor3 = theme.Secondary
-    UI.changeHotkeyBtn.TextColor3 = theme.Text
-    UI.hotkeyTitle.TextColor3 = theme.Text
-    UI.mobileToggle.BackgroundColor3 = theme.Secondary
-    UI.mobileToggle.TextColor3 = theme.Text
-end
-
-function toggleUIVisibility()
-    uiVisible = not uiVisible
-    UI.mainContainer.Visible = uiVisible
-    
-    if mobileMode and not uiVisible then
-        UI.mobileIcon.Visible = true
-    else
-        UI.mobileIcon.Visible = false
-    end
-end
-
-function showSettings()
-    UI.contentFrame.Visible = false
-    UI.settingsPanel.Visible = true
-end
-
-function hideSettings()
-    UI.contentFrame.Visible = true
-    UI.settingsPanel.Visible = false
-end
-
-function toggleMobileMode()
-    mobileMode = not mobileMode
-    UI.mobileToggle.Text = "Mobile Mode: " .. (mobileMode and "ON" or "OFF")
-    
-    if mobileMode then
-        UI.mobileToggle.BackgroundColor3 = UI_THEMES[currentTheme].Success
-    else
-        UI.mobileToggle.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-        UI.mobileIcon.Visible = false
-    end
-end
-
--- Draggable UI functionality
-local dragging = false
-local dragStart = Vector2.new(0, 0)
-local startPosition = UDim2.new(0, 0, 0, 0)
-
--- Start dragging when mouse is pressed on title bar
-UI.titleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = Vector2.new(input.Position.X, input.Position.Y)
-        startPosition = UI.mainContainer.Position
-        
-        -- Change cursor to indicate dragging
-        game:GetService("UserInputService").MouseIcon = ""
-    end
-end)
-
--- Stop dragging when mouse is released
-UI.titleBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-        -- Restore default cursor
-        game:GetService("UserInputService").MouseIcon = ""
-        
-        -- Save UI position for persistence
-        local pos = UI.mainContainer.Position
-        uiPosition.X = pos.X.Scale
-        uiPosition.Y = pos.Y.Scale
-    end
-end)
-
--- Update UI position while dragging
-game:GetService("UserInputService").InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = Vector2.new(
-            input.Position.X - dragStart.X,
-            input.Position.Y - dragStart.Y
-        )
-        
-        -- Calculate new position in screen coordinates
-        local screenSize = UI.screenGui.AbsoluteSize
-        local newX = (startPosition.X.Offset + delta.X) / screenSize.X
-        local newY = (startPosition.Y.Offset + delta.Y) / screenSize.Y
-        
-        -- Clamp position to screen boundaries
-        newX = math.clamp(newX, 0, 1)
-        newY = math.clamp(newY, 0, 1)
-        
-        -- Update UI position
-        UI.mainContainer.Position = UDim2.new(newX, 0, newY, 0)
-    end
-end)
-
--- UI Event Handlers
-UI.closeButton.MouseButton1Click:Connect(function()
-    toggleUIVisibility()
-end)
-
-UI.mobileIcon.MouseButton1Click:Connect(function()
-    toggleUIVisibility()
-end)
-
-UI.rotationToggle.MouseButton1Click:Connect(function()
-    toggleRotation()
-end)
-
-UI.settingsButton.MouseButton1Click:Connect(showSettings)
-UI.backButton.MouseButton1Click:Connect(hideSettings)
-
-UI.mobileToggle.MouseButton1Click:Connect(toggleMobileMode)
-
--- Theme button handlers
-for themeName, button in pairs(UI.themeButtons) do
-    button.MouseButton1Click:Connect(function()
-        currentTheme = themeName
-        updateTheme()
-    end
-    )
-end
-
--- Hotkey changing
-local waitingForKey = false
-UI.changeHotkeyBtn.MouseButton1Click:Connect(function()
-    if waitingForKey then return end
-    
-    waitingForKey = true
-    UI.changeHotkeyBtn.Text = "Press any key..."
-    UI.changeHotkeyBtn.BackgroundColor3 = UI_THEMES[currentTheme].Warning
-    
-    local connection
-    connection = game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-        if not gameProcessed and input.KeyCode ~= Enum.KeyCode.Unknown then
-            uiHotkey = input.KeyCode
-            UI.hotkeyTitle.Text = "UI Hotkey: " .. tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
-            
-            waitingForKey = false
-            UI.changeHotkeyBtn.Text = "CHANGE HOTKEY"
-            UI.changeHotkeyBtn.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-            
-            if connection then
-                connection:Disconnect()
-            end
+    -- Drag logic
+    local dragging, dragReady, dragInput, dragStart, startPos, holdThread = false, false, nil, nil, nil, nil
+    hdr.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragStart = i.Position
+            startPos = win.Position
+            dragReady = false
+            dragging = false
+            holdThread = task.delay(0.14, function() dragReady = true end)
         end
     end)
-end)
-
--- Hotkey to toggle UI
-game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == uiHotkey then
-        toggleUIVisibility()
-    end
-end)
-
--- Initialize theme
-updateTheme()
-
--- Rotation Functions
-function getClosestPlayer()
-    local closestPlayer = nil
-    local closestDistance = math.huge
-    local character = player.Character
-    local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
-    
-    if not humanoidRootPart then return nil end
-    
-    for _, otherPlayer in pairs(game.Players:GetPlayers()) do
-        if otherPlayer ~= player and otherPlayer.Character then
-            local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if otherRoot then
-                local distance = (humanoidRootPart.Position - otherRoot.Position).Magnitude
-                if distance < closestDistance then
-                    closestDistance = distance
-                    closestPlayer = otherPlayer
-                end
-            end
+    hdr.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then dragInput = i end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i == dragInput and dragReady then
+            dragging = true
+            local d = i.Position - dragStart
+            local vp = Workspace.CurrentCamera.ViewportSize
+            win.Position = UDim2.new(0, math.clamp(startPos.X.Offset + d.X, 0, vp.X - WIN_W), 0, math.clamp(startPos.Y.Offset + d.Y, 0, vp.Y - WIN_H))
         end
-    end
-    
-    return closestPlayer
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+            dragReady = false
+            if holdThread then task.cancel(holdThread); holdThread = nil end
+        end
+    end)
+
+    local vp = Workspace.CurrentCamera.ViewportSize
+    win.Position = UDim2.new(0, (vp.X-WIN_W)/2, 0, (vp.Y-WIN_H)/2)
+    return self
 end
 
-function performClick()
-    local closestPlayer = getClosestPlayer()
-    if closestPlayer and closestPlayer.Character then
-        local targetChar = closestPlayer.Character
-        local humanoidRootPart = targetChar:FindFirstChild("HumanoidRootPart")
-        
-        if humanoidRootPart then
-            local function simulateClick()
-                if mouse.Button1Down then
-                    mouse.Button1Down:Fire()
-                end
-                
-                task.wait(0.05)
-                
-                if mouse.Button1Up then
-                    mouse.Button1Up:Fire()
-                end
-                
-                for _, part in pairs(targetChar:GetChildren()) do
-                    local clickDetector = part:FindFirstChildOfClass("ClickDetector")
-                    if clickDetector then
-                        clickDetector.MouseClick:Fire(player)
-                        break
+function UI:AddSection(parent, text)
+    local sec = Instance.new("Frame", parent)
+    sec.Size = UDim2.new(1,0,0,22)
+    sec.BackgroundTransparency = 1
+    sec.BorderSizePixel = 0
+    sec.ZIndex = 3
+    local lbl = Instance.new("TextLabel", sec)
+    lbl.Size = UDim2.new(1,0,1,0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = T.accent
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    local line = Instance.new("Frame", sec)
+    line.Size = UDim2.new(0,28,0,2)
+    line.Position = UDim2.new(0,0,1,-2)
+    line.BackgroundColor3 = T.accent
+    line.BorderSizePixel = 0
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1,0)
+    return sec
+end
+
+function UI:AddToggle(parent, text, default, callback)
+    local card = Instance.new("Frame", parent)
+    card.Size = UDim2.new(1,0,0,44)
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0,11)
+    Instance.new("UIStroke", card).Color = T.border; card.UIStroke.Thickness = 1
+    local lbl = Instance.new("TextLabel", card)
+    lbl.Size = UDim2.new(0.65,0,1,0)
+    lbl.Position = UDim2.new(0,16,0,0)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    local track = Instance.new("TextButton", card)
+    track.Size = UDim2.new(0,38,0,20)
+    track.Position = UDim2.new(1,-52,0.5,-10)
+    track.BackgroundColor3 = default and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ""
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("Frame", track)
+    knob.Size = UDim2.new(0,16,0,16)
+    knob.Position = default and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.BorderSizePixel = 0
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+    local state = default
+    local function update(v)
+        state = v
+        TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8)}):Play()
+        callback(state)
+    end
+    track.MouseButton1Click:Connect(function() update(not state) end)
+    if default then update(default) end
+end
+
+function UI:AddSlider(parent, text, min, max, def, inc, callback)
+    local card = Instance.new("Frame", parent)
+    card.Size = UDim2.new(1,0,0,60)
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0,11)
+    Instance.new("UIStroke", card).Color = T.border; card.UIStroke.Thickness = 1
+    local lbl = Instance.new("TextLabel", card)
+    lbl.Size = UDim2.new(0.45,0,0,20)
+    lbl.Position = UDim2.new(0,16,0,8)
+    lbl.Text = text
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 10
+    lbl.TextColor3 = T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    local valLbl = Instance.new("TextLabel", card)
+    valLbl.Size = UDim2.new(0,40,0,20)
+    valLbl.Position = UDim2.new(1,-52,0,8)
+    valLbl.Text = tostring(def)
+    valLbl.Font = Enum.Font.GothamBold
+    valLbl.TextSize = 9
+    valLbl.TextColor3 = T.accent
+    valLbl.TextXAlignment = Enum.TextXAlignment.Right
+    valLbl.BackgroundTransparency = 1
+    local track = Instance.new("Frame", card)
+    track.Size = UDim2.new(1,-32,0,6)
+    track.Position = UDim2.new(0,16,0,38)
+    track.BackgroundColor3 = T.dim
+    track.BorderSizePixel = 0
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new((def-min)/(max-min),0,1,0)
+    fill.BackgroundColor3 = T.accent
+    fill.BorderSizePixel = 0
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1,0)
+    local knob = Instance.new("TextButton", track)
+    knob.Size = UDim2.new(0,14,0,14)
+    knob.Position = UDim2.new((def-min)/(max-min),-7,0.5,-7)
+    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.BorderSizePixel = 0
+    knob.AutoButtonColor = false
+    knob.Text = ""
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+    local dragging = false
+    local function setVal(r)
+        local val = math.clamp(min + r*(max-min), min, max)
+        if inc then val = math.round(val/inc)*inc end
+        fill.Size = UDim2.new((val-min)/(max-min),0,1,0)
+        knob.Position = UDim2.new((val-min)/(max-min),-7,0.5,-7)
+        valLbl.Text = tostring(val)
+        callback(val)
+    end
+    knob.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = true end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local ap = track.AbsolutePosition.X
+            local az = track.AbsoluteSize.X
+            setVal(math.clamp((i.Position.X - ap)/az, 0, 1))
+        end
+    end)
+    setVal((def-min)/(max-min))
+end
+
+function UI:AddButton(parent, text, callback)
+    local card = Instance.new("Frame", parent)
+    card.Size = UDim2.new(1,0,0,44)
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0,11)
+    Instance.new("UIStroke", card).Color = T.border; card.UIStroke.Thickness = 1
+    local btn = Instance.new("TextButton", card)
+    btn.Size = UDim2.new(1,-28,0,36)
+    btn.Position = UDim2.new(0,14,0.5,-18)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, tw(), {BackgroundColor3=T.accentLt}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, tw(), {BackgroundColor3=T.accent}):Play()
+    end)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+function UI:AddLabel(parent, text, color)
+    local card = Instance.new("Frame", parent)
+    card.Size = UDim2.new(1,0,0,30)
+    card.BackgroundColor3 = T.card
+    card.BorderSizePixel = 0
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0,11)
+    Instance.new("UIStroke", card).Color = T.border; card.UIStroke.Thickness = 1
+    local lbl = Instance.new("TextLabel", card)
+    lbl.Size = UDim2.new(1,-28,0,26)
+    lbl.Position = UDim2.new(0,14,0,2)
+    lbl.Text = text
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 10
+    lbl.TextColor3 = color or T.text
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    return lbl
+end
+
+-- ===================== Cheat Logic =====================
+local LOW_HP_THRESHOLD = 20
+local ROTATION_SPEED = 5
+local CLICK_INTERVAL = 0.1
+
+local killAuraEnabled = false
+local sprintEnabled = false
+local safezoneEnabled = false
+local godmodeEnabled = false
+local knockbackEnabled = false
+local knockbackFactor = 1.0
+
+local killAuraKey = Enum.KeyCode.R
+local isCapturingKey = false
+
+local rotationConnection, clickConnection, sprintConnection, knockbackConnection, godmodeConnection
+local auraStatusLabel, sprintStatusLabel, healthLabel, mapLabel, thresholdLabel, changeKeyBtn
+
+-- Remote references
+local sprintRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ToggleNotReset")
+
+-- CurrentMap helper
+local function getCurrentMapValue()
+    local locations = {Workspace, ReplicatedStorage, PlayerGui}
+    for _, loc in ipairs(locations) do
+        if loc then
+            local obj = loc:FindFirstChild("CurrentMap")
+            if obj and obj:IsA("IntValue") then return obj.Value end
+        end
+    end
+    return nil
+end
+
+local function getSafezoneCFrame()
+    local map = getCurrentMapValue()
+    if not map then return nil end
+    local mapNumber = math.clamp(math.floor(map), 1, 6)
+    local spawnModelName = mapNumber == 1 and "SpawnMap" or "SpawnMap" .. mapNumber
+    local spawnModel = Workspace:FindFirstChild(spawnModelName)
+    if spawnModel and spawnModel:IsA("Model") and spawnModel.PrimaryPart then
+        return spawnModel.PrimaryPart.CFrame
+    end
+    for _, v in ipairs(Workspace:GetDescendants()) do
+        if v:IsA("Model") and v.Name == spawnModelName and v.PrimaryPart then return v.PrimaryPart.CFrame end
+    end
+    return nil
+end
+
+local function getClosestPlayer()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local closest, minDist = nil, math.huge
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= LocalPlayer and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
+            local dist = (root.Position - other.Character.HumanoidRootPart.Position).Magnitude
+            if dist < minDist then minDist = dist; closest = other end
+        end
+    end
+    return closest
+end
+
+local function sendClick()
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+        task.wait(0.05)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end)
+end
+
+local function setKillAura(state)
+    killAuraEnabled = state
+    if auraStatusLabel then
+        auraStatusLabel.Text = state and "ACTIVE" or "DISABLED"
+        auraStatusLabel.TextColor3 = state and T.green or T.red
+    end
+    if state then
+        if not rotationConnection then
+            rotationConnection = RunService.Heartbeat:Connect(function()
+                local char = LocalPlayer.Character
+                if not char then return end
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if not root then return end
+                local target = getClosestPlayer()
+                if target and target.Character then
+                    local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
+                    if targetRoot then
+                        local angle = tick() * ROTATION_SPEED
+                        local offset = Vector3.new(math.cos(angle)*2.5, 3, math.sin(angle)*2.5)
+                        root.CFrame = CFrame.new(targetRoot.Position + offset, targetRoot.Position)
                     end
                 end
-            end
-            
-            pcall(simulateClick)
+            end)
         end
-    end
-end
-
-function sendMouseInput()
-    local VIM = game:GetService("VirtualInputManager")
-    if VIM then
-        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-        task.wait(0.05)
-        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-        return
-    end
-    
-    performClick()
-end
-
-function rotateAroundTarget(targetChar, character)
-    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    
-    if not targetRoot or not humanoidRootPart then return end
-    
-    local lookAtPos = targetRoot.Position
-    humanoidRootPart.CFrame = CFrame.new(humanoidRootPart.Position, 
-        Vector3.new(lookAtPos.X, humanoidRootPart.Position.Y, lookAtPos.Z))
-    
-    local radius = 2.5
-    local angle = tick() * ROTATION_SPEED
-    local offset = Vector3.new(
-        math.cos(angle) * radius,
-        3,
-        math.sin(angle) * radius
-    )
-    
-    humanoidRootPart.CFrame = CFrame.new(targetRoot.Position + offset, lookAtPos)
-end
-
--- Updated toggle function with UI updates
-function toggleRotation()
-    toggle = not toggle
-    
-    if toggle then
-        UI.rotationStatus.Text = "Status: Active"
-        UI.rotationStatus.TextColor3 = UI_THEMES[currentTheme].Success
-        UI.rotationToggle.Text = "DISABLE ROTATION"
-        UI.rotationToggle.BackgroundColor3 = UI_THEMES[currentTheme].Danger
-        
-        connection = game:GetService("RunService").Heartbeat:Connect(function()
-            local character = player.Character
-            local closestPlayer = getClosestPlayer()
-            
-            if character and closestPlayer and closestPlayer.Character then
-                rotateAroundTarget(closestPlayer.Character, character)
-            end
-        end)
-        
-        local lastClick = tick()
-        clickConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            local now = tick()
-            if now - lastClick >= CLICK_INTERVAL then
-                sendMouseInput()
-                lastClick = now
-            end
-        end)
-        
-    else
-        UI.rotationStatus.Text = "Status: Disabled"
-        UI.rotationStatus.TextColor3 = UI_THEMES[currentTheme].Danger
-        UI.rotationToggle.Text = "ENABLE ROTATION"
-        UI.rotationToggle.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-        
-        if connection then
-            connection:Disconnect()
-            connection = nil
-        end
-        
-        if clickConnection then
-            clickConnection:Disconnect()
-            clickConnection = nil
-        end
-    end
-end
-
--- Safezone Functions
-function getPlayerHealth()
-    local character = player.Character
-    if not character then return nil end
-    
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return nil end
-    
-    return humanoid.Health, humanoid.MaxHealth
-end
-
-function teleportToSafezone()
-    local character = player.Character
-    if not character then return false end
-    
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return false end
-    
-    humanoidRootPart.CFrame = TELEPORT_CFRAME
-    return true
-end
-
-function updateHealthStatus()
-    local health, maxHealth = getPlayerHealth()
-    if not health or not maxHealth then
-        UI.healthStatus.Text = "Health: No character"
-        UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Warning
-        return
-    end
-    
-    local percent = (health / maxHealth) * 100
-    
-    if percent >= 75 then
-        UI.healthStatus.Text = string.format("Health: Full (%.0f%%)", percent)
-        UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Success
-    elseif percent > 25 then
-        UI.healthStatus.Text = string.format("Health: Moderate (%.0f%%)", percent)
-        UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Warning
-    else
-        UI.healthStatus.Text = string.format("Health: Low (%.0f%%)", percent)
-        UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Danger
-    end
-    
-    if safezoneToggle and health <= LOW_HP_THRESHOLD then
-        local success = teleportToSafezone()
-        if success then
-            UI.healthStatus.Text = "SAFE ZONE TELEPORTED!"
-            UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Accent
-            
-            task.wait(1)
-        end
-    end
-end
-
-function toggleSafezone()
-    safezoneToggle = not safezoneToggle
-    
-    if safezoneToggle then
-        UI.safezoneToggleBtn.Text = "DISABLE SAFEZONE"
-        UI.safezoneToggleBtn.BackgroundColor3 = UI_THEMES[currentTheme].Success
-        
-        if not safezoneConnection then
-            safezoneConnection = game:GetService("RunService").Heartbeat:Connect(function()
-                updateHealthStatus()
+        if not clickConnection then
+            clickConnection = RunService.Heartbeat:Connect(function()
+                sendClick()
+                task.wait(CLICK_INTERVAL)
             end)
         end
     else
-        UI.safezoneToggleBtn.Text = "ENABLE SAFEZONE"
-        UI.safezoneToggleBtn.BackgroundColor3 = UI_THEMES[currentTheme].Secondary
-        
-        if safezoneConnection then
-            safezoneConnection:Disconnect()
-            safezoneConnection = nil
+        if rotationConnection then rotationConnection:Disconnect(); rotationConnection = nil end
+        if clickConnection then clickConnection:Disconnect(); clickConnection = nil end
+    end
+end
+
+local function setSprint(state)
+    sprintEnabled = state
+    if sprintStatusLabel then
+        sprintStatusLabel.Text = state and "ON" or "OFF"
+        sprintStatusLabel.TextColor3 = state and T.green or T.muted
+    end
+    if state then
+        sprintConnection = RunService.Heartbeat:Connect(function()
+            pcall(function() sprintRemote:FireServer("Sprinting", true) end)
+            local sprintBV = LocalPlayer:FindFirstChild("Sprinting")
+            if sprintBV and sprintBV:IsA("BoolValue") then sprintBV.Value = true end
+        end)
+    else
+        if sprintConnection then sprintConnection:Disconnect(); sprintConnection = nil end
+        pcall(function() sprintRemote:FireServer("Sprinting", false) end)
+        local sprintBV = LocalPlayer:FindFirstChild("Sprinting")
+        if sprintBV and sprintBV:IsA("BoolValue") then sprintBV.Value = false end
+    end
+end
+
+local function setGodmode(state)
+    godmodeEnabled = state
+    if state then
+        if not godmodeConnection then
+            godmodeConnection = RunService.Heartbeat:Connect(function()
+                local safeZoneVal = LocalPlayer:FindFirstChild("SafeZone")
+                if not safeZoneVal or not safeZoneVal:IsA("BoolValue") then
+                    safeZoneVal = Instance.new("BoolValue")
+                    safeZoneVal.Name = "SafeZone"
+                    safeZoneVal.Parent = LocalPlayer
+                end
+                safeZoneVal.Value = true
+            end)
+        end
+    else
+        if godmodeConnection then godmodeConnection:Disconnect(); godmodeConnection = nil end
+        local safeZoneVal = LocalPlayer:FindFirstChild("SafeZone")
+        if safeZoneVal and safeZoneVal:IsA("BoolValue") then safeZoneVal.Value = false end
+    end
+end
+
+local function setKnockbackState(state)
+    knockbackEnabled = state
+    if state then
+        if not knockbackConnection then
+            knockbackConnection = RunService.Stepped:Connect(function()
+                if not knockbackEnabled then return end
+                local char = LocalPlayer.Character
+                if not char then return end
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    local vel = root.Velocity
+                    if vel.Magnitude > 0 then
+                        root.Velocity = vel * knockbackFactor
+                    end
+                end
+            end)
+        end
+    else
+        if knockbackConnection then knockbackConnection:Disconnect(); knockbackConnection = nil end
+    end
+end
+
+local function updateThresholdLabel()
+    if thresholdLabel then
+        thresholdLabel.Text = "Threshold: " .. LOW_HP_THRESHOLD
+    end
+end
+
+local function adjustThreshold(delta)
+    LOW_HP_THRESHOLD = math.clamp(LOW_HP_THRESHOLD + delta, 1, 100)
+    updateThresholdLabel()
+end
+
+local function checkSafeZone()
+    local char = LocalPlayer.Character
+    if not char then
+        if healthLabel then healthLabel.Text = "Health: N/A" end
+        if mapLabel then mapLabel.Text = "Map: N/A" end
+        return
+    end
+    local lowHealth = false
+    local healthValue = 0
+    local source = ""
+    local prevHealth = char:FindFirstChild("PrevHealth")
+    if prevHealth and prevHealth:IsA("IntValue") then
+        healthValue = prevHealth.Value; source = "PrevHealth"
+        lowHealth = healthValue < LOW_HP_THRESHOLD
+    else
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then healthValue = hum.Health; source = "Health"; lowHealth = healthValue < LOW_HP_THRESHOLD
+        else if healthLabel then healthLabel.Text = "No health source" end return end
+    end
+    local color = healthValue > 50 and T.green or (healthValue > 25 and T.gold or T.red)
+    if healthLabel then
+        healthLabel.Text = string.format("%s: %d", source, healthValue)
+        healthLabel.TextColor3 = color
+    end
+    local mapVal = getCurrentMapValue()
+    if mapLabel then mapLabel.Text = mapVal and "Map: "..mapVal or "Map: ?"; mapLabel.TextColor3 = mapVal and T.text or T.muted end
+    if safezoneEnabled and lowHealth then
+        local cframe = getSafezoneCFrame()
+        if cframe and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.CFrame = cframe
+            if healthLabel then healthLabel.Text = "Teleported!" end
         end
     end
 end
 
-UI.safezoneToggleBtn.MouseButton1Click:Connect(toggleSafezone)
+-- ===================== UI Construction =====================
+local window = UI:CreateWindow("KILLSTREAK v8")
 
--- Handle player respawns to maintain UI
-player.CharacterAdded:Connect(function(character)
-    task.wait(1) -- Wait for character to fully load
-    updateHealthStatus()
-    
-    -- The UI persists automatically due to ResetOnSpawn = false
-    -- But we need to make sure all connections are still working
-    print("Character respawned - UI maintained")
+local scroll = Instance.new("ScrollingFrame", content)
+scroll.Size = UDim2.new(1,0,1,0)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 3
+scroll.ScrollBarImageColor3 = T.accent
+scroll.CanvasSize = UDim2.new(0,0,0,0)
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+scroll.ElasticBehavior = Enum.ElasticBehavior.Never
+local layout = Instance.new("UIListLayout", scroll)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+layout.Padding = UDim.new(0,6)
+Instance.new("UIPadding", scroll).PaddingTop = UDim.new(0,12)
+
+-- Kill Aura
+UI:AddSection(scroll, "KILL AURA (Rotation)")
+auraStatusLabel = UI:AddLabel(scroll, "DISABLED", T.red)
+
+UI:AddSlider(scroll, "Rotation Speed", 1, 20, ROTATION_SPEED, 1, function(v) ROTATION_SPEED = v end)
+UI:AddSlider(scroll, "Click Interval (s)", 0.05, 1, CLICK_INTERVAL, 0.05, function(v) CLICK_INTERVAL = v end)
+
+-- Keybind row
+local keycard = Instance.new("Frame", scroll)
+keycard.Size = UDim2.new(1,0,0,50)
+keycard.BackgroundColor3 = T.card
+keycard.BorderSizePixel = 0
+Instance.new("UICorner", keycard).CornerRadius = UDim.new(0,11)
+Instance.new("UIStroke", keycard).Color = T.border; keycard.UIStroke.Thickness = 1
+
+changeKeyBtn = UI:AddButton(keycard, "Bind: R", function()
+    isCapturingKey = true
+    changeKeyBtn.Text = "Listening…"
+    changeKeyBtn.BackgroundColor3 = T.gold
+end)
+changeKeyBtn.Size = UDim2.new(0,130,0,28)
+changeKeyBtn.Position = UDim2.new(0.5,-65,0.5,-14)
+changeKeyBtn.AutoButtonColor = false
+
+-- Auto Sprint
+UI:AddSection(scroll, "AUTO SPRINT")
+sprintStatusLabel = UI:AddLabel(scroll, "OFF", T.muted)
+UI:AddToggle(scroll, "Auto Sprint", false, function(state) setSprint(state) end)
+
+-- No Knockback
+UI:AddSection(scroll, "NO KNOCKBACK")
+UI:AddToggle(scroll, "Enable", false, function(state) knockbackEnabled = state; setKnockbackState(state) end)
+UI:AddSlider(scroll, "Knockback Factor", 0, 1, 1, 0.01, function(v) knockbackFactor = v end)
+
+-- Godmode
+UI:AddSection(scroll, "GODMODE")
+UI:AddToggle(scroll, "Godmode", false, function(state) setGodmode(state) end)
+
+-- Safezone with threshold buttons
+UI:AddSection(scroll, "SAFEZONE (map)")
+UI:AddToggle(scroll, "Auto Safe Zone", false, function(state) safezoneEnabled = state end)
+
+thresholdLabel = UI:AddLabel(scroll, "Threshold: " .. LOW_HP_THRESHOLD, T.muted)
+local thresholdBtnCard = Instance.new("Frame", scroll)
+thresholdBtnCard.Size = UDim2.new(1,0,0,44)
+thresholdBtnCard.BackgroundColor3 = T.card
+thresholdBtnCard.BorderSizePixel = 0
+Instance.new("UICorner", thresholdBtnCard).CornerRadius = UDim.new(0,11)
+Instance.new("UIStroke", thresholdBtnCard).Color = T.border; thresholdBtnCard.UIStroke.Thickness = 1
+
+local minusBtn = UI:AddButton(thresholdBtnCard, "-10", function() adjustThreshold(-10) end)
+minusBtn.Size = UDim2.new(0,80,0,28)
+minusBtn.Position = UDim2.new(0,14,0.5,-14)
+
+local plusBtn = UI:AddButton(thresholdBtnCard, "+10", function() adjustThreshold(10) end)
+plusBtn.Size = UDim2.new(0,80,0,28)
+plusBtn.Position = UDim2.new(1,-94,0.5,-14)
+
+healthLabel = UI:AddLabel(scroll, "Health: waiting…", T.muted)
+mapLabel = UI:AddLabel(scroll, "Map: ?", T.muted)
+
+-- UI Toggle
+UI:AddSection(scroll, "UI TOGGLE")
+UI:AddButton(scroll, "Toggle UI [F3]", function() end)
+
+-- Global Input
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if isCapturingKey then
+        if input.KeyCode ~= Enum.KeyCode.Unknown then
+            killAuraKey = input.KeyCode
+            changeKeyBtn.Text = "Bind: " .. tostring(killAuraKey):gsub("Enum.KeyCode.", "")
+            changeKeyBtn.BackgroundColor3 = T.accent
+            isCapturingKey = false
+        end
+    else
+        if input.KeyCode == killAuraKey then setKillAura(not killAuraEnabled)
+        elseif input.KeyCode == Enum.KeyCode.F3 then sg.Enabled = not sg.Enabled end
+    end
 end)
 
--- Handle character removal
-player.CharacterRemoving:Connect(function()
-    UI.healthStatus.Text = "Health: Respawning..."
-    UI.healthStatus.TextColor3 = UI_THEMES[currentTheme].Warning
-end)
+RunService.Heartbeat:Connect(checkSafeZone)
+LocalPlayer.CharacterAdded:Connect(function() task.wait(1) end)
 
-print("Feather Hub UI Loaded!")
-print("Hotkey: " .. tostring(uiHotkey))
-print("Features:")
-print("- Draggable UI window (drag the title bar)")
-print("- UI persists after respawn")
-print("- Rotation around closest player with auto-clicking")
-print("- Auto safezone teleport at low HP")
-print("- Customizable UI theme")
-print("- Mobile mode with icon when minimized")
-print("- Settings panel for customization")
+print("Killstreak v8 final – Rotation aura, threshold +/-10, all features ready. Toggle: R")
