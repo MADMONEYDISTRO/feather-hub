@@ -1,9 +1,12 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║         BGSI ALL-IN-ONE  —  COMPLETE v2.7.0             ║
--- ║  Easter Event Farmer + Coin Farmer + Bubbles + Auto     ║
--- ║      Island Farmer: smooth tween (anti‑teleport fixed)  ║
--- ║      Playtime claim: ClaimAllPlaytime                   ║
+-- ║         BGSI ALL-IN-ONE  —  COMPLETE v3.0.0-FIXED       ║
+-- ║  Summer Event Farmer + Coin Farmer + Bubbles + Auto     ║
+-- ║  Metal Detector Farm + Island Farmer + Feather Hub UI   ║
 -- ╚══════════════════════════════════════════════════════════╝
+-- FIXED: Larger click targets for all buttons (PC friendly)
+-- FIXED: Smooth dragging + staff dot repositioned
+-- FIXED: Summer tab "Event Part 2 Coming Soon"
+-- FIXED: Metal farm stop respawns character
 
 local TweenService      = game:GetService("TweenService")
 local Players           = game:GetService("Players")
@@ -12,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService       = game:GetService("HttpService")
 local TeleportService   = game:GetService("TeleportService")
 local VirtualUser       = game:GetService("VirtualUser")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local RunService        = game:GetService("RunService")
 
 repeat wait() until game:IsLoaded()
@@ -19,6 +23,38 @@ repeat wait() until game:IsLoaded()
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local currentPlaceId = game.PlaceId
+
+-- ════════════════════════════════════════════════════════
+--  THEME  (Feather Hub Purple)
+-- ════════════════════════════════════════════════════════
+
+local T = {
+    bg         = Color3.fromRGB(13,  13,  18),
+    sidebar    = Color3.fromRGB(18,  18,  25),
+    card       = Color3.fromRGB(23,  23,  32),
+    border     = Color3.fromRGB(42,  42,  58),
+    text       = Color3.fromRGB(228, 228, 240),
+    muted      = Color3.fromRGB(95,  95,  118),
+    dim        = Color3.fromRGB(30,  30,  44),
+    sep        = Color3.fromRGB(34,  34,  50),
+    header     = Color3.fromRGB(16,  16,  22),
+    inputBg    = Color3.fromRGB(9,   9,   15),
+    accent     = Color3.fromRGB(110, 95,  210),
+    accentLt   = Color3.fromRGB(130, 115, 225),
+    accentDim  = Color3.fromRGB(64,  55,  122),
+    green      = Color3.fromRGB(90,  195, 145),
+    red        = Color3.fromRGB(210, 75,  95),
+    gold       = Color3.fromRGB(185, 150, 60),
+    summer     = Color3.fromRGB(255, 190, 50),
+    summerDim  = Color3.fromRGB(180, 120, 30),
+    island     = Color3.fromRGB(160, 120, 255),
+    metal      = Color3.fromRGB(90,  200, 175),
+    metalDim   = Color3.fromRGB(40,  110, 100),
+}
+
+local function tw(t, s, d)
+    return TweenInfo.new(t or 0.22, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out)
+end
 
 -- ════════════════════════════════════════════════════════
 --  STAFF WATCH CONFIG
@@ -81,7 +117,6 @@ end
 if not EventHandler    then EventHandler    = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:FindFirstChild("RemoteEvent") end
 if not FunctionHandler then FunctionHandler = ReplicatedStorage:FindFirstChild("RemoteFunction") end
 
--- Direct path remote for egg hatching (not used in Easter, kept for Pets tab)
 local RemoteEvent = ReplicatedStorage:WaitForChild("Shared")
     :WaitForChild("Framework"):WaitForChild("Network")
     :WaitForChild("Remote"):WaitForChild("RemoteEvent")
@@ -98,1593 +133,636 @@ table.sort(eggs)
 --  STATE
 -- ════════════════════════════════════════════════════════
 
--- Bubbles
-local autoBlowValue = false
-local autoSellValue = false
-local autoSellPer   = 50
-
--- Automation
+local autoBlowValue         = false
+local autoSellValue         = false
+local autoSellPer           = 50
 local autoCollectCoinsValue = false
 local autoclaimplaytimeval  = false
 local autoclaimchestsval    = false
 local autoClaimRiftGiftval  = false
+local autoHatchValue        = false
+local selectedEgg           = eggs[1] or ""
+local autoGiftValue         = false
 
--- Pets
-local autoHatchValue = false
-local selectedEgg    = eggs[1] or ""
-local autoGiftValue  = false
+-- Summer Main Farmer (DISABLED)
+local summerMainEnabled  = false
+local summerMainThread   = nil
+local summerMainOriginCF = nil
+local summerMainLockCF   = nil
+local summerMainLockConn = nil
+local summerCollected    = 0
 
--- Easter Main Farmer
-local easterMainEnabled  = false
-local easterMainThread   = nil
-local easterMainOriginCF = nil
-local easterMainLockCF   = nil
-local easterMainLockConn = nil
-local easterCollected    = 0
-
--- Easter Island Farmer (custom waypoint path, smooth tween)
-local easterIslandEnabled  = false
-local easterIslandThread   = nil
-local easterIslandOriginCF = nil
-local easterIslandPathCF   = nil
+-- Summer Island Farmer (DISABLED)
+local summerIslandEnabled  = false
+local summerIslandThread   = nil
+local summerIslandOriginCF = nil
+local summerIslandPathCF   = nil
 local islandCollected      = 0
 
--- Easter Island collectible GUIDs (as part/model names)
-local EASTER_ISLAND_GUIDS = {
-    "6220fc3e-78d8-4e68-963d-91f6850145f1",
-    "7a140ef0-64fb-40e4-8a11-8dce1f1ec0b7",
-    "80b2af09-ae86-4a50-86e5-f585ca615caa",
-    "81fdb7c9-d7c6-4b7d-bff9-04c3c72be417",
-    "875380e9-f7ae-4c5d-b12f-8bcee517f01e",
-    "993c8c50-f53b-4959-844b-b65e8d9029b6",
-    "ba1404fe-8e43-409f-9dc3-e4d954318134",
-    "43130d1e-223d-4737-af2f-0f3429d43fe4",
-    "d71f3611-055a-4305-8e9c-c5af04529353",
-    "f4aed985-e77d-4321-aef0-d97e6783f052",
-    "eadaf4f5-8c0a-4696-9864-87c45b8d3b4d",
-    "f1b56c37-e39c-4d8c-bfc9-16315882c7f8",
-    "16baa292-0134-4ea9-a1c6-88a21719c152",
-    "4a1a7619-8d7a-460a-bf9c-df5c9563f982",
+-- Metal Detector Farm
+local metalEnabled       = false
+local metalThread        = nil
+local metalOriginCF      = nil
+local metalCollected     = 0
+local metalLoopsDone     = 0
+
+local metalSettings = {
+    keybind       = "P",
+    farmSpeed     = 2.0,
+    sellSpeed     = 1.0,
+    sellPause     = 2.0,
+    loopsBeforeSell = 1,
+    CPS           = 10,
+    farmMethod    = 1,
+    orbitRadius   = 2.5,
+    orbitSteps    = 8,
+    orbitTime     = 0.12,
 }
 
--- Convert to a set for fast lookup
-local ISLAND_GUID_SET = {}
-for _, guid in ipairs(EASTER_ISLAND_GUIDS) do
-    ISLAND_GUID_SET[guid] = true
-end
-
--- Easter Main collectible part names
-local EASTER_MAIN_NAMES = {
-    ["Meshes/bunny doggy egg"] = true,
-    ["Meshes/Crate4_Cube.005"] = true,
-    ["Meshes/bgscoin15_Cube.002"] = true,
-    ["Meshes/bgscoin16_Cylinder.006"] = true,
-    ["Meshes/Basket_Torus.027 (1)"] = true,
-    ["Meshes/Basket_Torus.028 (1)"] = true,
-    ["Egg Stack"] = true,
+-- Summer event config (kept)
+local SUMMER_MAIN_NAMES = {
+    ["Meshes/summer_coin"] = true, ["Meshes/beach_ball"] = true,
+    ["Meshes/sunflower_collect"] = true, ["Meshes/ice_cream_token"] = true,
+    ["Summer Token"] = true, ["Summer Chest"] = true, ["Beach Crate"] = true,
 }
+local SUMMER_ISLAND_GUIDS = { "summer-isle-001-xxxx-xxxxxxxxxxxx", "summer-isle-002-xxxx-xxxxxxxxxxxx", "summer-isle-003-xxxx-xxxxxxxxxxxx", "summer-isle-004-xxxx-xxxxxxxxxxxx", "summer-isle-005-xxxx-xxxxxxxxxxxx" }
+local SUMMER_ISLAND_GUID_SET = {}
+for _, guid in ipairs(SUMMER_ISLAND_GUIDS) do SUMMER_ISLAND_GUID_SET[guid] = true end
 
--- Custom waypoints for island farmer (exact order provided)
 local WAYPOINTS = {
-    CFrame.new(37.85, 13337.43, 3020.68),
-    CFrame.new(72.41, 13337.43, 3037.18),
-    CFrame.new(10.35, 13337.33, 3016.36),
-    CFrame.new(8.04, 13337.43, 3023.65),
-    CFrame.new(84.36, 13338.03, 3061.74),
-    CFrame.new(3.55, 13337.43, 3026.50),
-    CFrame.new(83.24, 13337.43, 3069.63),
-    CFrame.new(69.24, 13337.43, 3080.07),
-    CFrame.new(-11.34, 13337.43, 3038.74),
-    CFrame.new(-15.40, 13337.43, 3050.41),
-    CFrame.new(75.49, 13337.43, 3089.66),
-    CFrame.new(-19.63, 13337.43, 3057.03),
-    CFrame.new(67.72, 13337.43, 3103.04),
-    CFrame.new(-11.10, 13337.43, 3084.29),
-    CFrame.new(50.69, 13337.43, 3116.74),
+    CFrame.new(37.85,  13337.43, 3020.68), CFrame.new(72.41,  13337.43, 3037.18),
+    CFrame.new(10.35,  13337.33, 3016.36), CFrame.new(8.04,   13337.43, 3023.65),
+    CFrame.new(84.36,  13338.03, 3061.74), CFrame.new(3.55,   13337.43, 3026.50),
+    CFrame.new(83.24,  13337.43, 3069.63), CFrame.new(69.24,  13337.43, 3080.07),
+    CFrame.new(-11.34, 13337.43, 3038.74), CFrame.new(-15.40, 13337.43, 3050.41),
+    CFrame.new(75.49,  13337.43, 3089.66), CFrame.new(-19.63, 13337.43, 3057.03),
+    CFrame.new(67.72,  13337.43, 3103.04), CFrame.new(-11.10, 13337.43, 3084.29),
+    CFrame.new(50.69,  13337.43, 3116.74),
 }
 
--- ════════════════════════════════════════════════════════
---  SERVER HOP
--- ════════════════════════════════════════════════════════
+-- Metal detector config
+local METAL_DIG_UUID = "33599dcc-3a2a-45a9-8087-2718adb6bc5b"
+local METAL_DIG_AREA = "Beach"
+local METAL_DIG_POINTS = {
+    CFrame.new(-319.342, 10.999, -4976.653), CFrame.new(-267.956, 10.999, -4977.302),
+    CFrame.new(-269.421, 10.999, -4925.781), CFrame.new(-316.338, 10.999, -4920.298),
+    CFrame.new(-314.659, 10.999, -4890.267), CFrame.new(-308.613, 11,      -4849.246),
+    CFrame.new(-275.061, 10.999, -4848.422), CFrame.new(-277.15,  11,      -4879.363),
+}
+local METAL_SELL_CFRAME = CFrame.new(-250.65918, 8.07530403, -4887.76904, -1.58548355e-05, 0.946918845, -0.321472645, -1, -1.58548355e-05, 2.62260437e-06, -2.62260437e-06, 0.321472645, 0.946918845)
 
-local function getServers()
-    local ok, res = pcall(function()
-        local url = ("https://games.roblox.com/v1/games/%d/servers/Public?limit=100"):format(currentPlaceId)
-        return HttpService:JSONDecode(game:HttpGetAsync(url))
-    end)
-    return (ok and res and res.data) or {}
-end
+-- Helpers
+local function getRoot() local char = player.Character return char and char:FindFirstChild("HumanoidRootPart") end
+local function getHumanoid() local char = player.Character return char and char:FindFirstChildOfClass("Humanoid") end
+local function saveOrigin() local root = getRoot() return root and root.CFrame or nil end
+local function teleportTo(cf) local root = getRoot() if root then root.CFrame = cf end end
 
-local function serverHop()
-    task.wait(0.5)
-    local servers = getServers()
-    local avail   = {}
-    for _, s in ipairs(servers) do
-        if s.id ~= game.JobId and s.playing < s.maxPlayers then
-            table.insert(avail, s)
-        end
-    end
-    if #avail > 0 then
-        TeleportService:TeleportToPlaceInstance(currentPlaceId, avail[math.random(1,#avail)].id, player)
-    end
-end
-
-local function rejoin()
-    task.wait(0.5)
-    TeleportService:Teleport(currentPlaceId, player)
-end
-
--- ════════════════════════════════════════════════════════
---  HELPERS — character / root
--- ════════════════════════════════════════════════════════
-
-local function getRoot()
-    local char = player.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
-local function getHumanoid()
-    local char = player.Character
-    return char and char:FindFirstChildOfClass("Humanoid")
-end
-
-local function saveOrigin()
-    local root = getRoot()
-    return root and root.CFrame or nil
-end
-
-local function teleportTo(cf)
-    local root = getRoot()
-    if root then root.CFrame = cf end
-end
-
--- Smooth tween with humanoid control and distance‑based duration
 local function tweenTo(targetCF, duration)
     local root = getRoot()
-    local hum = getHumanoid()
+    local hum  = getHumanoid()
     if not root or not hum then return false end
-
-    -- Store original settings
-    local originalWalkSpeed = hum.WalkSpeed
-    local originalAutoRotate = hum.AutoRotate
-    local originalPlatform = hum.PlatformStand
-
-    -- Disable humanoid movement
-    hum.WalkSpeed = 0
-    hum.AutoRotate = false
-    hum.PlatformStand = true
-    root.Anchored = false
-
-    -- If no duration given, compute based on distance (0.3s per 100 studs, min 0.2s)
-    if not duration then
-        local dist = (root.Position - targetCF.Position).Magnitude
-        duration = math.max(0.2, dist / 100 * 0.3)
-    end
-
+    local origWalk = hum.WalkSpeed; local origRotate = hum.AutoRotate; local origPlatform = hum.PlatformStand
+    hum.WalkSpeed = 0; hum.AutoRotate = false; hum.PlatformStand = true; root.Anchored = false
+    if not duration then local dist = (root.Position - targetCF.Position).Magnitude duration = math.max(0.2, dist / 100 * 0.3) end
     local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCF})
-    tween:Play()
-    tween.Completed:Wait()
-
-    -- Restore settings
-    hum.WalkSpeed = originalWalkSpeed
-    hum.AutoRotate = originalAutoRotate
-    hum.PlatformStand = originalPlatform
-
+    tween:Play(); tween.Completed:Wait()
+    hum.WalkSpeed = origWalk; hum.AutoRotate = origRotate; hum.PlatformStand = origPlatform
     return true
 end
 
--- ════════════════════════════════════════════════════════
---  GLOBAL ANTI-TELEPORT SYSTEM (with tolerance)
--- ════════════════════════════════════════════════════════
-
-local FORBIDDEN_ZONE   = Vector3.new(-40.88, 2902.75, 0.68)
-local FORBIDDEN_RADIUS = 200
-
-local function getSnapTarget()
-    if easterMainEnabled  and easterMainLockCF   then return easterMainLockCF   end
-    if easterIslandEnabled and easterIslandPathCF then return easterIslandPathCF end
-    return nil
+local function orbitPoint(centerCF, radius, steps, stepTime)
+    local root = getRoot(); local hum = getHumanoid()
+    if not root or not hum then return end
+    local origWalk = hum.WalkSpeed; hum.WalkSpeed = 0
+    for i = 1, steps do
+        if not metalEnabled then break end
+        local angle = (i / steps) * math.pi * 2
+        local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+        local target = centerCF + offset
+        local tween = TweenService:Create(root, TweenInfo.new(stepTime, Enum.EasingStyle.Linear), {CFrame = target})
+        tween:Play(); tween.Completed:Wait()
+    end
+    hum.WalkSpeed = origWalk
 end
 
-local function isInForbiddenZone(pos)
-    return (pos - FORBIDDEN_ZONE).Magnitude < FORBIDDEN_RADIUS
-end
-
-local function snapBackIfForbidden()
-    local root   = getRoot()
-    local target = getSnapTarget()
-    if not root or not target then return end
-
-    local dist = (root.Position - target.Position).Magnitude
-    -- Only snap if we're far away (>15 studs) AND in forbidden zone
-    -- This allows tweens to run without interruption
-    if isInForbiddenZone(root.Position) and dist > 15 then
-        root.CFrame = target
+local function lookDown()
+    local char = player.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local root = char.HumanoidRootPart
+        workspace.CurrentCamera.CFrame = CFrame.lookAt(root.Position + Vector3.new(0, 8, 0), root.Position - Vector3.new(0, 10, 0))
     end
 end
 
-RunService.Heartbeat:Connect(function()
-    if not (easterMainEnabled or easterIslandEnabled) then return end
-    snapBackIfForbidden()
-end)
+-- Anti-teleport (kept)
+local FORBIDDEN_ZONE = Vector3.new(-40.88, 2902.75, 0.68)
+local FORBIDDEN_RADIUS = 200
+local function getSnapTarget() if summerMainEnabled and summerMainLockCF then return summerMainLockCF elseif summerIslandEnabled and summerIslandPathCF then return summerIslandPathCF end return nil end
+local function isInForbiddenZone(pos) return (pos - FORBIDDEN_ZONE).Magnitude < FORBIDDEN_RADIUS end
+local function snapBackIfForbidden() local root = getRoot(); local target = getSnapTarget() if not root or not target then return end if isInForbiddenZone(root.Position) and (root.Position - target.Position).Magnitude > 15 then root.CFrame = target end end
+RunService.Heartbeat:Connect(function() if (summerMainEnabled or summerIslandEnabled) then snapBackIfForbidden() end end)
 
 local rootChangedConn = nil
-
 local function hookRootChanged(char)
     if rootChangedConn then rootChangedConn:Disconnect(); rootChangedConn = nil end
     local root = char and char:WaitForChild("HumanoidRootPart", 5)
     if not root then return end
-    rootChangedConn = root:GetPropertyChangedSignal("CFrame"):Connect(function()
-        if not (easterMainEnabled or easterIslandEnabled) then return end
-        task.defer(snapBackIfForbidden)
-    end)
+    rootChangedConn = root:GetPropertyChangedSignal("CFrame"):Connect(function() if (summerMainEnabled or summerIslandEnabled) then task.defer(snapBackIfForbidden) end end)
 end
+if player.Character then hookRootChanged(player.Character) end
+player.CharacterAdded:Connect(function(char) task.wait(0.1); hookRootChanged(char); local target = getSnapTarget(); if target then local root = char:WaitForChild("HumanoidRootPart", 5); if root then task.wait(0.2); root.CFrame = target end end end)
+task.spawn(function() while true do task.wait(0.1); if summerMainEnabled or summerIslandEnabled then snapBackIfForbidden() end end end)
 
-if player.Character then
-    hookRootChanged(player.Character)
-end
-
-player.CharacterAdded:Connect(function(char)
-    task.wait(0.1)
-    hookRootChanged(char)
-    local target = getSnapTarget()
-    if target then
-        local root = char:WaitForChild("HumanoidRootPart", 5)
-        if root then
-            task.wait(0.2)
-            root.CFrame = target
-        end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if easterMainEnabled or easterIslandEnabled then
-            snapBackIfForbidden()
-        end
-    end
-end)
-
--- ════════════════════════════════════════════════════════
---  COLLECTIBLE SCANNERS
--- ════════════════════════════════════════════════════════
-
--- Main Easter collectibles (anywhere, no Y filter)
-local function getEasterMainItems()
-    local found = {}
-    local seen  = {}
-    local searchRoot = workspace:FindFirstChild("Rendered") or workspace
-
+local function getSummerMainItems() -- kept stub
+    local found = {}; local seen = {}; local searchRoot = workspace:FindFirstChild("Rendered") or workspace
     for _, obj in ipairs(searchRoot:GetDescendants()) do
         local cf = nil
-
-        if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and not seen[obj] then
-            if EASTER_MAIN_NAMES[obj.Name] then
-                seen[obj] = true
-                cf = obj.CFrame
-            end
-        elseif obj:IsA("Model") and EASTER_MAIN_NAMES[obj.Name] and not seen[obj] then
-            seen[obj] = true
-            if obj.PrimaryPart then
-                cf = obj.PrimaryPart.CFrame
-            else
-                local ok, pivot = pcall(function() return obj:GetPivot() end)
-                if ok and pivot then
-                    cf = pivot
-                else
-                    for _, child in ipairs(obj:GetDescendants()) do
-                        if child:IsA("BasePart") then cf = child.CFrame; break end
-                    end
-                end
-            end
+        if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and not seen[obj] and SUMMER_MAIN_NAMES[obj.Name] then seen[obj]=true; cf=obj.CFrame
+        elseif obj:IsA("Model") and SUMMER_MAIN_NAMES[obj.Name] and not seen[obj] then seen[obj]=true
+            if obj.PrimaryPart then cf=obj.PrimaryPart.CFrame else local ok,pivot=pcall(function() return obj:GetPivot() end); if ok and pivot then cf=pivot else for _,child in ipairs(obj:GetDescendants()) do if child:IsA("BasePart") then cf=child.CFrame; break end end end end
         end
-
         if cf then table.insert(found, cf) end
     end
-
     return found
 end
 
--- Easter Island collectibles: ANY object (Part/Model) with name matching any GUID, and Y > 10000
-local function getEasterIslandItems()
-    local found = {}
-    local seen  = {}
-    local searchRoot = workspace
-
-    for _, obj in ipairs(searchRoot:GetDescendants()) do
-        if not seen[obj] and (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("Model")) then
-            if ISLAND_GUID_SET[obj.Name] then
-                seen[obj] = true
-                local cf = nil
-                if obj:IsA("BasePart") then
-                    cf = obj.CFrame
-                elseif obj:IsA("Model") then
-                    if obj.PrimaryPart then
-                        cf = obj.PrimaryPart.CFrame
-                    else
-                        local ok, pivot = pcall(function() return obj:GetPivot() end)
-                        if ok and pivot then
-                            cf = pivot
-                        else
-                            for _, child in ipairs(obj:GetDescendants()) do
-                                if child:IsA("BasePart") then cf = child.CFrame; break end
-                            end
-                        end
-                    end
-                end
-
-                if cf and cf.Y > 10000 then
-                    table.insert(found, cf)
-                end
+local function getSummerIslandItems() -- kept stub
+    local found = {}; local seen = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if not seen[obj] and (obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("Model")) and SUMMER_ISLAND_GUID_SET[obj.Name] then
+            seen[obj]=true; local cf=nil
+            if obj:IsA("BasePart") then cf=obj.CFrame
+            elseif obj:IsA("Model") then
+                if obj.PrimaryPart then cf=obj.PrimaryPart.CFrame else local ok,pivot=pcall(function() return obj:GetPivot() end); if ok and pivot then cf=pivot else for _,child in ipairs(obj:GetDescendants()) do if child:IsA("BasePart") then cf=child.CFrame; break end end end end
             end
+            if cf and cf.Y > 10000 then table.insert(found, cf) end
         end
     end
-
     return found
 end
 
--- Debug function – prints all part/model names under Rendered (for Main farmer)
-local function debugDumpNames()
-    local searchRoot = workspace:FindFirstChild("Rendered") or workspace
-    local partCounts  = {}
-    local modelCounts = {}
-    for _, obj in ipairs(searchRoot:GetDescendants()) do
-        if obj:IsA("BasePart") or obj:IsA("MeshPart") then
-            partCounts[obj.Name] = (partCounts[obj.Name] or 0) + 1
-        elseif obj:IsA("Model") then
-            modelCounts[obj.Name] = (modelCounts[obj.Name] or 0) + 1
-        end
-    end
-    print("=== BGSI Easter Parts ===")
-    for name, count in pairs(partCounts) do
-        print(string.format("  [%dx]  %q", count, name))
-    end
-    print("=== BGSI Easter Models ===")
-    for name, count in pairs(modelCounts) do
-        print(string.format("  [%dx]  %q", count, name))
-    end
-    print("================================")
+-- GUIs
+local function getServers()
+    local ok, res = pcall(function() local url = ("https://games.roblox.com/v1/games/%d/servers/Public?limit=100"):format(currentPlaceId); return HttpService:JSONDecode(game:HttpGetAsync(url)) end)
+    return (ok and res and res.data) or {}
 end
+
+local function serverHop()
+    task.wait(0.5); local servers = getServers(); local avail = {}
+    for _, s in ipairs(servers) do if s.id ~= game.JobId and s.playing < s.maxPlayers then table.insert(avail, s) end end
+    if #avail > 0 then TeleportService:TeleportToPlaceInstance(currentPlaceId, avail[math.random(1,#avail)].id, player) end
+end
+local function rejoin() task.wait(0.5); TeleportService:Teleport(currentPlaceId, player) end
 
 -- ════════════════════════════════════════════════════════
---  GUI COLOURS
+--  GUI SETUP with LARGER CLICK TARGETS
 -- ════════════════════════════════════════════════════════
+do
+    local screenSize = workspace.CurrentCamera.ViewportSize
+    local isMobile = screenSize.X < 700 or UserInputService.TouchEnabled
+    local guiWidth = isMobile and math.min(screenSize.X - 10, 400) or 420
+    local guiHeight = isMobile and math.min(screenSize.Y - 60, 540) or 540
 
-local bgColor      = Color3.fromRGB(25, 25, 30)
-local headerColor  = Color3.fromRGB(35, 35, 42)
-local sectionColor = Color3.fromRGB(40, 40, 48)
-local accentGrey   = Color3.fromRGB(60, 60, 70)
-local textGrey     = Color3.fromRGB(180, 180, 190)
-local darkGrey     = Color3.fromRGB(30, 30, 35)
-local greenAccent  = Color3.fromRGB(34, 180, 80)
-local goldAccent   = Color3.fromRGB(220, 170, 40)
-local easterPink   = Color3.fromRGB(255, 140, 180)
-local islandPurple = Color3.fromRGB(160, 120, 255)
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "BGSIMergedV3"; sg.ResetOnSpawn = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; sg.IgnoreGuiInset = true; sg.Parent = playerGui
 
--- ════════════════════════════════════════════════════════
---  SCREEN GUI + MAIN FRAME
--- ════════════════════════════════════════════════════════
+    local function mkCorner(p, r) local c = Instance.new("UICorner", p); c.CornerRadius = UDim.new(0, r or 8); return c end
+    local function mkStroke(p, col, thick) local s = Instance.new("UIStroke", p); s.Color = col or T.border; s.Thickness = thick or 1; return s end
 
-local sg = Instance.new("ScreenGui")
-sg.Name              = "BGSIMerged"
-sg.ResetOnSpawn      = false
-sg.ZIndexBehavior    = Enum.ZIndexBehavior.Sibling
-sg.IgnoreGuiInset    = true
-sg.Parent            = playerGui
+    local main = Instance.new("Frame")
+    main.Size = UDim2.new(0, guiWidth, 0, guiHeight); main.Position = UDim2.new(0.5, -guiWidth/2, 0.5, -guiHeight/2)
+    main.BackgroundColor3 = T.bg; main.BorderSizePixel = 0; main.ClipsDescendants = true; main.Parent = sg
+    mkCorner(main, 14); mkStroke(main, T.border, 1)
 
-local function mkCorner(p, r)
-    local c = Instance.new("UICorner", p)
-    c.CornerRadius = UDim.new(0, r or 6)
-end
+    -- Header
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 52); header.BackgroundColor3 = T.header; header.BorderSizePixel = 0; header.ZIndex = 3; header.Parent = main
+    mkCorner(header, 14)
 
-local screenSize   = workspace.CurrentCamera.ViewportSize
-local isMobile     = screenSize.X < 700 or UserInputService.TouchEnabled
-local guiWidth     = isMobile and math.min(screenSize.X - 10, 380) or 380
-local guiHeight    = isMobile and math.min(screenSize.Y - 60, 460) or 460
-local guiStartX    = isMobile and 5 or math.floor(screenSize.X/2 - guiWidth/2)
-local guiStartY    = isMobile and 30 or math.floor(screenSize.Y/2 - guiHeight/2)
+    local hdrBottom = Instance.new("Frame"); hdrBottom.Size = UDim2.new(1, 0, 0, 14); hdrBottom.Position = UDim2.new(0, 0, 1, -14); hdrBottom.BackgroundColor3 = T.header; hdrBottom.BorderSizePixel = 0; hdrBottom.ZIndex = 3; hdrBottom.Parent = header
+    local hdrLine = Instance.new("Frame"); hdrLine.Size = UDim2.new(1, -20, 0, 1); hdrLine.Position = UDim2.new(0, 10, 1, -1); hdrLine.BackgroundColor3 = T.sep; hdrLine.BorderSizePixel = 0; hdrLine.ZIndex = 4; hdrLine.Parent = header
 
-local main = Instance.new("Frame")
-main.Size             = UDim2.new(0, guiWidth, 0, guiHeight)
-main.Position         = UDim2.new(0, guiStartX, 0, guiStartY)
-main.BackgroundColor3 = bgColor
-main.BorderSizePixel  = 0
-main.Active           = true
-main.Parent           = sg
-mkCorner(main, 10)
+    local logoPill = Instance.new("Frame"); logoPill.Size = UDim2.new(0, 32, 0, 32); logoPill.Position = UDim2.new(0, 10, 0.5, -16); logoPill.BackgroundColor3 = T.accent; logoPill.BorderSizePixel = 0; logoPill.ZIndex = 5; logoPill.Parent = header; mkCorner(logoPill, 8)
+    local logoLbl = Instance.new("TextLabel"); logoLbl.Size = UDim2.new(1, 0, 1, 0); logoLbl.Text = "B"; logoLbl.Font = Enum.Font.GothamBold; logoLbl.TextSize = 16; logoLbl.TextColor3 = Color3.new(1,1,1); logoLbl.BackgroundTransparency = 1; logoLbl.ZIndex = 6; logoLbl.Parent = logoPill
 
--- Header
-local header = Instance.new("Frame")
-header.Size             = UDim2.new(1, 0, 0, 40)
-header.BackgroundColor3 = headerColor
-header.BorderSizePixel  = 0
-header.Parent           = main
-mkCorner(header, 10)
+    local titleLbl = Instance.new("TextLabel"); titleLbl.Size = UDim2.new(0, 180, 0, 22); titleLbl.Position = UDim2.new(0, 52, 0, 6); titleLbl.Text = "BGSI | Feather Hub"; titleLbl.Font = Enum.Font.GothamBold; titleLbl.TextSize = 12; titleLbl.TextColor3 = T.text; titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.BackgroundTransparency = 1; titleLbl.ZIndex = 5; titleLbl.Parent = header
+    local versionPill = Instance.new("Frame"); versionPill.Size = UDim2.new(0, 48, 0, 18); versionPill.Position = UDim2.new(0, 52, 0, 28); versionPill.BackgroundColor3 = T.accentDim; versionPill.BorderSizePixel = 0; versionPill.ZIndex = 5; versionPill.Parent = header; mkCorner(versionPill, 5)
+    local versionLbl = Instance.new("TextLabel"); versionLbl.Size = UDim2.new(1, 0, 1, 0); versionLbl.Text = "v3.0.0"; versionLbl.Font = Enum.Font.GothamBold; versionLbl.TextSize = 9; versionLbl.TextColor3 = T.accent; versionLbl.BackgroundTransparency = 1; versionLbl.ZIndex = 6; versionLbl.Parent = versionPill
 
-local titleLbl = Instance.new("TextLabel")
-titleLbl.Size               = UDim2.new(0, 120, 0, 20)
-titleLbl.Position           = UDim2.new(0, 10, 0, 2)
-titleLbl.Text               = "BGSI | Feather Hub"
-titleLbl.Font               = Enum.Font.GothamBold
-titleLbl.TextSize           = 13
-titleLbl.TextColor3         = textGrey
-titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-titleLbl.BackgroundTransparency = 1
-titleLbl.Parent             = header
+    local staffDot = Instance.new("Frame"); staffDot.Size = UDim2.new(0, 10, 0, 10); staffDot.Position = UDim2.new(1, -62, 0.5, -5); staffDot.BackgroundColor3 = T.green; staffDot.BorderSizePixel = 0; staffDot.ZIndex = 5; staffDot.Parent = header; mkCorner(staffDot, 5)
 
-local versionTag = Instance.new("TextLabel")
-versionTag.Size             = UDim2.new(0, 35, 0, 14)
-versionTag.Position         = UDim2.new(0, 10, 0, 24)
-versionTag.Text             = "v2.7.0"
-versionTag.Font             = Enum.Font.GothamBold
-versionTag.TextSize         = 9
-versionTag.TextColor3       = Color3.fromRGB(140,140,150)
-versionTag.BackgroundColor3 = darkGrey
-versionTag.BorderSizePixel  = 0
-versionTag.Parent           = header
-mkCorner(versionTag, 4)
-
-local staffIndicator = Instance.new("Frame")
-staffIndicator.Size             = UDim2.new(0, 10, 0, 10)
-staffIndicator.Position         = UDim2.new(0, 135, 0, 7)
-staffIndicator.BackgroundColor3 = Color3.fromRGB(0,255,0)
-staffIndicator.BorderSizePixel  = 0
-staffIndicator.Parent           = header
-mkCorner(staffIndicator, 5)
-
-local rejoinBtn = Instance.new("TextButton")
-rejoinBtn.Size             = UDim2.new(0, 50, 0, 24)
-rejoinBtn.Position         = UDim2.new(1, -195, 0.5, -12)
-rejoinBtn.Text             = "Rejoin"
-rejoinBtn.Font             = Enum.Font.GothamBold
-rejoinBtn.TextSize         = 10
-rejoinBtn.TextColor3       = textGrey
-rejoinBtn.BackgroundColor3 = accentGrey
-rejoinBtn.BorderSizePixel  = 0
-rejoinBtn.Parent           = header
-mkCorner(rejoinBtn, 4)
-rejoinBtn.MouseButton1Click:Connect(function() rejoinBtn.Text="..." task.spawn(rejoin) end)
-
-local hopBtn = Instance.new("TextButton")
-hopBtn.Size             = UDim2.new(0, 50, 0, 24)
-hopBtn.Position         = UDim2.new(1, -140, 0.5, -12)
-hopBtn.Text             = "Hop"
-hopBtn.Font             = Enum.Font.GothamBold
-hopBtn.TextSize         = 10
-hopBtn.TextColor3       = textGrey
-hopBtn.BackgroundColor3 = accentGrey
-hopBtn.BorderSizePixel  = 0
-hopBtn.Parent           = header
-mkCorner(hopBtn, 4)
-hopBtn.MouseButton1Click:Connect(function() hopBtn.Text="..." task.spawn(serverHop) end)
-
-local riftBtnLoaded = false
-local riftsBtn = Instance.new("TextButton")
-riftsBtn.Size             = UDim2.new(0, 42, 0, 24)
-riftsBtn.Position         = UDim2.new(1, -85, 0.5, -12)
-riftsBtn.Text             = "Rifts"
-riftsBtn.Font             = Enum.Font.GothamBold
-riftsBtn.TextSize         = 10
-riftsBtn.TextColor3       = textGrey
-riftsBtn.BackgroundColor3 = accentGrey
-riftsBtn.BorderSizePixel  = 0
-riftsBtn.Parent           = header
-mkCorner(riftsBtn, 4)
-riftsBtn.MouseButton1Click:Connect(function()
-    if riftBtnLoaded then
-        local existing = playerGui:FindFirstChild("RiftTP")
-        if existing then
-            existing.Enabled = not existing.Enabled
-        end
-        return
-    end
-    riftsBtn.Text = "..."
-    task.spawn(function()
-        local ok, err = pcall(function()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/MADMONEYDISTRO/feather-hub/refs/heads/main/rift"))()
-        end)
-        if ok then
-            riftBtnLoaded = true
-            riftsBtn.Text = "Rifts"
-        else
-            riftsBtn.Text = "ERR"
-            warn("Rift load error: " .. tostring(err))
-            task.delay(2, function() riftsBtn.Text = "Rifts" end)
-        end
-    end)
-end)
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size             = UDim2.new(0, 22, 0, 22)
-closeBtn.Position         = UDim2.new(1, -27, 0.5, -11)
-closeBtn.Text             = "X"
-closeBtn.Font             = Enum.Font.GothamBold
-closeBtn.TextSize         = 12
-closeBtn.TextColor3       = textGrey
-closeBtn.BackgroundColor3 = darkGrey
-closeBtn.BorderSizePixel  = 0
-closeBtn.Parent           = header
-mkCorner(closeBtn, 4)
-
--- Drag
-local dragging, dragStart, startPos
-
-local function onDragBegan(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        dragging  = true
-        dragStart = i.Position
-        startPos  = main.Position
-    end
-end
-
-local function onDragEnded(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end
-
-local function onDragChanged(i)
-    if dragging and (
-        i.UserInputType == Enum.UserInputType.MouseMovement or
-        i.UserInputType == Enum.UserInputType.Touch
-    ) then
-        local d = i.Position - dragStart
-        main.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + d.X,
-            startPos.Y.Scale, startPos.Y.Offset + d.Y
-        )
-    end
-end
-
-header.InputBegan:Connect(onDragBegan)
-header.InputEnded:Connect(onDragEnded)
-UserInputService.InputChanged:Connect(onDragChanged)
-UserInputService.InputEnded:Connect(onDragEnded)
-
--- ════════════════════════════════════════════════════════
---  TAB BAR
--- ════════════════════════════════════════════════════════
-
-local TAB_NAMES = {"🐣 Easter Event","Bubbles","Automation","Pets"}
-local tabBtns   = {}
-local tabPages  = {}
-
-local tabBar = Instance.new("Frame")
-tabBar.Size             = UDim2.new(1,-20,0,28)
-tabBar.Position         = UDim2.new(0,10,0,45)
-tabBar.BackgroundColor3 = headerColor
-tabBar.BorderSizePixel  = 0
-tabBar.Parent           = main
-mkCorner(tabBar,5)
-
-local tabLayout = Instance.new("UIListLayout")
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.SortOrder     = Enum.SortOrder.LayoutOrder
-tabLayout.Padding       = UDim.new(0,4)
-tabLayout.Parent        = tabBar
-
-local contentArea = Instance.new("Frame")
-contentArea.Size                = UDim2.new(1,-20,1,-88)
-contentArea.Position            = UDim2.new(0,10,0,80)
-contentArea.BackgroundTransparency = 1
-contentArea.Parent              = main
-
-local function switchTab(name)
-    for n, btn in pairs(tabBtns) do
-        local on = (n==name)
-        btn.BackgroundColor3 = on and accentGrey or darkGrey
-        btn.TextColor3       = on and Color3.new(1,1,1) or textGrey
-    end
-    for n, page in pairs(tabPages) do
-        page.Visible = (n==name)
-    end
-end
-
-for i, name in ipairs(TAB_NAMES) do
-    local btn = Instance.new("TextButton")
-    btn.Size             = UDim2.new(0.25,-3,1,-4)
-    btn.BackgroundColor3 = i==1 and accentGrey or darkGrey
-    btn.TextColor3       = i==1 and Color3.new(1,1,1) or textGrey
-    btn.Text             = name
-    btn.Font             = Enum.Font.GothamBold
-    btn.TextSize         = 10
-    btn.BorderSizePixel  = 0
-    btn.Parent           = tabBar
-    mkCorner(btn,4)
-    tabBtns[name] = btn
-
-    local page = Instance.new("ScrollingFrame")
-    page.Size                  = UDim2.new(1,0,1,0)
-    page.BackgroundTransparency = 1
-    page.Visible               = i==1
-    page.Parent                = contentArea
-    page.ScrollBarThickness    = 4
-    page.CanvasSize            = UDim2.new(0,0,0,0)
-    page.AutomaticCanvasSize   = Enum.AutomaticSize.Y
-    page.ScrollBarImageColor3  = accentGrey
-    tabPages[name] = page
-
-    btn.MouseButton1Click:Connect(function() switchTab(name) end)
-end
-
--- ════════════════════════════════════════════════════════
---  WIDGET BUILDERS
--- ════════════════════════════════════════════════════════
-
-local function mkSection(parent, yOff, h, title)
-    local f = Instance.new("Frame")
-    f.Size             = UDim2.new(1,-10,0,h)
-    f.Position         = UDim2.new(0,5,0,yOff)
-    f.BackgroundColor3 = sectionColor
-    f.BorderSizePixel  = 0
-    f.Parent           = parent
-    mkCorner(f,6)
-    if title then
-        local tl = Instance.new("TextLabel")
-        tl.Size               = UDim2.new(1,-12,0,20)
-        tl.Position           = UDim2.new(0,8,0,4)
-        tl.Text               = title
-        tl.Font               = Enum.Font.GothamBold
-        tl.TextSize           = 11
-        tl.TextColor3         = textGrey
-        tl.TextXAlignment     = Enum.TextXAlignment.Left
-        tl.BackgroundTransparency = 1
-        tl.Parent             = f
-    end
-    return f
-end
-
-local function mkToggle(parent, yOff, label, default)
-    local rowH = isMobile and 32 or 24
-    local row = Instance.new("Frame")
-    row.Size                = UDim2.new(1,-16,0,rowH)
-    row.Position            = UDim2.new(0,8,0,yOff)
-    row.BackgroundTransparency = 1
-    row.Parent              = parent
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size              = UDim2.new(1,-44,1,0)
-    lbl.BackgroundTransparency = 1
-    lbl.Font              = Enum.Font.Gotham
-    lbl.TextSize          = 11
-    lbl.TextColor3        = textGrey
-    lbl.TextXAlignment    = Enum.TextXAlignment.Left
-    lbl.Text              = label
-    lbl.TextTruncate      = Enum.TextTruncate.AtEnd
-    lbl.Parent            = row
-
-    local track = Instance.new("Frame")
-    track.Size             = UDim2.new(0,32,0,18)
-    track.Position         = UDim2.new(1,-32,0.5,-9)
-    track.BackgroundColor3 = default and accentGrey or darkGrey
-    track.BorderSizePixel  = 0
-    track.Parent           = row
-    mkCorner(track,9)
-
-    local knob = Instance.new("Frame")
-    knob.Size             = UDim2.new(0,14,0,14)
-    knob.Position         = default and UDim2.new(0,16,0.5,-7) or UDim2.new(0,2,0.5,-7)
-    knob.BackgroundColor3 = default and Color3.new(1,1,1) or textGrey
-    knob.BorderSizePixel  = 0
-    knob.Parent           = track
-    mkCorner(knob,7)
-
-    local state = default or false
-    local cbs   = {}
-
-    local hit = Instance.new("TextButton")
-    hit.Size               = UDim2.new(1,0,1,0)
-    hit.BackgroundTransparency = 1
-    hit.Text               = ""
-    hit.Parent             = track
-    hit.MouseButton1Click:Connect(function()
-        state = not state
-        track.BackgroundColor3 = state and accentGrey or darkGrey
-        knob.Position          = state and UDim2.new(0,16,0.5,-7) or UDim2.new(0,2,0.5,-7)
-        knob.BackgroundColor3  = state and Color3.new(1,1,1) or textGrey
-        for _, cb in ipairs(cbs) do pcall(cb,state) end
-    end)
-
-    return {
-        onChanged = function(_, cb) table.insert(cbs,cb) end,
-        getState  = function() return state end,
-        setState  = function(_, v)
-            if state==v then return end
-            state = v
-            track.BackgroundColor3 = state and accentGrey or darkGrey
-            knob.Position          = state and UDim2.new(0,16,0.5,-7) or UDim2.new(0,2,0.5,-7)
-            knob.BackgroundColor3  = state and Color3.new(1,1,1) or textGrey
-            for _, cb in ipairs(cbs) do pcall(cb,state) end
-        end,
-    }
-end
-
-local function mkLabel(parent, yOff, text, col, sz)
-    local l = Instance.new("TextLabel")
-    l.Size               = UDim2.new(1,-16,0,18)
-    l.Position           = UDim2.new(0,8,0,yOff)
-    l.Text               = text
-    l.Font               = Enum.Font.Gotham
-    l.TextSize           = sz or 10
-    l.TextColor3         = col or textGrey
-    l.TextXAlignment     = Enum.TextXAlignment.Left
-    l.BackgroundTransparency = 1
-    l.TextWrapped        = true
-    l.Parent             = parent
-    return l
-end
-
-local function mkButton(parent, yOff, h, text, bgCol)
-    local b = Instance.new("TextButton")
-    b.Size             = UDim2.new(1,-16,0,h)
-    b.Position         = UDim2.new(0,8,0,yOff)
-    b.Text             = text
-    b.Font             = Enum.Font.GothamBold
-    b.TextSize         = 12
-    b.TextColor3       = Color3.new(1,1,1)
-    b.BackgroundColor3 = bgCol or accentGrey
-    b.BorderSizePixel  = 0
-    b.Parent           = parent
-    mkCorner(b,5)
-    return b
-end
-
-local function mkInput(parent, yOff, placeholder)
-    local box = Instance.new("TextBox")
-    box.Size              = UDim2.new(1,-16,0,26)
-    box.Position          = UDim2.new(0,8,0,yOff)
-    box.BackgroundColor3  = darkGrey
-    box.Text              = ""
-    box.PlaceholderText   = placeholder or ""
-    box.Font              = Enum.Font.Gotham
-    box.TextSize          = 12
-    box.TextColor3        = textGrey
-    box.PlaceholderColor3 = Color3.fromRGB(100,100,110)
-    box.ClearTextOnFocus  = false
-    box.BorderSizePixel   = 0
-    box.Parent            = parent
-    mkCorner(box,5)
-    return box
-end
-
-local function mkDivider(parent, yOff)
-    local d = Instance.new("Frame")
-    d.Size             = UDim2.new(1,-16,0,1)
-    d.Position         = UDim2.new(0,8,0,yOff)
-    d.BackgroundColor3 = accentGrey
-    d.BorderSizePixel  = 0
-    d.Parent           = parent
-    return d
-end
-
--- ════════════════════════════════════════════════════════
---  🐣 EASTER EVENT TAB
--- ════════════════════════════════════════════════════════
-
-local eventPage = tabPages["🐣 Easter Event"]
-local eY = 5
-
--- ── Easter Main Farmer (Eggs & Coins) ────────────────────
-
-local easterMainSec = mkSection(eventPage, eY, 208, "🥚 Easter Egg & Coin Farmer")
-eY = eY + 214
-
-mkLabel(easterMainSec, 28, "Collects Easter eggs, baskets, and coins.\nTeleports directly to each item.", easterPink, 10)
-mkLabel(easterMainSec, 68, "Snaps to each collectible — resistant to\nteleportation away ✓", Color3.fromRGB(100,220,100), 10)
-
-local easterMainStatusLbl = mkLabel(easterMainSec, 110, "⏸ Idle", textGrey, 10)
-local easterMainCountLbl  = mkLabel(easterMainSec, 128, "Collected: 0", textGrey, 10)
-
-local easterMainBtn = mkButton(easterMainSec, 140, 28, "▶  START EASTER FARM", easterPink)
-easterMainBtn.TextColor3 = Color3.fromRGB(30,20,0)
-
-local debugBtn = mkButton(easterMainSec, 174, 22, "🔍 Debug: Print Part Names to Console", accentGrey)
-debugBtn.TextSize = 9
-debugBtn.MouseButton1Click:Connect(function()
-    debugBtn.Text = "⏳ Scanning..."
-    task.spawn(function()
-        debugDumpNames()
-        local n = #getEasterMainItems()
-        debugBtn.Text = ("✅ Done — found %d matching parts (check F9)"):format(n)
-        task.wait(4)
-        debugBtn.Text = "🔍 Debug: Print Part Names to Console"
-    end)
-end)
-
-local function startEasterMainLock()
-    if easterMainLockConn then easterMainLockConn:Disconnect() end
-    easterMainLockConn = RunService.Heartbeat:Connect(function()
-        if not easterMainEnabled then
-            easterMainLockConn:Disconnect()
-            easterMainLockConn = nil
-            easterMainLockCF   = nil
-            return
-        end
-        if easterMainLockCF then
-            local root = getRoot()
-            if root then
-                local dist = (root.Position - easterMainLockCF.Position).Magnitude
-                if dist > 5 then
-                    root.CFrame = easterMainLockCF
-                    easterMainStatusLbl.Text       = "⚠️ Out of range — snapping back..."
-                    easterMainStatusLbl.TextColor3 = Color3.fromRGB(255,200,50)
-                end
-            end
-        end
-    end)
-end
-
-local function stopEasterMainLock()
-    easterMainLockCF = nil
-    if easterMainLockConn then
-        easterMainLockConn:Disconnect()
-        easterMainLockConn = nil
-    end
-    pcall(function()
-        local char = player.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if hum then
-                hum.WalkSpeed   = 16
-                hum.JumpPower   = 50
-                hum.AutoRotate  = true
-            end
-            if root then
-                root.Anchored = false
-            end
-        end
-    end)
-end
-
-local function easterMainLoop()
-    easterCollected = 0
-    startEasterMainLock()
-
-    while easterMainEnabled and sg.Parent do
-        local items = getEasterMainItems()
-
-        if #items == 0 then
-            easterMainStatusLbl.Text       = "🔍 Scanning for Easter items..."
-            easterMainStatusLbl.TextColor3 = Color3.fromRGB(200,200,100)
-            task.wait(0.8)
-        else
-            easterMainStatusLbl.Text       = ("🐣 Farming %d items..."):format(#items)
-            easterMainStatusLbl.TextColor3 = easterPink
-
-            for _, cf in ipairs(items) do
-                if not easterMainEnabled then break end
-                easterMainLockCF = cf
-
-                pcall(function()
-                    local root = getRoot()
-                    if root then root.CFrame = cf end
-                end)
-
-                easterCollected = easterCollected + 1
-                easterMainCountLbl.Text = ("Collected: %d"):format(easterCollected)
-
-                task.wait(0.07)
-            end
-
-            task.wait(0.4)
-        end
+    local function makeHdrBtn(xOff, text, bgCol)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0, 56, 0, 30); b.Position = UDim2.new(1, xOff, 0.5, -15)
+        b.Text = text; b.Font = Enum.Font.GothamBold; b.TextSize = 10; b.TextColor3 = T.text
+        b.BackgroundColor3 = bgCol or T.dim; b.BorderSizePixel = 0; b.AutoButtonColor = false; b.ZIndex = 5; b.Parent = header
+        mkCorner(b, 7); return b
     end
 
-    stopEasterMainLock()
-end
-
-easterMainBtn.MouseButton1Click:Connect(function()
-    easterMainEnabled = not easterMainEnabled
-    if easterMainEnabled then
-        easterMainOriginCF = saveOrigin()
-        easterMainBtn.Text             = "⏹  STOP EASTER FARM"
-        easterMainBtn.BackgroundColor3 = Color3.fromRGB(180,80,80)
-        easterMainBtn.TextColor3       = Color3.new(1,1,1)
-        easterMainStatusLbl.Text           = "▶ Starting..."
-        easterMainStatusLbl.TextColor3     = easterPink
-        if easterMainThread then task.cancel(easterMainThread) end
-        easterMainThread = task.spawn(easterMainLoop)
-    else
-        easterMainEnabled               = false
-        easterMainBtn.Text             = "▶  START EASTER FARM"
-        easterMainBtn.BackgroundColor3 = easterPink
-        easterMainBtn.TextColor3       = Color3.fromRGB(30,20,0)
-        stopEasterMainLock()
-        if easterMainThread then task.cancel(easterMainThread); easterMainThread = nil end
-        if easterMainOriginCF then
-            pcall(function() teleportTo(easterMainOriginCF) end)
-        end
-        easterMainStatusLbl.Text      = "⏸ Stopped — returned to origin"
-        easterMainStatusLbl.TextColor3 = textGrey
-    end
-end)
-
--- ── Easter Island Farmer (custom waypoint path, smooth tween) ─────────
-
-local islandSec = mkSection(eventPage, eY, 190, "🏝️ Easter Island Roamer")
-eY = eY + 196
-
-local guidCount = #EASTER_ISLAND_GUIDS
-mkLabel(islandSec, 28, string.format("Follows custom path covering central island.\n%d waypoints, %d GUID types (tween to collect).", #WAYPOINTS, guidCount), islandPurple, 10)
-mkLabel(islandSec, 68, "Smooth movement along the route, loops back to start.\nAuto-returns to path if knocked away.", Color3.fromRGB(100,220,100), 10)
-
-local islandStatusLbl = mkLabel(islandSec, 106, "⏸ Idle", textGrey, 10)
-local islandCountLbl  = mkLabel(islandSec, 124, "Collected: 0", textGrey, 10)
-
-local islandFarmBtn = mkButton(islandSec, 140, 28, "▶  START ISLAND ROAM", islandPurple)
-
-local currentWaypointIndex = 1
-
--- Main roaming loop (tween between waypoints, and also tween to GUID items)
-local function startRoaming()
-    while easterIslandEnabled and sg.Parent do
-        -- Check for GUID collectibles and tween to them
-        local guidItems = getEasterIslandItems()
-        if #guidItems > 0 then
-            islandStatusLbl.Text = "✨ Collecting GUID items..."
-            for _, cf in ipairs(guidItems) do
-                if not easterIslandEnabled then break end
-                easterIslandPathCF = cf
-                tweenTo(cf, 0.15)  -- tween fast to the item
-                islandCollected = islandCollected + 1
-                islandCountLbl.Text = ("Collected: %d"):format(islandCollected)
-                task.wait(0.1)
-            end
-            task.wait(0.2)
-            -- After collecting, resume waypoint path from current index
-            easterIslandPathCF = WAYPOINTS[currentWaypointIndex]
-            continue
-        end
-
-        -- Follow the waypoint path
-        if not easterIslandEnabled then break end
-
-        local targetCF = WAYPOINTS[currentWaypointIndex]
-        easterIslandPathCF = targetCF
-
-        islandStatusLbl.Text = string.format("🏝️ Waypoint %d/%d", currentWaypointIndex, #WAYPOINTS)
-        tweenTo(targetCF)  -- distance‑based duration
-
-        -- Move to next waypoint, loop back to start at the end
-        currentWaypointIndex = currentWaypointIndex + 1
-        if currentWaypointIndex > #WAYPOINTS then
-            currentWaypointIndex = 1
-        end
-
-        task.wait(0.05)  -- small pause between moves
-    end
-end
-
-local function startIslandRoam()
-    currentWaypointIndex = 1
-    islandCollected = 0
-    islandCountLbl.Text = "Collected: 0"
-    islandStatusLbl.Text = "🏝️ Starting waypoint path..."
-
-    -- Tween to first waypoint
-    local firstCF = WAYPOINTS[1]
-    easterIslandPathCF = firstCF
-    tweenTo(firstCF)
-
-    -- Start the roaming loop
-    startRoaming()
-end
-
-islandFarmBtn.MouseButton1Click:Connect(function()
-    easterIslandEnabled = not easterIslandEnabled
-    if easterIslandEnabled then
-        easterIslandOriginCF = saveOrigin()
-        islandFarmBtn.Text            = "⏹  STOP ISLAND ROAM"
-        islandFarmBtn.BackgroundColor3 = Color3.fromRGB(180,50,180)
-        islandStatusLbl.Text          = "▶ Moving to Easter Island..."
-        islandStatusLbl.TextColor3    = islandPurple
-        if easterIslandThread then task.cancel(easterIslandThread) end
-        easterIslandThread = task.spawn(startIslandRoam)
-    else
-        easterIslandEnabled              = false
-        islandFarmBtn.Text             = "▶  START ISLAND ROAM"
-        islandFarmBtn.BackgroundColor3 = islandPurple
-        if easterIslandThread then task.cancel(easterIslandThread); easterIslandThread = nil end
-        if easterIslandOriginCF then
-            pcall(function() teleportTo(easterIslandOriginCF) end)
-        end
-        islandStatusLbl.Text      = "⏸ Stopped — returned to origin"
-        islandStatusLbl.TextColor3 = textGrey
-    end
-end)
-
-eventPage.CanvasSize = UDim2.new(0,0,0,eY+10)
-
--- ── Close button now stops all Easter farmers ───────────
-closeBtn.MouseButton1Click:Connect(function()
-    easterMainEnabled   = false
-    easterIslandEnabled = false
-    pcall(stopEasterMainLock)
-    if easterMainThread   then task.cancel(easterMainThread);   easterMainThread   = nil end
-    if easterIslandThread then task.cancel(easterIslandThread); easterIslandThread = nil end
-    if staffWatchThread then task.cancel(staffWatchThread); staffWatchThread = nil end
-    if rootChangedConn  then rootChangedConn:Disconnect();  rootChangedConn  = nil end
-    sg:Destroy()
-end)
-
--- ════════════════════════════════════════════════════════
---  BUBBLES TAB
--- ════════════════════════════════════════════════════════
-
-local bubPage = tabPages["Bubbles"]
-local bY = 5
-
-local bubSec = mkSection(bubPage, bY, 165, "Bubble Controls")
-bY = bY + 171
-
-local blowToggle = mkToggle(bubSec, 28, "Auto Blow Bubbles", false)
-blowToggle:onChanged(function(s) autoBlowValue = s end)
-
-local sellToggle = mkToggle(bubSec, 58, "Auto Sell Bubbles", false)
-sellToggle:onChanged(function(s) autoSellValue = s end)
-
-local sliderLbl = Instance.new("TextLabel")
-sliderLbl.Size               = UDim2.new(1,-16,0,16)
-sliderLbl.Position           = UDim2.new(0,8,0,90)
-sliderLbl.Text               = "Sell frequency: every ~500 blows"
-sliderLbl.Font               = Enum.Font.Gotham
-sliderLbl.TextSize           = 10
-sliderLbl.TextColor3         = textGrey
-sliderLbl.TextXAlignment     = Enum.TextXAlignment.Left
-sliderLbl.BackgroundTransparency = 1
-sliderLbl.Parent             = bubSec
-
-local sliderTrack = Instance.new("Frame")
-sliderTrack.Size             = UDim2.new(1,-16,0,6)
-sliderTrack.Position         = UDim2.new(0,8,0,112)
-sliderTrack.BackgroundColor3 = darkGrey
-sliderTrack.BorderSizePixel  = 0
-sliderTrack.Parent           = bubSec
-mkCorner(sliderTrack,3)
-
-local sliderFill = Instance.new("Frame")
-sliderFill.Size             = UDim2.new(0.5,0,1,0)
-sliderFill.BackgroundColor3 = accentGrey
-sliderFill.BorderSizePixel  = 0
-sliderFill.Parent           = sliderTrack
-mkCorner(sliderFill,3)
-
-local knobSize = isMobile and 22 or 16
-local sliderKnob = Instance.new("TextButton")
-sliderKnob.Size             = UDim2.new(0, knobSize, 0, knobSize)
-sliderKnob.AnchorPoint      = Vector2.new(0.5, 0.5)
-sliderKnob.Position         = UDim2.new(0.5,0,0.5,0)
-sliderKnob.BackgroundColor3 = textGrey
-sliderKnob.Text             = ""
-sliderKnob.BorderSizePixel  = 0
-sliderKnob.ZIndex           = 3
-sliderKnob.Parent           = sliderTrack
-mkCorner(sliderKnob,8)
-
-local draggingSlider = false
-
-local function updateSlider(xPos)
-    local rel = math.clamp((xPos - sliderTrack.AbsolutePosition.X) / sliderTrack.AbsoluteSize.X, 0, 1)
-    autoSellPer         = math.floor(rel * 99 + 1)
-    sliderFill.Size     = UDim2.new(rel, 0, 1, 0)
-    sliderKnob.Position = UDim2.new(rel, 0, 0.5, 0)
-    local every = math.max(5, math.floor((autoSellPer / 100) * 1000))
-    sliderLbl.Text = ("Sell every ~%d blows"):format(every)
-end
-
-sliderKnob.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        draggingSlider = true
-    end
-end)
-sliderTrack.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        draggingSlider = true
-        updateSlider(i.Position.X)
-    end
-end)
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1
-    or i.UserInputType == Enum.UserInputType.Touch then
-        draggingSlider = false
-    end
-end)
-UserInputService.InputChanged:Connect(function(i)
-    if draggingSlider and (
-        i.UserInputType == Enum.UserInputType.MouseMovement or
-        i.UserInputType == Enum.UserInputType.Touch
-    ) then
-        updateSlider(i.Position.X)
-    end
-end)
-
-local sliderValLbl = Instance.new("TextLabel")
-sliderValLbl.Size               = UDim2.new(1,-16,0,14)
-sliderValLbl.Position           = UDim2.new(0,8,0,124)
-sliderValLbl.Text               = "Every ~500 blows"
-sliderValLbl.Font               = Enum.Font.Gotham
-sliderValLbl.TextSize           = 10
-sliderValLbl.TextColor3         = Color3.fromRGB(140,140,150)
-sliderValLbl.TextXAlignment     = Enum.TextXAlignment.Left
-sliderValLbl.BackgroundTransparency = 1
-sliderValLbl.Parent             = bubSec
-
-task.spawn(function()
-    while sg and sg.Parent do
-        local every = math.max(5, math.floor((autoSellPer/100)*1000))
-        sliderValLbl.Text = ("Every ~%d blows"):format(every)
-        task.wait(0.25)
-    end
-end)
-
-bubPage.CanvasSize = UDim2.new(0,0,0,bY+10)
-
--- ════════════════════════════════════════════════════════
---  AUTOMATION TAB
--- ════════════════════════════════════════════════════════
-
-local autoPage = tabPages["Automation"]
-local aY = 5
-
--- World Unlocker
-local unlockSec = mkSection(autoPage, aY, 56, "World Unlocker")
-aY = aY + 62
-
-local unlockBtn = mkButton(unlockSec, 28, 22, "🔓 Unlock All Areas", accentGrey)
-unlockBtn.TextSize = 11
-unlockBtn.MouseButton1Click:Connect(function()
-    unlockBtn.Text             = "⏳ Unlocking..."
-    unlockBtn.BackgroundColor3 = darkGrey
-    task.spawn(function()
-        local worlds = workspace:FindFirstChild("Worlds")
-        if worlds then
-            local ow = worlds:FindFirstChild("The Overworld")
-            if ow then
-                local islands = ow:FindFirstChild("Islands")
-                if islands then
-                    for _, v in pairs(islands:GetChildren()) do
-                        local uh = v:FindFirstChild("UnlockHitbox")
-                        if uh and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            firetouchinterest(player.Character.HumanoidRootPart, uh, 0)
-                            task.wait(0.1)
-                            firetouchinterest(player.Character.HumanoidRootPart, uh, 1)
-                            task.wait(0.5)
-                        end
-                    end
-                end
-            end
-        end
-        unlockBtn.Text             = "✅ Done"
-        unlockBtn.BackgroundColor3 = Color3.fromRGB(50,180,100)
-        task.wait(2)
-        unlockBtn.Text             = "🔓 Unlock All Areas"
-        unlockBtn.BackgroundColor3 = accentGrey
-    end)
-end)
-
--- Auto Collectors
-local collectSec = mkSection(autoPage, aY, 158, "Auto Collectors")
-aY = aY + 164
-
-local coinToggle = mkToggle(collectSec, 28, "Auto Collect Coins", false)
-coinToggle:onChanged(function(s) autoCollectCoinsValue = s end)
-
-local playtimeToggle = mkToggle(collectSec, 60, "Auto Claim Playtime", false)
-playtimeToggle:onChanged(function(s) autoclaimplaytimeval = s end)
-
-local chestToggle = mkToggle(collectSec, 92, "Auto Claim Chests", false)
-chestToggle:onChanged(function(s) autoclaimchestsval = s end)
-
-local riftToggle = mkToggle(collectSec, 124, "Auto Claim Rift Gifts", false)
-riftToggle:onChanged(function(s) autoClaimRiftGiftval = s end)
-
--- Staff Watch
-local staffSec = mkSection(autoPage, aY, 152, "👮 Staff Watch")
-aY = aY + 158
-
-local staffListLbl
-
-local staffToggle = mkToggle(staffSec, 28, "Enable Staff Watch", true)
-staffToggle:onChanged(function(s)
-    staffWatchEnabled = s
-    if s and not staffWatchThread then
-        staffWatchThread = task.spawn(function()
-            while staffWatchEnabled do checkForStaff() task.wait(checkInterval) end
-        end)
-    elseif not s and staffWatchThread then
-        task.cancel(staffWatchThread)
-        staffWatchThread = nil
-    end
-    staffIndicator.BackgroundColor3 = s
-        and (staffDetected and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0))
-        or Color3.fromRGB(100,100,100)
-end)
-
-local autoHopToggle = mkToggle(staffSec, 60, "Auto Server Hop on Staff", true)
-autoHopToggle:onChanged(function(s) autoServerHop = s end)
-
-mkDivider(staffSec, 90)
-
-staffListLbl = Instance.new("TextLabel")
-staffListLbl.Size               = UDim2.new(1,-16,0,48)
-staffListLbl.Position           = UDim2.new(0,8,0,98)
-staffListLbl.Text               = "Staff in server: None"
-staffListLbl.Font               = Enum.Font.Gotham
-staffListLbl.TextSize           = 10
-staffListLbl.TextColor3         = Color3.fromRGB(100,255,100)
-staffListLbl.TextXAlignment     = Enum.TextXAlignment.Left
-staffListLbl.TextWrapped        = true
-staffListLbl.BackgroundTransparency = 1
-staffListLbl.Parent             = staffSec
-
--- Anti-AFK
-local afkSec = mkSection(autoPage, aY, 56, "Anti-AFK")
-aY = aY + 62
-
-local antiAfkEnabled = true
-
-local antiAfkToggle = mkToggle(afkSec, 28, "Prevent AFK Kick", true)
-antiAfkToggle:onChanged(function(s) antiAfkEnabled = s end)
-
-autoPage.CanvasSize = UDim2.new(0,0,0,aY+10)
-
--- ════════════════════════════════════════════════════════
---  PETS TAB
--- ════════════════════════════════════════════════════════
-
-local petPage = tabPages["Pets"]
-local pY = 5
-
-local eggSec = mkSection(petPage, pY, 122, "Egg Hatching")
-pY = pY + 128
-
-mkLabel(eggSec, 28, "Selected Egg:", textGrey, 10)
-
-local eggDropBtn = Instance.new("TextButton")
-eggDropBtn.Size             = UDim2.new(1,-16,0,28)
-eggDropBtn.Position         = UDim2.new(0,8,0,48)
-eggDropBtn.BackgroundColor3 = darkGrey
-eggDropBtn.Text             = "  " .. (selectedEgg~="" and selectedEgg or "Select egg...")
-eggDropBtn.Font             = Enum.Font.Gotham
-eggDropBtn.TextSize         = 11
-eggDropBtn.TextColor3       = textGrey
-eggDropBtn.TextXAlignment   = Enum.TextXAlignment.Left
-eggDropBtn.BorderSizePixel  = 0
-eggDropBtn.Parent           = eggSec
-mkCorner(eggDropBtn,5)
-
-local arrowLbl = Instance.new("TextLabel")
-arrowLbl.Size               = UDim2.new(0,20,1,0)
-arrowLbl.Position           = UDim2.new(1,-24,0,0)
-arrowLbl.Text               = "▾"
-arrowLbl.Font               = Enum.Font.GothamBold
-arrowLbl.TextSize           = 12
-arrowLbl.TextColor3         = textGrey
-arrowLbl.BackgroundTransparency = 1
-arrowLbl.Parent             = eggDropBtn
-
-local dropList = Instance.new("Frame")
-dropList.Size             = UDim2.new(1,-16,0,math.min(#eggs,5)*26)
-dropList.Position         = UDim2.new(0,8,0,78)
-dropList.BackgroundColor3 = darkGrey
-dropList.BorderSizePixel  = 0
-dropList.Visible          = false
-dropList.ZIndex           = 20
-dropList.ClipsDescendants = true
-dropList.Parent           = eggSec
-mkCorner(dropList,5)
-
-local scrollF = Instance.new("ScrollingFrame")
-scrollF.Size               = UDim2.new(1,0,1,0)
-scrollF.BackgroundTransparency = 1
-scrollF.ScrollBarThickness = 3
-scrollF.CanvasSize         = UDim2.new(0,0,0,#eggs*26)
-scrollF.ZIndex             = 21
-scrollF.Parent             = dropList
-
-local eggLL = Instance.new("UIListLayout")
-eggLL.SortOrder = Enum.SortOrder.LayoutOrder
-eggLL.Parent    = scrollF
-
-for i, egg in ipairs(eggs) do
-    local item = Instance.new("TextButton")
-    item.Size               = UDim2.new(1,0,0,26)
-    item.BackgroundTransparency = 1
-    item.Text               = "  "..egg
-    item.Font               = Enum.Font.Gotham
-    item.TextSize           = 11
-    item.TextColor3         = textGrey
-    item.TextXAlignment     = Enum.TextXAlignment.Left
-    item.BorderSizePixel    = 0
-    item.LayoutOrder        = i
-    item.ZIndex             = 22
-    item.Parent             = scrollF
-    item.MouseEnter:Connect(function() item.BackgroundTransparency=0; item.BackgroundColor3=accentGrey end)
-    item.MouseLeave:Connect(function() item.BackgroundTransparency=1 end)
-    item.MouseButton1Click:Connect(function()
-        selectedEgg = egg
-        eggDropBtn.Text = "  "..egg
-        dropList.Visible = false
-    end)
-end
-eggDropBtn.MouseButton1Click:Connect(function() dropList.Visible = not dropList.Visible end)
-
-local hatchToggle = mkToggle(eggSec, 96, "Auto Hatch (generic)", false)
-hatchToggle:onChanged(function(s) autoHatchValue = s end)
-
-local giftSec = mkSection(petPage, pY, 56, "Mystery Boxes")
-pY = pY + 62
-
-local giftToggle = mkToggle(giftSec, 28, "Auto Open Mystery Boxes", false)
-giftToggle:onChanged(function(s) autoGiftValue = s end)
-
-petPage.CanvasSize = UDim2.new(0,0,0,pY+10)
-
--- ════════════════════════════════════════════════════════
---  STAFF WATCH SYSTEM
--- ════════════════════════════════════════════════════════
-
-local function isStaffUser(username)
-    username = username:lower()
-    for _, s in ipairs(STAFF_LIST) do
-        if s:lower()==username then return true end
-    end
-    for _, kw in ipairs(BANNED_KEYWORDS) do
-        if username:find(kw,1,true) then return true end
-    end
-    return false
-end
-
-function checkForStaff()
-    local now = tick()
-    if now - lastStaffCheck < checkInterval then return currentServerStaff end
-    lastStaffCheck = now
-
-    local found = {}
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr~=player and isStaffUser(plr.Name) then
-            table.insert(found, plr.Name)
-        end
-    end
-    currentServerStaff = found
-
-    if staffListLbl then
-        if #found > 0 then
-            staffListLbl.Text      = "Staff in server:\n"..table.concat(found,", ")
-            staffListLbl.TextColor3 = Color3.fromRGB(255,100,100)
-            staffIndicator.BackgroundColor3 = staffWatchEnabled and Color3.fromRGB(255,0,0) or Color3.fromRGB(100,100,100)
-        else
-            staffListLbl.Text      = "Staff in server: None"
-            staffListLbl.TextColor3 = Color3.fromRGB(100,255,100)
-            staffIndicator.BackgroundColor3 = staffWatchEnabled and Color3.fromRGB(0,255,0) or Color3.fromRGB(100,100,100)
-        end
-    end
-
-    if #found>0 and autoServerHop and not notificationShown then
-        staffDetected     = true
-        notificationShown = true
-
-        local notif = Instance.new("Frame")
-        notif.Size             = UDim2.new(0,300,0,120)
-        notif.Position         = UDim2.new(0.5,-150,0.2,0)
-        notif.BackgroundColor3 = Color3.fromRGB(200,50,50)
-        notif.BackgroundTransparency = 0.1
-        notif.BorderSizePixel  = 0
-        notif.Parent           = sg
-        notif.ZIndex           = 100
-        mkCorner(notif,8)
-
-        local notifText = Instance.new("TextLabel")
-        notifText.Size               = UDim2.new(1,-20,1,-40)
-        notifText.Position           = UDim2.new(0,10,0,10)
-        notifText.BackgroundTransparency = 1
-        notifText.Text               = ("⚠️ STAFF DETECTED ⚠️\n%s\nHopping in %d..."):format(table.concat(found,", "),hopDelay)
-        notifText.TextColor3         = Color3.new(1,1,1)
-        notifText.TextSize           = 13
-        notifText.Font               = Enum.Font.GothamBold
-        notifText.TextWrapped        = true
-        notifText.Parent             = notif
-        notifText.ZIndex             = 101
-
-        local cancelB = Instance.new("TextButton")
-        cancelB.Size             = UDim2.new(0,70,0,26)
-        cancelB.Position         = UDim2.new(0.5,-35,1,-32)
-        cancelB.BackgroundColor3 = Color3.fromRGB(90,90,90)
-        cancelB.Text             = "Cancel"
-        cancelB.TextColor3       = Color3.new(1,1,1)
-        cancelB.Font             = Enum.Font.GothamBold
-        cancelB.TextSize         = 11
-        cancelB.Parent           = notif
-        cancelB.ZIndex           = 101
-        mkCorner(cancelB,4)
-        cancelB.MouseButton1Click:Connect(function()
-            notif:Destroy()
-            notificationShown = false
-            staffDetected     = false
-        end)
-
+    local rejoinBtn = makeHdrBtn(-236, "Rejoin", T.dim)
+    local hopBtn    = makeHdrBtn(-176, "Hop",    T.dim)
+    local riftsBtn  = makeHdrBtn(-116, "Rifts",  T.dim)
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 30, 0, 30); closeBtn.Position = UDim2.new(1, -40, 0.5, -15)
+    closeBtn.Text = "×"; closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 18; closeBtn.TextColor3 = T.muted
+    closeBtn.BackgroundColor3 = T.dim; closeBtn.BorderSizePixel = 0; closeBtn.AutoButtonColor = false; closeBtn.ZIndex = 5; closeBtn.Parent = header
+    mkCorner(closeBtn, 7)
+
+    closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3=T.red, TextColor3=Color3.new(1,1,1)}):Play() end)
+    closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn, tw(), {BackgroundColor3=T.dim, TextColor3=T.muted}):Play() end)
+    rejoinBtn.MouseButton1Click:Connect(function() rejoinBtn.Text="…"; task.spawn(rejoin) end)
+    hopBtn.MouseButton1Click:Connect(function() hopBtn.Text="…"; task.spawn(serverHop) end)
+
+    local riftBtnLoaded = false
+    riftsBtn.MouseButton1Click:Connect(function()
+        if riftBtnLoaded then local ex = playerGui:FindFirstChild("RiftTP"); if ex then ex.Enabled = not ex.Enabled end; return end
+        riftsBtn.Text = "…"
         task.spawn(function()
-            for i = hopDelay,1,-1 do
-                if not notificationShown then break end
-                notifText.Text = ("⚠️ STAFF DETECTED ⚠️\n%s\nHopping in %d..."):format(table.concat(found,", "),i)
-                task.wait(1)
-            end
-            if notificationShown then
-                notif:Destroy()
-                serverHop()
+            local ok, err = pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/MADMONEYDISTRO/feather-hub/refs/heads/main/rift"))() end)
+            if ok then riftBtnLoaded = true; riftsBtn.Text = "Rifts" else riftsBtn.Text = "ERR"; task.delay(2, function() riftsBtn.Text = "Rifts" end) end
+        end)
+    end)
+
+    -- Drag (smooth)
+    do
+        local dragging, dragStart, startPos = false, nil, nil
+        header.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true; dragStart = input.Position; startPos = main.Position
+                input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
             end
         end)
-    elseif #found==0 then
-        staffDetected     = false
-        notificationShown = false
-    end
-
-    return found
-end
-
--- ════════════════════════════════════════════════════════
---  AUTOMATION LOOPS
--- ════════════════════════════════════════════════════════
-
--- Bubbles
-task.spawn(function()
-    local blowCount = 0
-    while sg and sg.Parent do
-        task.wait(0.1)
-        pcall(function()
-            if autoBlowValue then
-                RemoteEvent:FireServer("BlowBubble")
-                blowCount = blowCount + 1
-
-                local sellEvery = math.max(5, math.floor((autoSellPer / 100) * 1000))
-                if autoSellValue and blowCount >= sellEvery then
-                    RemoteEvent:FireServer("SellBubble")
-                    blowCount = 0
-                end
-            elseif autoSellValue then
-                RemoteEvent:FireServer("SellBubble")
-                task.wait(1)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local delta = input.Position - dragStart
+                local newX = startPos.X.Offset + delta.X; local newY = startPos.Y.Offset + delta.Y
+                local vp = workspace.CurrentCamera.ViewportSize
+                newX = math.clamp(newX, 0, vp.X - guiWidth); newY = math.clamp(newY, 0, vp.Y - guiHeight)
+                main.Position = UDim2.new(0, newX, 0, newY)
             end
         end)
+        UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
     end
-end)
 
--- Playtime – using ClaimAllPlaytime
-task.spawn(function()
-    while sg and sg.Parent do
-        task.wait(3)
-        pcall(function()
-            if autoclaimplaytimeval then
-                local args = { "ClaimAllPlaytime" }
-                RemoteEvent:FireServer(unpack(args))
-            end
+    -- Tabs
+    local TAB_NAMES = {"☀️ Summer", "⛏️ Metal", "Bubbles", "Automation", "Pets"}
+    local tabBtns, tabPages = {}, {}
+
+    local tabBar = Instance.new("Frame")
+    tabBar.Size = UDim2.new(1, -20, 0, 36); tabBar.Position = UDim2.new(0, 10, 0, 58)
+    tabBar.BackgroundColor3 = T.dim; tabBar.BorderSizePixel = 0; tabBar.ZIndex = 3; tabBar.Parent = main; mkCorner(tabBar, 8)
+
+    local tabLayout = Instance.new("UIListLayout", tabBar)
+    tabLayout.FillDirection = Enum.FillDirection.Horizontal; tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    tabLayout.Padding = UDim.new(0, 4); tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center; tabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    local contentArea = Instance.new("Frame")
+    contentArea.Size = UDim2.new(1, -20, 1, -102); contentArea.Position = UDim2.new(0, 10, 0, 98)
+    contentArea.BackgroundTransparency = 1; contentArea.ClipsDescendants = true; contentArea.Parent = main
+
+    local function switchTab(name)
+        for n, btn in pairs(tabBtns) do
+            local on = (n == name)
+            TweenService:Create(btn, tw(0.15), {BackgroundColor3 = on and T.accent or Color3.fromRGB(0,0,0), BackgroundTransparency = on and 0 or 1, TextColor3 = on and Color3.new(1,1,1) or T.muted}):Play()
+        end
+        for n, page in pairs(tabPages) do page.Visible = (n == name) end
+    end
+
+    for i, name in ipairs(TAB_NAMES) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 84, 0, 28); btn.BackgroundColor3 = i == 1 and T.accent or Color3.fromRGB(0,0,0); btn.BackgroundTransparency = i == 1 and 0 or 1
+        btn.TextColor3 = i == 1 and Color3.new(1,1,1) or T.muted; btn.Text = name; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10
+        btn.BorderSizePixel = 0; btn.AutoButtonColor = false; btn.ZIndex = 4; btn.Parent = tabBar; mkCorner(btn, 6)
+        tabBtns[name] = btn
+
+        local page = Instance.new("ScrollingFrame")
+        page.Size = UDim2.new(1, 0, 1, 0); page.BackgroundTransparency = 1; page.Visible = i == 1
+        page.ScrollBarThickness = 3; page.CanvasSize = UDim2.new(0, 0, 0, 0); page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        page.ScrollBarImageColor3 = T.accent; page.ZIndex = 2; page.Parent = contentArea
+        tabPages[name] = page
+
+        local layout = Instance.new("UIListLayout", page); layout.SortOrder = Enum.SortOrder.LayoutOrder; layout.HorizontalAlignment = Enum.HorizontalAlignment.Center; layout.Padding = UDim.new(0, 10)
+        local pad = Instance.new("UIPadding", page); pad.PaddingTop = UDim.new(0, 10); pad.PaddingBottom = UDim.new(0, 20); pad.PaddingLeft = UDim.new(0, 2); pad.PaddingRight = UDim.new(0, 2)
+
+        btn.MouseButton1Click:Connect(function() switchTab(name) end)
+    end
+
+    -- Widget builders (with larger click areas)
+    local function mkCard(parent, order)
+        local c = Instance.new("Frame")
+        c.Size = UDim2.new(1, 0, 0, 0); c.AutomaticSize = Enum.AutomaticSize.Y
+        c.BackgroundColor3 = T.card; c.BorderSizePixel = 0; c.LayoutOrder = order or 1; c.ZIndex = 3; c.Parent = parent
+        mkCorner(c, 12); mkStroke(c, T.border, 1)
+        local ll = Instance.new("UIListLayout", c); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.Padding = UDim.new(0, 2)
+        return c
+    end
+
+    local function mkRow(card, order, isLast, h)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, h or 52); row.BackgroundTransparency = 1; row.BorderSizePixel = 0; row.LayoutOrder = order; row.ZIndex = 4; row.Parent = card
+        if not isLast then
+            local sep = Instance.new("Frame"); sep.Size = UDim2.new(1, -28, 0, 1); sep.Position = UDim2.new(0, 14, 1, -1); sep.BackgroundColor3 = T.sep; sep.BorderSizePixel = 0; sep.ZIndex = 4; sep.Parent = row
+        end
+        return row
+    end
+
+    local function mkSectionLabel(parent, text, accentCol, order)
+        local f = Instance.new("Frame"); f.Size = UDim2.new(1, 0, 0, 28); f.BackgroundTransparency = 1; f.LayoutOrder = order or 1; f.ZIndex = 3; f.Parent = parent
+        local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1, 0, 1, 0); lbl.Text = text; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 10; lbl.TextColor3 = accentCol or T.accent; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.ZIndex = 3; lbl.Parent = f
+        local line = Instance.new("Frame"); line.Size = UDim2.new(0, 32, 0, 2); line.Position = UDim2.new(0, 0, 1, -2); line.BackgroundColor3 = accentCol or T.accent; line.BorderSizePixel = 0; line.ZIndex = 3; line.Parent = f; mkCorner(line, 1)
+        return f
+    end
+
+    local function mkToggleInRow(row, label, default)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -70, 1, 0); lbl.Position = UDim2.new(0, 16, 0, 0)
+        lbl.Text = label; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 11; lbl.TextColor3 = T.text
+        lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.ZIndex = 5; lbl.Parent = row
+
+        local track = Instance.new("TextButton")
+        track.Size = UDim2.new(0, 48, 0, 26); track.Position = UDim2.new(1, -62, 0.5, -13)
+        track.BackgroundColor3 = default and T.accent or T.dim; track.BorderSizePixel = 0; track.AutoButtonColor = false; track.Text = ""; track.ZIndex = 5; track.Parent = row
+        mkCorner(track, 13)
+
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.new(0, 20, 0, 20); knob.Position = default and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 3, 0.5, -10)
+        knob.BackgroundColor3 = Color3.new(1,1,1); knob.BorderSizePixel = 0; knob.ZIndex = 6; knob.Parent = track; mkCorner(knob, 10)
+
+        local state = default or false; local cbs = {}
+        track.MouseButton1Click:Connect(function()
+            state = not state
+            TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+            TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1,-22,0.5,-10) or UDim2.new(0,3,0.5,-10)}):Play()
+            for _, cb in ipairs(cbs) do pcall(cb, state) end
         end)
+        return { onChanged = function(_, cb) table.insert(cbs, cb) end, getState = function() return state end, setState = function(_, v) if state == v then return end state = v; TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play(); TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1,-22,0.5,-10) or UDim2.new(0,3,0.5,-10)}):Play(); for _, cb in ipairs(cbs) do pcall(cb, state) end end }
     end
-end)
 
--- Chests
-task.spawn(function()
-    while sg and sg.Parent do
-        task.wait(0.5)
-        pcall(function()
-            if autoclaimchestsval and SData and SData:FindFirstChild("Chests") then
-                local chests = safeRequire(SData.Chests, {})
-                for i in pairs(chests) do
-                    RemoteEvent:FireServer("ClaimChest", i)
-                end
-            end
-        end)
+    local function mkToggleRow(card, order, label, default, isLast)
+        local row = mkRow(card, order, isLast, 52)
+        local toggle = mkToggleInRow(row, label, default)
+        return row, toggle
     end
-end)
 
--- Rift gifts
-if EventHandler then
-    EventHandler.OnClientEvent:Connect(function(eventName, gifts)
-        if eventName=="RenderGifts" and autoClaimRiftGiftval then
-            for giftId in pairs(gifts or {}) do
-                task.delay(0.1, function()
-                    pcall(function() EventHandler:FireServer("ClaimRiftGift", giftId) end)
-                end)
+    local function mkLabelRow(card, order, text, col, sz, isLast)
+        local row = mkRow(card, order, isLast, 38)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -28, 1, 0); lbl.Position = UDim2.new(0, 14, 0, 0); lbl.Text = text; lbl.Font = Enum.Font.Gotham; lbl.TextSize = sz or 10; lbl.TextColor3 = col or T.muted; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.TextWrapped = true; lbl.BackgroundTransparency = 1; lbl.ZIndex = 5; lbl.Parent = row
+        return row, lbl
+    end
+
+    local function mkButton(parent, order, text, bgCol, h)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1, -20, 0, h or 40); b.BackgroundColor3 = bgCol or T.accent; b.Text = text; b.Font = Enum.Font.GothamBold; b.TextSize = 12; b.TextColor3 = Color3.new(1,1,1); b.BorderSizePixel = 0; b.AutoButtonColor = false; b.LayoutOrder = order; b.ZIndex = 5; b.Parent = parent; mkCorner(b, 9)
+        b.MouseEnter:Connect(function() TweenService:Create(b, tw(0.1), {BackgroundColor3 = Color3.new(math.min(bgCol and bgCol.R+0.08 or T.accentLt.R,1), math.min(bgCol and bgCol.G+0.08 or T.accentLt.G,1), math.min(bgCol and bgCol.B+0.08 or T.accentLt.B,1))}):Play() end)
+        b.MouseLeave:Connect(function() TweenService:Create(b, tw(0.1), {BackgroundColor3 = bgCol or T.accent}):Play() end)
+        return b
+    end
+
+    local function mkStatusBar(card, order, text, col)
+        local row = mkRow(card, order, true, 36)
+        local bar = Instance.new("Frame"); bar.Size = UDim2.new(0, 4, 0.6, 0); bar.Position = UDim2.new(0, 0, 0.2, 0); bar.BackgroundColor3 = col or T.accent; bar.BorderSizePixel = 0; bar.ZIndex = 5; bar.Parent = row; mkCorner(bar, 2)
+        local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1, -16, 1, 0); lbl.Position = UDim2.new(0, 12, 0, 0); lbl.Text = text; lbl.Font = Enum.Font.Gotham; lbl.TextSize = 10; lbl.TextColor3 = col or T.muted; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.ZIndex = 5; lbl.Parent = row
+        return row, lbl, bar
+    end
+
+    local function mkStepper(parent, order, label, value, minV, maxV, step, fmt, onChange)
+        local f = Instance.new("Frame"); f.Size = UDim2.new(1, 0, 0, 48); f.BackgroundTransparency = 1; f.LayoutOrder = order; f.ZIndex = 4; f.Parent = parent
+        local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(0.55, 0, 1, 0); lbl.Position = UDim2.new(0, 14, 0, 0); lbl.Text = label; lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 11; lbl.TextColor3 = T.text; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.ZIndex = 5; lbl.Parent = f
+        local minusBtn = Instance.new("TextButton"); minusBtn.Size = UDim2.new(0, 32, 0, 32); minusBtn.Position = UDim2.new(1, -102, 0.5, -16); minusBtn.Text = "−"; minusBtn.Font = Enum.Font.GothamBold; minusBtn.TextSize = 18; minusBtn.TextColor3 = T.text; minusBtn.BackgroundColor3 = T.dim; minusBtn.BorderSizePixel = 0; minusBtn.AutoButtonColor = false; minusBtn.ZIndex = 5; minusBtn.Parent = f; mkCorner(minusBtn, 8)
+        local valLbl = Instance.new("TextLabel"); valLbl.Size = UDim2.new(0, 48, 0, 32); valLbl.Position = UDim2.new(1, -66, 0.5, -16); valLbl.Text = fmt and fmt:format(value) or tostring(value); valLbl.Font = Enum.Font.GothamBold; valLbl.TextSize = 12; valLbl.TextColor3 = T.accent; valLbl.BackgroundTransparency = 1; valLbl.TextXAlignment = Enum.TextXAlignment.Center; valLbl.ZIndex = 5; valLbl.Parent = f
+        local plusBtn = Instance.new("TextButton"); plusBtn.Size = UDim2.new(0, 32, 0, 32); plusBtn.Position = UDim2.new(1, -26, 0.5, -16); plusBtn.Text = "+"; plusBtn.Font = Enum.Font.GothamBold; plusBtn.TextSize = 18; plusBtn.TextColor3 = T.text; plusBtn.BackgroundColor3 = T.dim; plusBtn.BorderSizePixel = 0; plusBtn.AutoButtonColor = false; plusBtn.ZIndex = 5; plusBtn.Parent = f; mkCorner(plusBtn, 8)
+        local cur = value
+        local function update(v) cur = math.clamp(v, minV, maxV); valLbl.Text = fmt and fmt:format(cur) or tostring(cur); if onChange then onChange(cur) end end
+        minusBtn.MouseButton1Click:Connect(function() update(cur - step) end)
+        plusBtn.MouseButton1Click:Connect(function()  update(cur + step) end)
+        return f
+    end
+
+    local function notify(title, msg, nType)
+        local col = (nType == "success" and T.green) or (nType == "error" and T.red) or (nType == "warning" and T.gold) or T.accent
+        local n = Instance.new("Frame"); n.Size = UDim2.new(0, 0, 0, 64); n.Position = UDim2.new(1, -12, 1, -80); n.AnchorPoint = Vector2.new(1,1); n.BackgroundColor3 = T.card; n.BorderSizePixel = 0; n.ZIndex = 20; n.Parent = sg; mkCorner(n, 10); mkStroke(n, col, 1)
+        local bar = Instance.new("Frame"); bar.Size = UDim2.new(0, 4, 0.6, 0); bar.Position = UDim2.new(0, 0, 0.2, 0); bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; bar.ZIndex = 21; bar.Parent = n; mkCorner(bar, 2)
+        local t1 = Instance.new("TextLabel"); t1.Size = UDim2.new(1, -20, 0, 20); t1.Position = UDim2.new(0, 16, 0, 8); t1.Text = title; t1.Font = Enum.Font.GothamBold; t1.TextSize = 12; t1.TextColor3 = T.text; t1.TextXAlignment = Enum.TextXAlignment.Left; t1.BackgroundTransparency = 1; t1.ZIndex = 21; t1.Parent = n
+        local t2 = Instance.new("TextLabel"); t2.Size = UDim2.new(1, -20, 0, 20); t2.Position = UDim2.new(0, 16, 0, 30); t2.Text = msg; t2.Font = Enum.Font.Gotham; t2.TextSize = 10; t2.TextColor3 = T.muted; t2.TextXAlignment = Enum.TextXAlignment.Left; t2.TextWrapped = true; t2.BackgroundTransparency = 1; t2.ZIndex = 21; t2.Parent = n
+        TweenService:Create(n, tw(0.25), {Size = UDim2.new(0, 260, 0, 64)}):Play()
+        task.delay(3.5, function() if n and n.Parent then TweenService:Create(n, tw(0.22), {Position = UDim2.new(1, 12, 1, -80)}):Play(); task.delay(0.25, function() if n and n.Parent then n:Destroy() end end) end end)
+    end
+
+    -- SUMMER TAB (Coming Soon)
+    do
+        local sumPage = tabPages["☀️ Summer"]
+        local comingSoonCard = mkCard(sumPage, 1)
+        local spacer = Instance.new("Frame"); spacer.Size = UDim2.new(1,0,0,40); spacer.BackgroundTransparency = 1; spacer.LayoutOrder = 1; spacer.Parent = comingSoonCard
+        local soonLabel = Instance.new("TextLabel"); soonLabel.Size = UDim2.new(1, -40, 0, 60); soonLabel.Position = UDim2.new(0, 20, 0, 0); soonLabel.Text = "☀️ EVENT PART 2\nCOMING SOON ☀️"; soonLabel.Font = Enum.Font.GothamBold; soonLabel.TextSize = 20; soonLabel.TextColor3 = T.summer; soonLabel.TextWrapped = true; soonLabel.BackgroundTransparency = 1; soonLabel.LayoutOrder = 2; soonLabel.Parent = comingSoonCard
+        local subLabel = Instance.new("TextLabel"); subLabel.Size = UDim2.new(1, -40, 0, 40); subLabel.Position = UDim2.new(0, 20, 0, 0); subLabel.Text = "Stay tuned for new summer content!\nCheck back for updates."; subLabel.Font = Enum.Font.Gotham; subLabel.TextSize = 12; subLabel.TextColor3 = T.muted; subLabel.TextWrapped = true; subLabel.BackgroundTransparency = 1; subLabel.LayoutOrder = 3; subLabel.Parent = comingSoonCard
+        local spacer2 = Instance.new("Frame"); spacer2.Size = UDim2.new(1,0,0,20); spacer2.BackgroundTransparency = 1; spacer2.LayoutOrder = 4; spacer2.Parent = comingSoonCard
+    end
+
+    -- METAL TAB (unchanged logic, only UI sizes increased)
+    do
+        local metalPage = tabPages["⛏️ Metal"]
+        mkSectionLabel(metalPage, "⛏️ METAL DETECTOR FARM", T.metal, 1)
+        local metalStatusCard = mkCard(metalPage, 2)
+        local _, metalStatusLbl = mkStatusBar(metalStatusCard, 1, "⏸ Idle — press keybind or button to start", T.muted)
+        local _, metalCountLbl  = mkStatusBar(metalStatusCard, 2, "Digs: 0  |  Sells: 0  |  Loops: 0/1", T.metal)
+
+        local metalBtnCard = mkCard(metalPage, 3)
+        local metalPad = Instance.new("Frame"); metalPad.Size = UDim2.new(1,0,0,8); metalPad.BackgroundTransparency=1; metalPad.LayoutOrder=1; metalPad.Parent=metalBtnCard
+        local metalStartBtn = mkButton(metalBtnCard, 2, "▶  START METAL FARM", T.metal, 42)
+        local metalPad2 = Instance.new("Frame"); metalPad2.Size = UDim2.new(1,0,0,8); metalPad2.BackgroundTransparency=1; metalPad2.LayoutOrder=3; metalPad2.Parent=metalBtnCard
+
+        mkSectionLabel(metalPage, "KEYBIND", T.metal, 4)
+        local kbCard = mkCard(metalPage, 5)
+        local kbRow = mkRow(kbCard, 1, true, 56)
+        local kbLabel = Instance.new("TextLabel"); kbLabel.Size = UDim2.new(0.5,0,1,0); kbLabel.Position = UDim2.new(0,14,0,0); kbLabel.Text = "Toggle Keybind"; kbLabel.Font = Enum.Font.GothamSemibold; kbLabel.TextSize = 11; kbLabel.TextColor3 = T.text; kbLabel.TextXAlignment = Enum.TextXAlignment.Left; kbLabel.BackgroundTransparency = 1; kbLabel.ZIndex = 5; kbLabel.Parent = kbRow
+        local kbBtn = Instance.new("TextButton"); kbBtn.Size = UDim2.new(0, 100, 0, 34); kbBtn.Position = UDim2.new(1, -114, 0.5, -17); kbBtn.Text = metalSettings.keybind; kbBtn.Font = Enum.Font.GothamBold; kbBtn.TextSize = 11; kbBtn.TextColor3 = T.text; kbBtn.BackgroundColor3 = T.inputBg; kbBtn.BorderSizePixel = 0; kbBtn.AutoButtonColor = false; kbBtn.ZIndex = 6; kbBtn.Parent = kbRow; mkCorner(kbBtn, 8); mkStroke(kbBtn, T.border, 1)
+
+        local kbWaiting = false
+        kbBtn.MouseButton1Click:Connect(function() if kbWaiting then return end; kbWaiting=true; kbBtn.Text="Press key…"; kbBtn.TextColor3=T.accent end)
+
+        mkSectionLabel(metalPage, "FARM SETTINGS", T.metal, 6)
+        local settingsCard = mkCard(metalPage, 7)
+        local methodRow = mkRow(settingsCard, 1, false, 56)
+        local methodLbl = Instance.new("TextLabel"); methodLbl.Size = UDim2.new(0.42,0,1,0); methodLbl.Position = UDim2.new(0,14,0,0); methodLbl.Text = "Farm Method"; methodLbl.Font = Enum.Font.GothamSemibold; methodLbl.TextSize = 11; methodLbl.TextColor3 = T.text; methodLbl.TextXAlignment = Enum.TextXAlignment.Left; methodLbl.BackgroundTransparency = 1; methodLbl.ZIndex = 5; methodLbl.Parent = methodRow
+        local m1Btn = Instance.new("TextButton"); m1Btn.Size = UDim2.new(0, 80, 0, 32); m1Btn.Position = UDim2.new(1, -172, 0.5, -16); m1Btn.Text = "① Direct"; m1Btn.Font = Enum.Font.GothamBold; m1Btn.TextSize = 10; m1Btn.TextColor3 = Color3.new(1,1,1); m1Btn.BackgroundColor3 = T.metal; m1Btn.BorderSizePixel = 0; m1Btn.AutoButtonColor = false; m1Btn.ZIndex = 6; m1Btn.Parent = methodRow; mkCorner(m1Btn, 8)
+        local m2Btn = Instance.new("TextButton"); m2Btn.Size = UDim2.new(0, 80, 0, 32); m2Btn.Position = UDim2.new(1, -86, 0.5, -16); m2Btn.Text = "② Orbit"; m2Btn.Font = Enum.Font.GothamBold; m2Btn.TextSize = 10; m2Btn.TextColor3 = T.muted; m2Btn.BackgroundColor3 = T.dim; m2Btn.BorderSizePixel = 0; m2Btn.AutoButtonColor = false; m2Btn.ZIndex = 6; m2Btn.Parent = methodRow; mkCorner(m2Btn, 8)
+        local methodDescRow = mkRow(settingsCard, 2, false, 44); local methodDescLbl = Instance.new("TextLabel"); methodDescLbl.Size = UDim2.new(1, -28, 1, 0); methodDescLbl.Position = UDim2.new(0, 14, 0, 0); methodDescLbl.Text = "① Direct: tween straight to each dig point.  ② Orbit: arrive then sweep a circle around each spot for 1 s to ensure collection."; methodDescLbl.Font = Enum.Font.Gotham; methodDescLbl.TextSize = 9; methodDescLbl.TextColor3 = T.muted; methodDescLbl.TextXAlignment = Enum.TextXAlignment.Left; methodDescLbl.TextWrapped = true; methodDescLbl.BackgroundTransparency = 1; methodDescLbl.ZIndex = 5; methodDescLbl.Parent = methodDescRow
+        m1Btn.MouseButton1Click:Connect(function() metalSettings.farmMethod=1; m1Btn.BackgroundColor3=T.metal; m1Btn.TextColor3=Color3.new(1,1,1); m2Btn.BackgroundColor3=T.dim; m2Btn.TextColor3=T.muted end)
+        m2Btn.MouseButton1Click:Connect(function() metalSettings.farmMethod=2; m2Btn.BackgroundColor3=T.metal; m2Btn.TextColor3=Color3.new(1,1,1); m1Btn.BackgroundColor3=T.dim; m1Btn.TextColor3=T.muted end)
+
+        local stepperContainer = Instance.new("Frame"); stepperContainer.Size = UDim2.new(1,0,0,0); stepperContainer.AutomaticSize = Enum.AutomaticSize.Y; stepperContainer.BackgroundTransparency = 1; stepperContainer.LayoutOrder = 3; stepperContainer.ZIndex = 4; stepperContainer.Parent = settingsCard
+        local stepLayout = Instance.new("UIListLayout", stepperContainer); stepLayout.SortOrder = Enum.SortOrder.LayoutOrder; stepLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; stepLayout.Padding = UDim.new(0, 2)
+        local function sepLine(parent, order) local sep = Instance.new("Frame"); sep.Size = UDim2.new(1, -28, 0, 1); sep.BackgroundColor3 = T.sep; sep.BorderSizePixel = 0; sep.LayoutOrder = order; sep.ZIndex = 4; sep.Parent = parent end
+        mkStepper(stepperContainer, 1, "Loops before sell", metalSettings.loopsBeforeSell, 1, 20, 1, nil, function(v) metalSettings.loopsBeforeSell = v end); sepLine(stepperContainer,2)
+        mkStepper(stepperContainer, 3, "Farm speed (s/point)", metalSettings.farmSpeed, 0.2, 10, 0.1, "%.1f", function(v) metalSettings.farmSpeed = v end); sepLine(stepperContainer,4)
+        mkStepper(stepperContainer, 5, "Sell tween speed (s)", metalSettings.sellSpeed, 0.2, 5, 0.1, "%.1f", function(v) metalSettings.sellSpeed = v end); sepLine(stepperContainer,6)
+        mkStepper(stepperContainer, 7, "Pause after sell (s)", metalSettings.sellPause, 0.5, 10, 0.5, "%.1f", function(v) metalSettings.sellPause = v end); sepLine(stepperContainer,8)
+        mkStepper(stepperContainer, 9, "Clicks per second", metalSettings.CPS, 1, 30, 1, nil, function(v) metalSettings.CPS = v end)
+
+        local orbitCard = mkCard(metalPage, 8)
+        local orbitTitleRow = mkRow(orbitCard, 0, false, 40); local orbitTitleLbl = Instance.new("TextLabel"); orbitTitleLbl.Size = UDim2.new(1, -28, 1, 0); orbitTitleLbl.Position = UDim2.new(0, 14, 0, 0); orbitTitleLbl.Text = "② Orbit Settings  (Method 2 only)"; orbitTitleLbl.Font = Enum.Font.GothamBold; orbitTitleLbl.TextSize = 10; orbitTitleLbl.TextColor3 = T.metal; orbitTitleLbl.TextXAlignment = Enum.TextXAlignment.Left; orbitTitleLbl.BackgroundTransparency = 1; orbitTitleLbl.ZIndex = 5; orbitTitleLbl.Parent = orbitTitleRow
+        local orbitStepCont = Instance.new("Frame"); orbitStepCont.Size = UDim2.new(1,0,0,0); orbitStepCont.AutomaticSize = Enum.AutomaticSize.Y; orbitStepCont.BackgroundTransparency = 1; orbitStepCont.LayoutOrder = 1; orbitStepCont.ZIndex = 4; orbitStepCont.Parent = orbitCard
+        local orbitLL = Instance.new("UIListLayout", orbitStepCont); orbitLL.SortOrder = Enum.SortOrder.LayoutOrder; orbitLL.HorizontalAlignment = Enum.HorizontalAlignment.Center; orbitLL.Padding = UDim.new(0,2)
+        mkStepper(orbitStepCont, 1, "Orbit radius (studs)", metalSettings.orbitRadius, 1, 8, 0.5, "%.1f", function(v) metalSettings.orbitRadius = v end); sepLine(orbitStepCont,2)
+        mkStepper(orbitStepCont, 3, "Orbit steps", metalSettings.orbitSteps, 4, 24, 1, nil, function(v) metalSettings.orbitSteps = v end); sepLine(orbitStepCont,4)
+        mkStepper(orbitStepCont, 5, "Time per step (s)", metalSettings.orbitTime, 0.05, 0.5, 0.05, "%.2f", function(v) metalSettings.orbitTime = v end)
+        local orbitPad = Instance.new("Frame"); orbitPad.Size=UDim2.new(1,0,0,6); orbitPad.BackgroundTransparency=1; orbitPad.LayoutOrder=2; orbitPad.Parent=orbitCard
+
+        -- Metal logic (unchanged)
+        local metalClickThread, metalMoveThread = nil, nil
+        local metalDigCount, metalSellCount = 0, 0
+        local function metalClickLoop() while metalEnabled do pcall(function() VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,1); task.wait(0.02); VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,1); RemoteEvent:FireServer("MetalDetectorDig", METAL_DIG_UUID, METAL_DIG_AREA) end); metalDigCount = metalDigCount+1; task.wait(1/metalSettings.CPS) end end
+        local function metalFarmLoop()
+            metalLoopsDone = 0; metalSellCount = 0; metalDigCount = 0; metalOriginCF = saveOrigin()
+            while metalEnabled and sg and sg.Parent do
+                for _, point in ipairs(METAL_DIG_POINTS) do if not metalEnabled then break end; lookDown(); tweenTo(point, metalSettings.farmSpeed); if metalSettings.farmMethod == 2 then orbitPoint(point, metalSettings.orbitRadius, metalSettings.orbitSteps, metalSettings.orbitTime); local t0 = tick(); while metalEnabled and (tick()-t0) < 1.0 do task.wait(0.05) end end end
+                if not metalEnabled then break end; metalLoopsDone = metalLoopsDone+1; metalStatusLbl.Text = ("⛏️ Loop %d/%d done"):format(metalLoopsDone, metalSettings.loopsBeforeSell); metalCountLbl.Text = ("Digs: %d  |  Sells: %d  |  Loops: %d/%d"):format(metalDigCount, metalSellCount, metalLoopsDone, metalSettings.loopsBeforeSell)
+                if metalLoopsDone >= metalSettings.loopsBeforeSell then metalLoopsDone = 0; metalStatusLbl.Text = "💰 Travelling to sell point…"; lookDown(); tweenTo(METAL_SELL_CFRAME, metalSettings.sellSpeed); RemoteEvent:FireServer("SellArtifacts"); metalSellCount = metalSellCount+1; notify("Metal Detector", ("Sold! Total sells: %d"):format(metalSellCount), "success"); metalStatusLbl.Text = ("💤 Pausing %.1fs before next run…"):format(metalSettings.sellPause); task.wait(metalSettings.sellPause) end
             end
         end
-    end)
-end
-
--- Generic auto hatch (Pets tab)
-task.spawn(function()
-    while sg and sg.Parent do
-        task.wait(0.1)
-        pcall(function()
-            if autoHatchValue and selectedEgg~="" and EventHandler then
-                EventHandler:FireServer("HatchEgg", selectedEgg, 1)
-            end
-        end)
+        local function startMetal() if metalEnabled then return end; metalEnabled=true; metalStartBtn.Text="⏹  STOP METAL FARM"; metalStartBtn.BackgroundColor3=T.red; metalStatusLbl.Text="▶ Starting dig cycle…"; metalStatusLbl.TextColor3=T.metal; metalClickThread=task.spawn(metalClickLoop); metalMoveThread=task.spawn(metalFarmLoop) end
+        local function stopMetal() metalEnabled=false; if metalClickThread then task.cancel(metalClickThread); metalClickThread=nil end; if metalMoveThread then task.cancel(metalMoveThread); metalMoveThread=nil end; metalStartBtn.Text="▶  START METAL FARM"; metalStartBtn.BackgroundColor3=T.metal; metalStatusLbl.Text="⏸ Stopped, respawning..."; metalStatusLbl.TextColor3=T.muted; local char=player.Character; if char then local hum=char:FindFirstChildOfClass("Humanoid"); if hum then hum.Health=0 else char:BreakJoints() end end; notify("Metal Detector", "Farm stopped – character reset to fix position.", "success") end
+        metalStartBtn.MouseButton1Click:Connect(function() if metalEnabled then stopMetal() else startMetal() end end)
+        task.spawn(function() while sg and sg.Parent do task.wait(0.5); if metalEnabled then metalCountLbl.Text = ("Digs: %d  |  Sells: %d  |  Loops: %d/%d"):format(metalDigCount, metalSellCount, metalLoopsDone, metalSettings.loopsBeforeSell) end end end)
+        UserInputService.InputBegan:Connect(function(input,gpe) if gpe then return end; if input.UserInputType == Enum.UserInputType.Keyboard then if kbWaiting then kbWaiting=false; metalSettings.keybind=input.KeyCode.Name; kbBtn.Text=input.KeyCode.Name; kbBtn.TextColor3=T.text; notify("Metal Detector", "Keybind set to "..input.KeyCode.Name, "success"); return end; if input.KeyCode.Name == metalSettings.keybind then if metalEnabled then stopMetal() else startMetal() end end end end)
     end
-end)
 
--- Mystery boxes
-task.spawn(function()
-    while sg and sg.Parent do
-        task.wait(0.1)
-        pcall(function()
-            if autoGiftValue then
-                local ItemUtil = Utils and Utils:FindFirstChild("Stats") and Utils.Stats:FindFirstChild("ItemUtil")
-                if ItemUtil then
-                    local iu = safeRequire(ItemUtil, {})
-                    if iu.GetOwnedAmount and Data then
-                        local amt  = iu:GetOwnedAmount(Data, {Type="Powerup", Name="Mystery Box"})
-                        local open = amt>=10 and 10 or amt>=5 and 5 or 1
-                        if amt>0 and EventHandler then
-                            EventHandler:FireServer("UseGift","Mystery Box",open)
-                            task.wait(0.5)
-                            for _ = 1,8 do
-                                VirtualUser:ClickButton1(Vector2.new(), workspace.CurrentCamera.CFrame)
-                                task.wait(0.5)
-                            end
-                        end
-                    end
-                end
-            end
-        end)
+    -- BUBBLES TAB (same logic, larger UI)
+    do
+        local bubPage = tabPages["Bubbles"]
+        mkSectionLabel(bubPage, "BUBBLE CONTROLS", T.accent, 1)
+        local bubCard = mkCard(bubPage, 2)
+        local _, blowToggle = mkToggleRow(bubCard, 1, "Auto Blow Bubbles", false, false); blowToggle:onChanged(function(s) autoBlowValue = s end)
+        local _, sellToggle = mkToggleRow(bubCard, 2, "Auto Sell Bubbles", false, true); sellToggle:onChanged(function(s) autoSellValue = s end)
+
+        mkSectionLabel(bubPage, "SELL FREQUENCY", T.accent, 3)
+        local bubStepCard = mkCard(bubPage, 4)
+        local bubStepRow = mkRow(bubStepCard, 1, true, 52)
+        local bubFreqLbl = Instance.new("TextLabel"); bubFreqLbl.Size = UDim2.new(0.5,0,1,0); bubFreqLbl.Position = UDim2.new(0,14,0,0); bubFreqLbl.Text = "Sell every ~500 blows"; bubFreqLbl.Font = Enum.Font.GothamSemibold; bubFreqLbl.TextSize = 11; bubFreqLbl.TextColor3 = T.text; bubFreqLbl.TextXAlignment = Enum.TextXAlignment.Left; bubFreqLbl.BackgroundTransparency = 1; bubFreqLbl.ZIndex = 5; bubFreqLbl.Parent = bubStepRow
+        local bubMinusBtn = Instance.new("TextButton"); bubMinusBtn.Size = UDim2.new(0, 32, 0, 32); bubMinusBtn.Position = UDim2.new(1, -106, 0.5, -16); bubMinusBtn.Text = "−"; bubMinusBtn.Font = Enum.Font.GothamBold; bubMinusBtn.TextSize = 18; bubMinusBtn.TextColor3 = T.text; bubMinusBtn.BackgroundColor3 = T.dim; bubMinusBtn.BorderSizePixel = 0; bubMinusBtn.AutoButtonColor = false; bubMinusBtn.ZIndex = 5; bubMinusBtn.Parent = bubStepRow; mkCorner(bubMinusBtn, 8)
+        local bubValLbl = Instance.new("TextLabel"); bubValLbl.Size = UDim2.new(0, 48, 0, 32); bubValLbl.Position = UDim2.new(1, -70, 0.5, -16); bubValLbl.Text = "50"; bubValLbl.Font = Enum.Font.GothamBold; bubValLbl.TextSize = 13; bubValLbl.TextColor3 = T.accent; bubValLbl.BackgroundTransparency = 1; bubValLbl.TextXAlignment = Enum.TextXAlignment.Center; bubValLbl.ZIndex = 5; bubValLbl.Parent = bubStepRow
+        local bubPlusBtn = Instance.new("TextButton"); bubPlusBtn.Size = UDim2.new(0, 32, 0, 32); bubPlusBtn.Position = UDim2.new(1, -30, 0.5, -16); bubPlusBtn.Text = "+"; bubPlusBtn.Font = Enum.Font.GothamBold; bubPlusBtn.TextSize = 18; bubPlusBtn.TextColor3 = T.text; bubPlusBtn.BackgroundColor3 = T.dim; bubPlusBtn.BorderSizePixel = 0; bubPlusBtn.AutoButtonColor = false; bubPlusBtn.ZIndex = 5; bubPlusBtn.Parent = bubStepRow; mkCorner(bubPlusBtn, 8)
+        local function updateBubFreq() local every = math.max(5, math.floor((autoSellPer/100)*1000)); bubFreqLbl.Text = ("Sell every ~%d blows"):format(every); bubValLbl.Text = tostring(autoSellPer) end
+        bubMinusBtn.MouseButton1Click:Connect(function() autoSellPer = math.max(1, autoSellPer-5); updateBubFreq() end)
+        bubPlusBtn.MouseButton1Click:Connect(function() autoSellPer = math.min(100, autoSellPer+5); updateBubFreq() end)
+        updateBubFreq()
     end
-end)
 
--- Coin collect (automation tab toggle)
-if workspace and workspace:FindFirstChild("Rendered") then
-    workspace.Rendered.ChildAdded:Connect(function(child)
-        if autoCollectCoinsValue and child and Tutorial and Tutorial._activePickups then
-            pcall(function()
-                child:Destroy()
-                Tutorial._activePickups[tostring(child.Name)] = nil
-                if ReplicatedStorage:FindFirstChild("Remotes") then
-                    local r = ReplicatedStorage.Remotes:FindFirstChild("Pickups")
-                        and ReplicatedStorage.Remotes.Pickups:FindFirstChild("CollectPickup")
-                    if r then r:FireServer(child.Name) end
-                end
+    -- AUTOMATION TAB (unchanged logic, larger UI)
+    do
+        local autoPage = tabPages["Automation"]
+        mkSectionLabel(autoPage, "WORLD UNLOCKER", T.accent, 1)
+        local unlockCard = mkCard(autoPage, 2)
+        local ulPad = Instance.new("Frame"); ulPad.Size=UDim2.new(1,0,0,8); ulPad.BackgroundTransparency=1; ulPad.LayoutOrder=1; ulPad.Parent=unlockCard
+        local unlockBtn = mkButton(unlockCard, 2, "🔓 Unlock All Areas", T.accent, 42)
+        local ulPad2 = Instance.new("Frame"); ulPad2.Size=UDim2.new(1,0,0,8); ulPad2.BackgroundTransparency=1; ulPad2.LayoutOrder=3; ulPad2.Parent=unlockCard
+        unlockBtn.MouseButton1Click:Connect(function()
+            unlockBtn.Text="⏳ Unlocking…"; unlockBtn.BackgroundColor3=T.dim
+            task.spawn(function()
+                local worlds = workspace:FindFirstChild("Worlds")
+                if worlds then local ow = worlds:FindFirstChild("The Overworld"); if ow then local islands = ow:FindFirstChild("Islands"); if islands then for _, v in pairs(islands:GetChildren()) do local uh = v:FindFirstChild("UnlockHitbox"); if uh and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then firetouchinterest(player.Character.HumanoidRootPart, uh, 0); task.wait(0.1); firetouchinterest(player.Character.HumanoidRootPart, uh, 1); task.wait(0.5) end end end end end
+                unlockBtn.Text="✅ Done"; unlockBtn.BackgroundColor3=T.green; task.wait(2); unlockBtn.Text="🔓 Unlock All Areas"; unlockBtn.BackgroundColor3=T.accent
             end)
+        end)
+
+        mkSectionLabel(autoPage, "AUTO COLLECTORS", T.accent, 3)
+        local collectCard = mkCard(autoPage, 4)
+        local _, coinToggle = mkToggleRow(collectCard, 1, "Auto Collect Coins", false, false); coinToggle:onChanged(function(s) autoCollectCoinsValue=s end)
+        local _, ptToggle = mkToggleRow(collectCard, 2, "Auto Claim Playtime", false, false); ptToggle:onChanged(function(s) autoclaimplaytimeval=s end)
+        local _, chestToggle = mkToggleRow(collectCard, 3, "Auto Claim Chests", false, false); chestToggle:onChanged(function(s) autoclaimchestsval=s end)
+        local _, riftToggle = mkToggleRow(collectCard, 4, "Auto Claim Rift Gifts", false, true); riftToggle:onChanged(function(s) autoClaimRiftGiftval=s end)
+
+        mkSectionLabel(autoPage, "👮 STAFF WATCH", T.accent, 5)
+        local staffCard = mkCard(autoPage, 6)
+        local _, staffToggle = mkToggleRow(staffCard, 1, "Enable Staff Watch", true, false); staffToggle:onChanged(function(s) staffWatchEnabled=s; staffDot.BackgroundColor3 = s and (staffDetected and T.red or T.green) or T.muted end)
+        local _, autoHopToggle = mkToggleRow(staffCard, 2, "Auto Server Hop on Staff", true, false); autoHopToggle:onChanged(function(s) autoServerHop=s end)
+        local staffSepRow = mkRow(staffCard, 3, false, 1)
+        local staffInfoRow, staffInfoLbl = mkLabelRow(staffCard, 4, "Staff in server: None", T.green, 10, true)
+
+        mkSectionLabel(autoPage, "ANTI-AFK", T.accent, 7)
+        local afkCard = mkCard(autoPage, 8)
+        local _, antiAfkToggle = mkToggleRow(afkCard, 1, "Prevent AFK Kick", true, true)
+        local antiAfkEnabled = true; antiAfkToggle:onChanged(function(s) antiAfkEnabled=s end)
+    end
+
+    -- PETS TAB (larger UI)
+    do
+        local petPage = tabPages["Pets"]
+        mkSectionLabel(petPage, "EGG HATCHING", T.accent, 1)
+        local eggCard = mkCard(petPage, 2)
+        local eggLabelRow = mkRow(eggCard, 1, false, 40)
+        local eggLbl = Instance.new("TextLabel"); eggLbl.Size = UDim2.new(0.45,0,1,0); eggLbl.Position = UDim2.new(0,14,0,0); eggLbl.Text = "Selected Egg:"; eggLbl.Font = Enum.Font.GothamSemibold; eggLbl.TextSize = 11; eggLbl.TextColor3 = T.muted; eggLbl.TextXAlignment = Enum.TextXAlignment.Left; eggLbl.BackgroundTransparency = 1; eggLbl.ZIndex = 5; eggLbl.Parent = eggLabelRow
+        local eggDropBtn = Instance.new("TextButton"); eggDropBtn.Size = UDim2.new(1, -20, 0, 40); eggDropBtn.BackgroundColor3 = T.inputBg; eggDropBtn.Text = "  " .. (selectedEgg ~= "" and selectedEgg or "Select egg…"); eggDropBtn.Font = Enum.Font.Gotham; eggDropBtn.TextSize = 11; eggDropBtn.TextColor3 = T.text; eggDropBtn.TextXAlignment = Enum.TextXAlignment.Left; eggDropBtn.BorderSizePixel = 0; eggDropBtn.AutoButtonColor = false; eggDropBtn.LayoutOrder = 2; eggDropBtn.ZIndex = 5; eggDropBtn.Parent = eggCard; mkCorner(eggDropBtn, 9); mkStroke(eggDropBtn, T.border, 1)
+        local arrowLbl = Instance.new("TextLabel"); arrowLbl.Size = UDim2.new(0, 24, 1, 0); arrowLbl.Position = UDim2.new(1, -28, 0, 0); arrowLbl.Text = "▾"; arrowLbl.Font = Enum.Font.GothamBold; arrowLbl.TextSize = 14; arrowLbl.TextColor3 = T.muted; arrowLbl.BackgroundTransparency = 1; arrowLbl.Parent = eggDropBtn
+        local dropList = Instance.new("ScrollingFrame"); dropList.Size = UDim2.new(1, -20, 0, math.min(#eggs,5)*32); dropList.BackgroundColor3 = T.inputBg; dropList.BorderSizePixel = 0; dropList.Visible = false; dropList.ZIndex = 10; dropList.ScrollBarThickness = 3; dropList.ScrollBarImageColor3 = T.accent; dropList.CanvasSize = UDim2.new(0,0,0,#eggs*32); dropList.LayoutOrder = 3; dropList.Parent = eggCard; mkCorner(dropList, 9); mkStroke(dropList, T.border, 1)
+        local eggListLayout = Instance.new("UIListLayout", dropList); eggListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        for i, egg in ipairs(eggs) do
+            local item = Instance.new("TextButton"); item.Size = UDim2.new(1,0,0,32); item.BackgroundTransparency = 1; item.Text = "  "..egg; item.Font = Enum.Font.Gotham; item.TextSize = 11; item.TextColor3 = T.text; item.TextXAlignment = Enum.TextXAlignment.Left; item.BorderSizePixel = 0; item.LayoutOrder = i; item.ZIndex = 11; item.Parent = dropList
+            item.MouseEnter:Connect(function() item.BackgroundTransparency = 0; item.BackgroundColor3 = T.dim end)
+            item.MouseLeave:Connect(function() item.BackgroundTransparency = 1 end)
+            item.MouseButton1Click:Connect(function() selectedEgg = egg; eggDropBtn.Text = "  "..egg; dropList.Visible = false end)
         end
+        eggDropBtn.MouseButton1Click:Connect(function() dropList.Visible = not dropList.Visible end)
+        local _, hatchToggle = mkToggleRow(eggCard, 4, "Auto Hatch", false, true); hatchToggle:onChanged(function(s) autoHatchValue = s end)
+
+        mkSectionLabel(petPage, "MYSTERY BOXES", T.accent, 3)
+        local giftCard = mkCard(petPage, 4)
+        local _, giftToggle = mkToggleRow(giftCard, 1, "Auto Open Mystery Boxes", false, true); giftToggle:onChanged(function(s) autoGiftValue = s end)
+    end
+
+    -- Close button
+    closeBtn.MouseButton1Click:Connect(function()
+        summerMainEnabled = false; summerIslandEnabled = false; metalEnabled = false
+        pcall(stopSummerMainLock)
+        if summerMainThread then task.cancel(summerMainThread); summerMainThread = nil end
+        if summerIslandThread then task.cancel(summerIslandThread); summerIslandThread = nil end
+        if metalClickThread then task.cancel(metalClickThread); metalClickThread = nil end
+        if metalMoveThread then task.cancel(metalMoveThread); metalMoveThread = nil end
+        if staffWatchThread then task.cancel(staffWatchThread); staffWatchThread = nil end
+        if rootChangedConn then rootChangedConn:Disconnect(); rootChangedConn = nil end
+        sg:Destroy()
     end)
+
+    -- Staff watch system
+    local function isStaffUser(username) username=username:lower(); for _,s in ipairs(STAFF_LIST) do if s:lower()==username then return true end end; for _,kw in ipairs(BANNED_KEYWORDS) do if username:find(kw,1,true) then return true end end; return false end
+    local function checkForStaff()
+        local now = tick(); if now - lastStaffCheck < checkInterval then return currentServerStaff end; lastStaffCheck = now
+        local found = {}; for _, plr in ipairs(Players:GetPlayers()) do if plr ~= player and isStaffUser(plr.Name) then table.insert(found, plr.Name) end end; currentServerStaff = found
+        if staffInfoLbl then
+            if #found > 0 then staffInfoLbl.Text = "Staff in server:\n" .. table.concat(found, ", "); staffInfoLbl.TextColor3 = T.red; staffDot.BackgroundColor3 = staffWatchEnabled and T.red or T.muted
+            else staffInfoLbl.Text = "Staff in server: None"; staffInfoLbl.TextColor3 = T.green; staffDot.BackgroundColor3 = staffWatchEnabled and T.green or T.muted end
+        end
+        if #found > 0 and autoServerHop and not notificationShown then
+            staffDetected = true; notificationShown = true
+            local notif = Instance.new("Frame"); notif.Size = UDim2.new(0,320,0,130); notif.Position = UDim2.new(0.5,-160,0.2,0); notif.BackgroundColor3 = T.card; notif.BorderSizePixel = 0; notif.ZIndex = 30; notif.Parent = sg; mkCorner(notif,12); mkStroke(notif,T.red,1.5)
+            local notifText = Instance.new("TextLabel"); notifText.Size = UDim2.new(1,-20,1,-44); notifText.Position = UDim2.new(0,10,0,10); notifText.BackgroundTransparency = 1; notifText.Text = ("⚠️ STAFF DETECTED ⚠️\n%s\nHopping in %d…"):format(table.concat(found,", "), hopDelay); notifText.TextColor3 = T.text; notifText.TextSize = 12; notifText.Font = Enum.Font.GothamBold; notifText.TextWrapped = true; notifText.ZIndex = 31; notifText.Parent = notif
+            local cancelB = Instance.new("TextButton"); cancelB.Size = UDim2.new(0,90,0,32); cancelB.Position = UDim2.new(0.5,-45,1,-38); cancelB.BackgroundColor3 = T.dim; cancelB.Text = "Cancel"; cancelB.TextColor3 = T.text; cancelB.Font = Enum.Font.GothamBold; cancelB.TextSize = 11; cancelB.BorderSizePixel = 0; cancelB.AutoButtonColor = false; cancelB.ZIndex = 31; cancelB.Parent = notif; mkCorner(cancelB,8)
+            cancelB.MouseButton1Click:Connect(function() notif:Destroy(); notificationShown=false; staffDetected=false end)
+            task.spawn(function() for i=hopDelay,1,-1 do if not notificationShown then break end; notifText.Text = ("⚠️ STAFF DETECTED ⚠️\n%s\nHopping in %d…"):format(table.concat(found,", "), i); task.wait(1) end; if notificationShown then notif:Destroy(); serverHop() end end)
+        elseif #found == 0 then staffDetected=false; notificationShown=false end
+        return found
+    end
+
+    -- Automation loops (unchanged)
+    task.spawn(function() local blowCount=0; while sg and sg.Parent do task.wait(0.1); pcall(function() if autoBlowValue then RemoteEvent:FireServer("BlowBubble"); blowCount=blowCount+1; local sellEvery = math.max(5, math.floor((autoSellPer/100)*1000)); if autoSellValue and blowCount >= sellEvery then RemoteEvent:FireServer("SellBubble"); blowCount=0 end elseif autoSellValue then RemoteEvent:FireServer("SellBubble"); task.wait(1) end end) end end)
+    task.spawn(function() while sg and sg.Parent do task.wait(3); pcall(function() if autoclaimplaytimeval then RemoteEvent:FireServer("ClaimAllPlaytime") end end) end end)
+    task.spawn(function() while sg and sg.Parent do task.wait(0.5); pcall(function() if autoclaimchestsval and SData and SData:FindFirstChild("Chests") then local chests = safeRequire(SData.Chests, {}); for i in pairs(chests) do RemoteEvent:FireServer("ClaimChest", i) end end end) end end)
+    if EventHandler then EventHandler.OnClientEvent:Connect(function(eventName,gifts) if eventName == "RenderGifts" and autoClaimRiftGiftval then for giftId in pairs(gifts or {}) do task.delay(0.1, function() pcall(function() EventHandler:FireServer("ClaimRiftGift", giftId) end) end) end end end) end
+    task.spawn(function() while sg and sg.Parent do task.wait(0.1); pcall(function() if autoHatchValue and selectedEgg~="" and EventHandler then EventHandler:FireServer("HatchEgg", selectedEgg, 1) end end) end end)
+    task.spawn(function() while sg and sg.Parent do task.wait(0.1); pcall(function() if autoGiftValue then local ItemUtil = Utils and Utils:FindFirstChild("Stats") and Utils.Stats:FindFirstChild("ItemUtil"); if ItemUtil then local iu = safeRequire(ItemUtil, {}); if iu.GetOwnedAmount and Data then local amt = iu:GetOwnedAmount(Data, {Type="Powerup", Name="Mystery Box"}); local open = amt>=10 and 10 or amt>=5 and 5 or 1; if amt>0 and EventHandler then EventHandler:FireServer("UseGift", "Mystery Box", open); task.wait(0.5); for _=1,8 do VirtualUser:ClickButton1(Vector2.new(), workspace.CurrentCamera.CFrame); task.wait(0.5) end end end end end end) end end)
+    if workspace and workspace:FindFirstChild("Rendered") then workspace.Rendered.ChildAdded:Connect(function(child) if autoCollectCoinsValue and child and Tutorial and Tutorial._activePickups then pcall(function() child:Destroy(); Tutorial._activePickups[tostring(child.Name)]=nil; if ReplicatedStorage:FindFirstChild("Remotes") then local r = ReplicatedStorage.Remotes:FindFirstChild("Pickups") and ReplicatedStorage.Remotes.Pickups:FindFirstChild("CollectPickup"); if r then r:FireServer(child.Name) end end end) end end) end
+
+    Players.PlayerAdded:Connect(function(plr) if staffWatchEnabled and plr~=player and isStaffUser(plr.Name) then checkForStaff() end end)
+    Players.PlayerRemoving:Connect(function() if staffWatchEnabled then task.wait(0.1); checkForStaff() end end)
+
+    player.Idled:Connect(function() if antiAfkEnabled then VirtualUser:CaptureController(); VirtualUser:ClickButton2(Vector2.new(0,0)) end end)
+
+    staffWatchThread = task.spawn(function() while staffWatchEnabled do checkForStaff(); task.wait(checkInterval) end end)
+
+    -- Startup animation
+    do local vp = workspace.CurrentCamera.ViewportSize; main.Size = UDim2.new(0,0,0,0); main.Position = UDim2.new(0, vp.X/2, 0, vp.Y/2); main.BackgroundTransparency = 1; TweenService:Create(main, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, guiWidth, 0, guiHeight), Position = UDim2.new(0, vp.X/2 - guiWidth/2, 0, vp.Y/2 - guiHeight/2), BackgroundTransparency = 0}):Play() end
+
+    notify("BGSI Feather Hub", "v3.0.0 - Larger click targets | Summer event coming soon", "success")
+    print("[BGSI v3.0.0] Loaded — Metal keybind: " .. metalSettings.keybind)
 end
-
--- ════════════════════════════════════════════════════════
---  PLAYER EVENTS
--- ════════════════════════════════════════════════════════
-
-Players.PlayerAdded:Connect(function(plr)
-    if staffWatchEnabled and plr~=player and isStaffUser(plr.Name) then
-        checkForStaff()
-    end
-end)
-Players.PlayerRemoving:Connect(function(plr)
-    if staffWatchEnabled then task.wait(0.1); checkForStaff() end
-end)
-
--- ════════════════════════════════════════════════════════
---  INIT
--- ════════════════════════════════════════════════════════
-
-staffWatchThread = task.spawn(function()
-    while staffWatchEnabled do
-        checkForStaff()
-        task.wait(checkInterval)
-    end
-end)
-
-staffIndicator.BackgroundColor3 = Color3.fromRGB(0,255,0)
-
--- ════════════════════════════════════════════════════════
---  ANTI-AFK KICK
--- ════════════════════════════════════════════════════════
-
-player.Idled:Connect(function()
-    if antiAfkEnabled then
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new(0, 0))
-    end
-end)
