@@ -1,0 +1,1082 @@
+-- Feather Hub | Work at a Pizza Place Farm
+-- (UI appears first, then the farm loop)
+
+repeat task.wait() until game:IsLoaded()
+
+-- ============================================================
+-- EXPLOIT CAPABILITIES CHECK (fixed – no crash)
+-- ============================================================
+getupvalues = getupvalues or debug.getupvalues
+setupvalue = setupvalue or debug.setupvalue
+if not (getrawmetatable and getupvalues and setupvalue and request and (getreg or debug.getregistry)) then
+    return  -- silently exit, no UI to destroy
+end
+
+-- ============================================================
+-- ANTI‑IDLE & INITIAL SETUP
+-- ============================================================
+for _, conn in pairs(getconnections(game:GetService('ScriptContext').Error)) do
+    conn:Disable()
+end
+
+local Players = game:GetService('Players')
+local LocalPlayer = Players.LocalPlayer
+local VirtualUser = game:GetService('VirtualUser')
+
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local humanoid = character:FindFirstChild('Humanoid')
+local rootPart = character:FindFirstChild('HumanoidRootPart')
+
+LocalPlayer.CharacterAdded:Connect(function()
+    repeat
+        task.wait()
+        character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        humanoid = character:FindFirstChild('Humanoid')
+        rootPart = character:FindFirstChild('HumanoidRootPart')
+    until LocalPlayer and character and humanoid and rootPart
+end)
+
+-- ============================================================
+-- CASHOUT BYPASS (disable cooldown)
+-- ============================================================
+local reg = getreg or debug.getregistry
+local network
+for _, v in ipairs(reg()) do
+    if type(v) == 'table' and rawget(v, 'FireServer') and rawget(v, 'BindEvents') then
+        network = v
+        break
+    end
+end
+assert(network, 'Failed to find network')
+
+for _, v in ipairs(reg()) do
+    if type(v) == 'function' and tostring(getfenv(v).script) == 'Paycheck' then
+        for k, up in pairs(getupvalues(v)) do
+            if tostring(up) == 'CashOut' then
+                setupvalue(v, k, {
+                    MouseButton1Click = {
+                        wait = function() end,
+                        Wait = function() end,
+                    },
+                })
+                break
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- RAW METATABLE HOOK (prevent camera manipulation)
+-- ============================================================
+local mt = getrawmetatable(game)
+if setreadonly then setreadonly(mt, false) elseif make_writeable then make_writeable(mt) end
+local old_newindex = mt.__newindex
+if newcclosure then
+    mt.__newindex = newcclosure(function(self, key, value)
+        if self ~= workspace.CurrentCamera or tostring(getfenv(2).script) ~= 'LocalMain' then
+            old_newindex(self, key, value)
+        end
+    end)
+else
+    mt.__newindex = function(self, key, value)
+        if self ~= workspace.CurrentCamera or tostring(getfenv(2).script) ~= 'LocalMain' then
+            old_newindex(self, key, value)
+        end
+    end
+end
+
+-- ============================================================
+-- UTILITY FUNCTIONS
+-- ============================================================
+local function FindFirstChild(obj, name)
+    for _, child in ipairs(obj:GetChildren()) do
+        if child.Name == name then return child end
+    end
+end
+
+local function Create(className, parent, properties)
+    local obj = Instance.new(className)
+    for k, v in pairs(properties) do obj[k] = v end
+    obj.Parent = parent
+    return obj
+end
+
+-- ============================================================
+-- SETTINGS & TOGGLES (used by the farm loop)
+-- ============================================================
+local settings = {
+    refill_at = 30,
+    refill_end = 90,
+    stay_in_kitchen = true,
+}
+
+if readfile then
+    pcall(function()
+        local data = game:GetService('HttpService'):JSONDecode(readfile('PizzaFarm.txt'))
+        for k, v in pairs(settings) do
+            if data[k] ~= nil then settings[k] = data[k] end
+        end
+    end)
+end
+
+-- Global toggle states (these are what the original loop checks)
+u2 = true  -- cashier
+u3 = true  -- boxer
+u4 = true  -- cook
+u5 = true  -- supplier
+u6 = true  -- delivery
+u1 = settings
+
+-- ============================================================
+-- CAMERA PRESETS
+-- ============================================================
+local cameraCFrames = {
+    CFrame.new(23, 14, 65, 0.629, 0.386, -0.674, 0, 0.867, 0.497, 0.777, -0.313, 0.545),
+    CFrame.new(39, 15, 83, -0.571, 0.392, -0.72, 0, 0.878, 0.478, 0.82, 0.273, -0.502),
+    CFrame.new(40, 20, -38, -0.801, -0.229, 0.552, 0, 0.923, 0.384, -0.598, 0.307, -0.739),
+    CFrame.new(51, 15, -25, -0.707, 0.338, -0.62, 0, 0.878, 0.478, 0.707, 0.338, -0.62),
+    CFrame.new(47, 12, 21, 0.026, 0.323, -0.945, 0, 0.946, 0.323, 0.999, -0.008, 0.024),
+}
+local currentCameraIndex = 0
+
+-- ============================================================
+-- NETWORK HELPERS
+-- ============================================================
+local ingredientNames = { TomatoSauce = 'TomatoSauce', Cheese = 'Cheese', Sausage = 'Sausage', Pepperoni = 'Pepperoni', Dough = 'Dough', Box = 'Box', Dew = 'Dew' }
+local supplyCounts = {}
+for name, _ in pairs(ingredientNames) do supplyCounts[name] = 99 end
+
+local function updateSupplyCounts()
+    for name, _ in pairs(ingredientNames) do
+        local counter = workspace.SupplyCounters.Model[name == 'Dew' and 'CounterMountainDew' or 'Counter' .. name].a.SG.Counter
+        supplyCounts[name] = tonumber(counter.Text)
+        counter.Changed:Connect(function() supplyCounts[name] = tonumber(counter.Text) end)
+    end
+end
+updateSupplyCounts()
+
+-- ============================================================
+--  ORIGINAL FARM FUNCTIONS (preserved entirely)
+-- ============================================================
+local function GetNearestCustomer()
+    for _, customer in ipairs(workspace.Customers:GetChildren()) do
+        if FindFirstChild(customer, 'Head') and FindFirstChild(customer, 'Humanoid') then
+            if customer.Head.CFrame.Z < 102 and FindFirstChild(customer.Head, 'Dialog') and FindFirstChild(customer.Head.Dialog, 'Correct') then
+                if customer.Humanoid.SeatPart and customer.Humanoid.SeatPart.Anchored then
+                    return customer
+                end
+                if not customer.Humanoid.SeatPart and (customer.Head.Velocity.Z ^ 2) ^ 0.5 < 0.0001 then
+                    return customer
+                end
+            end
+        end
+    end
+end
+
+local lastBoxTime = 0
+local lastDewTime = 0
+
+local function GetBoxes()
+    local closedBox, openBox, other
+    for _, box in ipairs(workspace.AllBox:GetChildren()) do
+        if FindFirstChild(box, 'HasPizzaInside') or FindFirstChild(box, 'Pizza') then
+            if not closedBox and box.Name == 'BoxClosed' and not box.Anchored and not box.HasPizzaInside.Value then
+                closedBox = box
+            elseif not openBox and box.Name == 'BoxOpen' and not box.Anchored and not box.Pizza.Value then
+                openBox = box
+            elseif not other then
+                other = box
+            end
+        end
+    end
+    return closedBox, openBox, other
+end
+
+local function GetLooseItems()
+    local pizza, dew
+    for _, item in ipairs(workspace.BoxingRoom:GetChildren()) do
+        if not item.Anchored then
+            if not pizza and item.Name == 'Pizza' then pizza = item
+            elseif not dew and item.Name == 'Dew' then dew = item end
+        end
+    end
+    return pizza, dew
+end
+
+local ingredientMap = {
+    ['3540529228'] = 'Cheese',
+    ['3540530535'] = 'Sausage',
+    ['3540529917'] = 'Pepperoni',
+    ['2512571151'] = 'Dew',
+    ['2512441325'] = 'Dew',
+}
+
+local pendingOrders = { Cheese = 0, Sausage = 0, Pepperoni = 0, Dew = 0 }
+
+local function GetNeededIngredients()
+    local needed = {}
+    local tempOrders = { Cheese = 0, Sausage = 0, Pepperoni = 0, Dew = 0 }
+    for _, order in ipairs(workspace.Orders:GetChildren()) do
+        local ingr = ingredientMap[order.SG.ImageLabel.Image:match('%d+$')]
+        if ingr then
+            if tempOrders[ingr] <= 0 then
+                if ingr == 'Dew' and #workspace.AllMountainDew:GetChildren() > 0 then
+                    table.insert(needed, ingr)
+                elseif supplyCounts[ingr] > 0 and supplyCounts.TomatoSauce > 0 and supplyCounts.Cheese > 0 then
+                    table.insert(needed, ingr)
+                end
+            else
+                tempOrders[ingr] = tempOrders[ingr] - 1
+            end
+        end
+    end
+    return needed
+end
+
+local supplyButtons = {}
+for i, btn in ipairs(workspace.SupplyButtons:GetChildren()) do supplyButtons[i] = btn.Unpressed end
+table.sort(supplyButtons, function(a, b) return a.Position.X < b.Position.X end)
+
+local ingredientColorMap = {
+    ['Dark orange'] = 'Sausage',
+    ['Bright blue'] = 'Pepperoni',
+    ['Bright yellow'] = 'Cheese',
+    ['Bright red'] = 'TomatoSauce',
+    ['Dark green'] = 'Dew',
+    ['Brick yellow'] = 'Dough',
+    ['Light stone grey'] = 'Box',
+    ['Really black'] = 'Dew',
+}
+
+local lastCookAction = 0
+
+local function GetOvenNear(pos)
+    for _, oven in ipairs(workspace.Ovens:GetChildren()) do
+        if (oven.Bottom.Position - pos).magnitude < 1.5 then return oven end
+    end
+end
+
+local function GetDoughNear(pos)
+    for _, dough in ipairs(workspace.AllDough:GetChildren()) do
+        if (dough.Position - pos).magnitude < 1.5 then return dough end
+    end
+end
+
+local function GetAvailableDew()
+    for _, dew in ipairs(workspace.AllMountainDew:GetChildren()) do
+        if dew.BrickColor.Name == 'Really black' then
+            network:FireServer('UpdateProperty', dew, 'CFrame', CFrame.new(0, -100, 0))
+        end
+    end
+    for _, dew in ipairs(workspace.AllMountainDew:GetChildren()) do
+        if not dew.Anchored and dew.BrickColor.Name ~= 'Really black' then return dew end
+    end
+end
+
+local function GetDough(preferSausagePepperoni)
+    local allDough = workspace.AllDough:GetChildren()
+    local burned, sauced, plain, bestSauced
+    for i = #allDough, 2, -1 do
+        local j = math.random(1, i)
+        allDough[i], allDough[j] = allDough[j], allDough[i]
+    end
+    for _, dough in ipairs(allDough) do
+        if not dough.Anchored and #dough:GetChildren() > 9 then
+            if dough.IsBurned.Value or dough.HasBugs.Value or dough.Cold.Value or (dough.BrickColor.Name == 'Bright orange' and FindFirstChild(dough, 'XBillboard')) then
+                if not burned and dough.Position.Y <= 0 then burned = dough end
+            elseif not sauced and dough.BrickColor.Name == 'Bright orange' then
+                sauced = dough
+            elseif not plain and dough.Position.X < 55 and dough.BrickColor.Name == 'Brick yellow' and (preferSausagePepperoni and not FindFirstChild(dough.SG.Frame, preferSausagePepperoni) or not preferSausagePepperoni and (not FindFirstChild(dough.SG.Frame, 'Sausage') and not FindFirstChild(dough.SG.Frame, 'Pepperoni'))) then
+                if dough.Mesh.Scale.Y >= 1.1 then bestSauced = dough else plain = dough end
+            end
+        end
+    end
+    return plain or bestSauced, sauced, burned
+end
+
+local function OvenIsOpen(oven)
+    return oven.IsOpen.Value and (oven.Door.Meter.RotVelocity.Z ^ 2) ^ 0.5 < 0.0001
+end
+
+-- Delivery tools
+local currentDeliveryTool
+local deliveryInProgress = false
+
+local function EndDelivery()
+    if currentDeliveryTool then
+        if currentDeliveryTool.Parent == LocalPlayer.Backpack then currentDeliveryTool.Parent = character end
+        if currentDeliveryTool.Parent == character then wait(0.1) currentDeliveryTool.Parent = workspace wait(0.1) end
+    end
+    currentDeliveryTool = nil
+    deliveryInProgress = false
+    if FindFirstChild(character, 'RightHand') and FindFirstChild(character.RightHand, 'RightGrip') then
+        character.RightHand.RightGrip:Destroy()
+    end
+end
+
+local function FindDeliveryTool()
+    local tool
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.ClassName == 'Tool' and obj.Name:match('^%u%d$') and FindFirstChild(obj, 'House') and FindFirstChild(obj, 'Handle') and FindFirstChild(obj, 'Order') then
+            if obj.Order.Value:match('%a') then
+                if FindFirstChild(obj.Handle, 'X10') then return obj end
+                tool = obj
+            end
+        end
+    end
+    return tool
+end
+
+local function GetGivePizzaPart(address)
+    for _, house in ipairs(workspace.Houses:GetChildren()) do
+        if FindFirstChild(house, 'Address') and house.Address.Value == address then
+            if FindFirstChild(house, 'GivePizza', true) then return FindFirstChild(house, 'GivePizza', true) end
+        end
+    end
+end
+
+-- Character connection
+local function OnCharacterAdded(char)
+    character = char
+    humanoid = char:WaitForChild('Humanoid')
+    rootPart = char:WaitForChild('HumanoidRootPart')
+    humanoid:GetPropertyChangedSignal('WalkSpeed'):Connect(function()
+        if currentDeliveryTool then humanoid.WalkSpeed = 16 end
+    end)
+    humanoid:SetStateEnabled('FallingDown', false)
+    humanoid:SetStateEnabled('Seated', false)
+end
+
+OnCharacterAdded(LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait())
+LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
+
+-- ============================================================
+--  FEATHER HUB UI (built FIRST – appears immediately)
+-- ============================================================
+local TweenService = game:GetService('TweenService')
+local UserInputService = game:GetService('UserInputService')
+local CoreGui = game:GetService('CoreGui')
+
+local T = {
+    bg          = Color3.fromRGB(8, 8, 14),
+    card        = Color3.fromRGB(14, 14, 20),
+    accent      = Color3.fromRGB(110, 95, 210),
+    accentDim   = Color3.fromRGB(90, 78, 170),
+    accentLt    = Color3.fromRGB(130, 115, 225),
+    text        = Color3.fromRGB(210, 210, 220),
+    muted       = Color3.fromRGB(140, 140, 155),
+    dim         = Color3.fromRGB(30, 30, 40),
+    border      = Color3.fromRGB(40, 40, 55),
+    inputBg     = Color3.fromRGB(18, 18, 26),
+    sep         = Color3.fromRGB(25, 25, 35),
+    gold        = Color3.fromRGB(255, 200, 50),
+    green       = Color3.fromRGB(80, 220, 100),
+    red         = Color3.fromRGB(255, 80, 80),
+}
+
+local function tw(d) return TweenInfo.new(d or 0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out) end
+
+local function makeCard(parent, order)
+    local c = Instance.new('Frame')
+    c.Size = UDim2.new(1, 0, 0, 0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.ZIndex = 3
+    c.Parent = parent
+    Instance.new('UICorner', c).CornerRadius = UDim.new(0, 11)
+    local s = Instance.new('UIStroke'); s.Color = T.border; s.Thickness = 1; s.Parent = c
+    local ll = Instance.new('UIListLayout', c); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+
+local function makeRow(card, order, isLast, height)
+    local row = Instance.new('Frame')
+    row.Size = UDim2.new(1, 0, 0, height or 46)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.ZIndex = 4
+    row.Parent = card
+    if not isLast then
+        local sep = Instance.new('Frame')
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+        sep.ZIndex = 4
+        sep.Parent = row
+    end
+    return row
+end
+
+local function makeSection(parent, label, order)
+    local f = Instance.new('Frame')
+    f.Size = UDim2.new(1, 0, 0, 22)
+    f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0
+    f.LayoutOrder = order
+    f.ZIndex = 3
+    f.Parent = parent
+    local lbl = Instance.new('TextLabel')
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = label
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = T.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 3
+    lbl.Parent = f
+    local line = Instance.new('Frame')
+    line.Size = UDim2.new(0, 28, 0, 2)
+    line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = T.accent
+    line.BorderSizePixel = 0
+    line.ZIndex = 3
+    line.Parent = f
+    Instance.new('UICorner', line).CornerRadius = UDim.new(1, 0)
+    return f
+end
+
+local function makeToggleRow(card, order, labelText, initialState, isLast, onToggle)
+    local row = makeRow(card, order, isLast, 44)
+    local l = Instance.new('TextLabel')
+    l.Size = UDim2.new(0.65, 0, 1, 0)
+    l.Position = UDim2.new(0, 16, 0, 0)
+    l.Text = labelText
+    l.Font = Enum.Font.GothamSemibold
+    l.TextSize = 10
+    l.TextColor3 = T.text
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.BackgroundTransparency = 1
+    l.ZIndex = 5
+    l.Parent = row
+
+    local track = Instance.new('TextButton')
+    track.Size = UDim2.new(0, 38, 0, 20)
+    track.Position = UDim2.new(1, -52, 0.5, -10)
+    track.BackgroundColor3 = initialState and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ''
+    track.ZIndex = 5
+    track.Parent = row
+    Instance.new('UICorner', track).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new('Frame')
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = initialState and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.new(1, 1, 1)
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 6
+    knob.Parent = track
+    Instance.new('UICorner', knob).CornerRadius = UDim.new(1, 0)
+
+    local state = initialState
+    track.MouseButton1Click:Connect(function()
+        state = not state
+        onToggle(state)
+        TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(knob, tw(0.15), {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
+    end)
+end
+
+local function makeTextBoxRow(card, order, labelText, initialText, isLast, onChanged)
+    local row = makeRow(card, order, isLast, 46)
+    local l = Instance.new('TextLabel')
+    l.Size = UDim2.new(0.45, 0, 1, 0)
+    l.Position = UDim2.new(0, 16, 0, 0)
+    l.Text = labelText
+    l.Font = Enum.Font.GothamSemibold
+    l.TextSize = 10
+    l.TextColor3 = T.text
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.BackgroundTransparency = 1
+    l.ZIndex = 5
+    l.Parent = row
+
+    local box = Instance.new('TextBox')
+    box.Size = UDim2.new(0, 70, 0, 28)
+    box.Position = UDim2.new(1, -84, 0.5, -14)
+    box.Text = initialText
+    box.Font = Enum.Font.Code
+    box.TextSize = 14
+    box.TextColor3 = T.text
+    box.BackgroundColor3 = T.inputBg
+    box.BorderSizePixel = 0
+    box.ZIndex = 6
+    box.Parent = row
+    Instance.new('UICorner', box).CornerRadius = UDim.new(0, 7)
+    local stroke = Instance.new('UIStroke'); stroke.Color = T.border; stroke.Thickness = 1; stroke.Parent = box
+
+    local function validate()
+        local num = tonumber(box.Text)
+        if num then onChanged(num); box.Text = tostring(num) end
+    end
+    box.Focused:Connect(function() TweenService:Create(stroke, tw(), {Color = T.accent, Thickness = 1.5}):Play() end)
+    box.FocusLost:Connect(function() TweenService:Create(stroke, tw(), {Color = T.border, Thickness = 1}):Play(); validate() end)
+    return box
+end
+
+local function makeButtonRow(card, order, labelText, buttonText, isLast, onClick)
+    local row = makeRow(card, order, isLast, 44)
+    local l = Instance.new('TextLabel')
+    l.Size = UDim2.new(0.55, 0, 1, 0)
+    l.Position = UDim2.new(0, 16, 0, 0)
+    l.Text = labelText
+    l.Font = Enum.Font.GothamSemibold
+    l.TextSize = 10
+    l.TextColor3 = T.text
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.BackgroundTransparency = 1
+    l.ZIndex = 5
+    l.Parent = row
+
+    local btn = Instance.new('TextButton')
+    btn.Size = UDim2.new(0, 100, 0, 28)
+    btn.Position = UDim2.new(1, -114, 0.5, -14)
+    btn.Text = buttonText
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 9
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 6
+    btn.Parent = row
+    Instance.new('UICorner', btn).CornerRadius = UDim.new(0, 6)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accentLt}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accent}):Play() end)
+    btn.MouseButton1Click:Connect(onClick)
+    return row
+end
+
+-- Build the UI window
+local gui = Instance.new('ScreenGui')
+gui.Name = 'FeatherHub'
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+if not pcall(function() gui.Parent = CoreGui end) then
+    gui.Parent = LocalPlayer:WaitForChild('PlayerGui')
+end
+
+local win = Instance.new('Frame')
+win.Size = UDim2.new(0, 340, 0, 460)
+win.Position = UDim2.new(0.5, -170, 0.5, -230)
+win.BackgroundColor3 = T.bg
+win.BackgroundTransparency = 0.1
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 2
+win.Parent = gui
+Instance.new('UICorner', win).CornerRadius = UDim.new(0, 12)
+local winStroke = Instance.new('UIStroke'); winStroke.Color = T.accent; winStroke.Thickness = 1; winStroke.Parent = win
+
+local titleBar = Instance.new('Frame')
+titleBar.Size = UDim2.new(1, 0, 0, 36)
+titleBar.BackgroundColor3 = T.bg
+titleBar.BackgroundTransparency = 0.3
+titleBar.BorderSizePixel = 0
+titleBar.ZIndex = 4
+titleBar.Parent = win
+local titleText = Instance.new('TextLabel')
+titleText.Size = UDim2.new(1, -40, 1, 0)
+titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.Text = 'Feather Hub – Pizza Farm'
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 12
+titleText.TextColor3 = T.accent
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.BackgroundTransparency = 1
+titleText.Parent = titleBar
+local closeBtn = Instance.new('TextButton')
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -36, 0, 4)
+closeBtn.Text = 'x'
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = T.text
+closeBtn.BackgroundColor3 = T.dim
+closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 5
+closeBtn.Parent = titleBar
+Instance.new('UICorner', closeBtn).CornerRadius = UDim.new(0, 6)
+closeBtn.MouseButton1Click:Connect(function() getgenv().Mainloop = false; gui:Destroy() end)
+
+local dragToggle, dragStart, startPos
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = true; dragStart = input.Position; startPos = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragToggle and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragToggle = false end
+end)
+
+local contentFrame = Instance.new('ScrollingFrame')
+contentFrame.Size = UDim2.new(1, -16, 1, -52)
+contentFrame.Position = UDim2.new(0, 8, 0, 44)
+contentFrame.BackgroundTransparency = 1
+contentFrame.BorderSizePixel = 0
+contentFrame.ScrollBarThickness = 3
+contentFrame.ScrollBarImageColor3 = T.accent
+contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+contentFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+contentFrame.ZIndex = 2
+contentFrame.Parent = win
+local list = Instance.new('UIListLayout', contentFrame)
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+list.Padding = UDim.new(0, 8)
+
+makeSection(contentFrame, 'CONTROLS', 1)
+local controlCard = makeCard(contentFrame, 2)
+
+local toggleAllRow = makeRow(controlCard, 1, false, 44)
+local toggleAllLabel = Instance.new('TextLabel')
+toggleAllLabel.Size = UDim2.new(0, 80, 1, 0)
+toggleAllLabel.Position = UDim2.new(0, 12, 0, 0)
+toggleAllLabel.Text = 'All Roles:'
+toggleAllLabel.Font = Enum.Font.GothamBold
+toggleAllLabel.TextSize = 10
+toggleAllLabel.TextColor3 = T.text
+toggleAllLabel.BackgroundTransparency = 1
+toggleAllLabel.Parent = toggleAllRow
+
+local allOffBtn = Instance.new('TextButton')
+allOffBtn.Size = UDim2.new(0, 80, 0, 26)
+allOffBtn.Position = UDim2.new(0, 100, 0.5, -13)
+allOffBtn.Text = 'Stop All'
+allOffBtn.Font = Enum.Font.GothamBold
+allOffBtn.TextSize = 9
+allOffBtn.TextColor3 = Color3.new(1,1,1)
+allOffBtn.BackgroundColor3 = T.red
+allOffBtn.AutoButtonColor = false
+allOffBtn.BorderSizePixel = 0
+allOffBtn.ZIndex = 5
+allOffBtn.Parent = toggleAllRow
+Instance.new('UICorner', allOffBtn).CornerRadius = UDim.new(0, 6)
+
+local allOnBtn = Instance.new('TextButton')
+allOnBtn.Size = UDim2.new(0, 80, 0, 26)
+allOnBtn.Position = UDim2.new(0, 188, 0.5, -13)
+allOnBtn.Text = 'Start All'
+allOnBtn.Font = Enum.Font.GothamBold
+allOnBtn.TextSize = 9
+allOnBtn.TextColor3 = Color3.new(1,1,1)
+allOnBtn.BackgroundColor3 = T.green
+allOnBtn.AutoButtonColor = false
+allOnBtn.BorderSizePixel = 0
+allOnBtn.ZIndex = 5
+allOnBtn.Parent = toggleAllRow
+Instance.new('UICorner', allOnBtn).CornerRadius = UDim.new(0, 6)
+
+local toggleRefs = {}
+local function refreshToggles()
+    for _, ref in ipairs(toggleRefs) do
+        local state
+        if ref.role == 'cashier' then state = u2
+        elseif ref.role == 'cook' then state = u4
+        elseif ref.role == 'boxer' then state = u3
+        elseif ref.role == 'delivery' then state = u6
+        elseif ref.role == 'supplier' then state = u5
+        end
+        TweenService:Create(ref.track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(ref.knob, tw(0.15), {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
+    end
+end
+
+allOffBtn.MouseButton1Click:Connect(function()
+    u2, u3, u4, u5, u6 = false, false, false, false, false
+    refreshToggles()
+end)
+allOnBtn.MouseButton1Click:Connect(function()
+    u2, u3, u4, u5, u6 = true, true, true, true, true
+    refreshToggles()
+end)
+
+local function addRoleToggle(order, name, roleKey)
+    local row = makeRow(controlCard, order, false, 44)
+    local l = Instance.new('TextLabel')
+    l.Size = UDim2.new(0.5, 0, 1, 0)
+    l.Position = UDim2.new(0, 16, 0, 0)
+    l.Text = name
+    l.Font = Enum.Font.GothamSemibold
+    l.TextSize = 10
+    l.TextColor3 = T.text
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.BackgroundTransparency = 1
+    l.ZIndex = 5
+    l.Parent = row
+
+    local track = Instance.new('TextButton')
+    track.Size = UDim2.new(0, 38, 0, 20)
+    track.Position = UDim2.new(1, -52, 0.5, -10)
+    local current = (roleKey == 'cashier' and u2) or (roleKey == 'cook' and u4) or (roleKey == 'boxer' and u3) or (roleKey == 'delivery' and u6) or (roleKey == 'supplier' and u5)
+    track.BackgroundColor3 = current and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ''
+    track.ZIndex = 5
+    track.Parent = row
+    Instance.new('UICorner', track).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new('Frame')
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = current and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.new(1, 1, 1)
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 6
+    knob.Parent = track
+    Instance.new('UICorner', knob).CornerRadius = UDim.new(1, 0)
+
+    track.MouseButton1Click:Connect(function()
+        if roleKey == 'cashier' then u2 = not u2
+        elseif roleKey == 'cook' then u4 = not u4
+        elseif roleKey == 'boxer' then u3 = not u3
+        elseif roleKey == 'delivery' then u6 = not u6
+        elseif roleKey == 'supplier' then u5 = not u5
+        end
+        refreshToggles()
+    end)
+
+    table.insert(toggleRefs, {role = roleKey, track = track, knob = knob})
+end
+
+addRoleToggle(2, 'Cashier', 'cashier')
+addRoleToggle(3, 'Cook', 'cook')
+addRoleToggle(4, 'Boxer', 'boxer')
+addRoleToggle(5, 'Delivery', 'delivery')
+addRoleToggle(6, 'Supplier', 'supplier')
+
+-- Anti‑idle toggle
+local antiIdleRow = makeRow(controlCard, 7, false, 44)
+local antiIdleLabel = Instance.new('TextLabel')
+antiIdleLabel.Size = UDim2.new(0.5, 0, 1, 0)
+antiIdleLabel.Position = UDim2.new(0, 16, 0, 0)
+antiIdleLabel.Text = 'Anti Idle'
+antiIdleLabel.Font = Enum.Font.GothamSemibold
+antiIdleLabel.TextSize = 10
+antiIdleLabel.TextColor3 = T.text
+antiIdleLabel.TextXAlignment = Enum.TextXAlignment.Left
+antiIdleLabel.BackgroundTransparency = 1
+antiIdleLabel.ZIndex = 5
+antiIdleLabel.Parent = antiIdleRow
+
+local antiIdleTrack = Instance.new('TextButton')
+antiIdleTrack.Size = UDim2.new(0, 38, 0, 20)
+antiIdleTrack.Position = UDim2.new(1, -52, 0.5, -10)
+antiIdleTrack.BackgroundColor3 = u1.stay_in_kitchen and T.accent or T.dim
+antiIdleTrack.BorderSizePixel = 0
+antiIdleTrack.AutoButtonColor = false
+antiIdleTrack.Text = ''
+antiIdleTrack.ZIndex = 5
+antiIdleTrack.Parent = antiIdleRow
+Instance.new('UICorner', antiIdleTrack).CornerRadius = UDim.new(1, 0)
+
+local antiIdleKnob = Instance.new('Frame')
+antiIdleKnob.Size = UDim2.new(0, 16, 0, 16)
+antiIdleKnob.Position = u1.stay_in_kitchen and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+antiIdleKnob.BackgroundColor3 = Color3.new(1, 1, 1)
+antiIdleKnob.BorderSizePixel = 0
+antiIdleKnob.ZIndex = 6
+antiIdleKnob.Parent = antiIdleTrack
+Instance.new('UICorner', antiIdleKnob).CornerRadius = UDim.new(1, 0)
+
+antiIdleTrack.MouseButton1Click:Connect(function()
+    u1.stay_in_kitchen = not u1.stay_in_kitchen
+    TweenService:Create(antiIdleTrack, tw(0.15), {BackgroundColor3 = u1.stay_in_kitchen and T.accent or T.dim}):Play()
+    TweenService:Create(antiIdleKnob, tw(0.15), {Position = u1.stay_in_kitchen and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}):Play()
+end)
+
+-- Refill thresholds
+makeSection(contentFrame, 'REFILL THRESHOLDS', 3)
+local refillCard = makeCard(contentFrame, 4)
+makeTextBoxRow(refillCard, 1, 'Refill At', tostring(u1.refill_at), false, function(val) u1.refill_at = val end)
+makeTextBoxRow(refillCard, 2, 'Refill End', tostring(u1.refill_end), true, function(val) u1.refill_end = val end)
+
+-- Camera controls
+makeSection(contentFrame, 'CAMERA', 5)
+local camCard = makeCard(contentFrame, 6)
+local camRow = makeRow(camCard, 1, true, 48)
+local leftCamBtn = Instance.new('TextButton')
+leftCamBtn.Size = UDim2.new(0, 28, 0, 28)
+leftCamBtn.Position = UDim2.new(0, 12, 0.5, -14)
+leftCamBtn.Text = '<'
+leftCamBtn.Font = Enum.Font.GothamBold
+leftCamBtn.TextSize = 16
+leftCamBtn.TextColor3 = T.text
+leftCamBtn.BackgroundColor3 = T.dim
+leftCamBtn.AutoButtonColor = false
+leftCamBtn.BorderSizePixel = 0
+leftCamBtn.ZIndex = 5
+leftCamBtn.Parent = camRow
+Instance.new('UICorner', leftCamBtn).CornerRadius = UDim.new(0, 6)
+leftCamBtn.MouseButton1Click:Connect(function()
+    currentCameraIndex = currentCameraIndex - 1
+    if currentCameraIndex < 0 then currentCameraIndex = #cameraCFrames end
+    if currentCameraIndex == 0 then
+        workspace.CurrentCamera.CameraType = 'Custom'
+    else
+        local cf = cameraCFrames[currentCameraIndex]
+        workspace.CurrentCamera.CameraType = 'Scriptable'
+        workspace.CurrentCamera:Interpolate(cf, cf + cf.lookVector * 10, 0.5)
+    end
+end)
+
+local centerCamBtn = Instance.new('TextButton')
+centerCamBtn.Size = UDim2.new(0, 60, 0, 28)
+centerCamBtn.Position = UDim2.new(0.5, -30, 0.5, -14)
+centerCamBtn.Text = 'Reset'
+centerCamBtn.Font = Enum.Font.GothamBold
+centerCamBtn.TextSize = 10
+centerCamBtn.TextColor3 = T.text
+centerCamBtn.BackgroundColor3 = T.dim
+centerCamBtn.AutoButtonColor = false
+centerCamBtn.BorderSizePixel = 0
+centerCamBtn.ZIndex = 5
+centerCamBtn.Parent = camRow
+Instance.new('UICorner', centerCamBtn).CornerRadius = UDim.new(0, 6)
+centerCamBtn.MouseButton1Click:Connect(function() currentCameraIndex = 0; workspace.CurrentCamera.CameraType = 'Custom' end)
+
+local rightCamBtn = Instance.new('TextButton')
+rightCamBtn.Size = UDim2.new(0, 28, 0, 28)
+rightCamBtn.Position = UDim2.new(1, -40, 0.5, -14)
+rightCamBtn.Text = '>'
+rightCamBtn.Font = Enum.Font.GothamBold
+rightCamBtn.TextSize = 16
+rightCamBtn.TextColor3 = T.text
+rightCamBtn.BackgroundColor3 = T.dim
+rightCamBtn.AutoButtonColor = false
+rightCamBtn.BorderSizePixel = 0
+rightCamBtn.ZIndex = 5
+rightCamBtn.Parent = camRow
+Instance.new('UICorner', rightCamBtn).CornerRadius = UDim.new(0, 6)
+rightCamBtn.MouseButton1Click:Connect(function()
+    currentCameraIndex = currentCameraIndex + 1
+    if currentCameraIndex > #cameraCFrames then currentCameraIndex = 0; workspace.CurrentCamera.CameraType = 'Custom'; return end
+    local cf = cameraCFrames[currentCameraIndex]
+    workspace.CurrentCamera.CameraType = 'Scriptable'
+    workspace.CurrentCamera:Interpolate(cf, cf + cf.lookVector * 10, 0.5)
+end)
+
+if writefile then
+    makeButtonRow(camCard, 2, 'Save Settings', 'Save', true, function()
+        writefile('PizzaFarm.txt', game:GetService('HttpService'):JSONEncode(u1))
+    end)
+end
+
+-- ============================================================
+--  MAIN FARM LOOP (starts after the UI is built)
+-- ============================================================
+getgenv().Mainloop = true
+
+print('Feather Hub – Pizza Farm ready.')
+
+while getgenv().Mainloop do
+    task.wait(0.3)
+
+    if humanoid.Sit and humanoid.SeatPart then humanoid.Jump = true end
+
+    -- Cashier
+    if u2 then
+        local customer = GetNearestCustomer()
+        if customer then
+            local resp = customer.Head.Dialog.Correct.ResponseDialog or ''
+            local teleported = false
+            if (rootPart.Position - Vector3.new(46.34, 3.8, 82.02)).magnitude > 9 then
+                network:FireServer('OrderComplete', customer, resp:find('pepperoni') and 'PepperoniPizza' or (resp:find('sausage') and 'SausagePizza' or (resp:find('cheese') and 'CheesePizza' or 'MountainDew')), workspace.Register3)
+                teleported = true
+            else
+                network:FireServer('OrderComplete', customer, resp:find('pepperoni') and 'PepperoniPizza' or (resp:find('sausage') and 'SausagePizza' or (resp:find('cheese') and 'CheesePizza' or 'MountainDew')), workspace.Register3)
+            end
+            if teleported then task.wait(0.1) end
+        end
+    end
+
+    -- Cook
+    if u4 then
+        local needed = GetNeededIngredients()[1]
+        local specialIngr = (needed == 'Pepperoni' or needed == 'Sausage') and needed or nil
+        local dew = GetAvailableDew()
+        local dough, sauced, burned = GetDough(specialIngr and (specialIngr == 'Pepperoni' and 'Sausage' or 'Pepperoni'))
+        local ovens = workspace.Ovens:GetChildren()
+        local teleported = false
+
+        if sauced and tick() - lastCookAction > 0.8 then
+            local oven = GetOvenNear(sauced.Position)
+            if not oven or OvenIsOpen(oven) then
+                lastCookAction = tick()
+                network:FireServer('UpdateProperty', sauced, 'CFrame', CFrame.new(56, 4.1, 38))
+            end
+        end
+
+        if needed then
+            if needed ~= 'Dew' or (not dew or tick() - lastDewTime <= 0.8) then
+                if needed ~= 'Dew' and dough and dough.Parent and supplyCounts[needed] > 0 and supplyCounts.TomatoSauce > 0 and supplyCounts.Cheese > 0 then
+                    if dough.Mesh.Scale.Y <= 1.5 then
+                        local targetOven
+                        for _, oven in ipairs(ovens) do
+                            if OvenIsOpen(oven) then
+                                local existing = GetDoughNear(oven.Bottom.Position)
+                                if not existing or (existing.BrickColor.Name ~= 'Bright orange' or not (FindFirstChild(existing.SG.Frame, 'TomatoSauce') and FindFirstChild(existing.SG.Frame, 'MeltedCheese'))) then
+                                    if existing then network:FireServer('UpdateProperty', existing, 'CFrame', CFrame.new(math.random(296, 446)/10, 3.7, math.random(425, 485)/10)) task.wait() end
+                                else targetOven = oven; break end
+                            end
+                        end
+                        if not targetOven then targetOven = ovens[math.random(#ovens)] end
+                        if targetOven and dough.Parent == workspace.AllDough then
+                            network:FireServer('AddIngredientToPizza', dough, 'TomatoSauce')
+                            network:FireServer('AddIngredientToPizza', dough, 'Cheese')
+                            network:FireServer('AddIngredientToPizza', dough, specialIngr or needed)
+                            network:FireServer('UpdateProperty', dough, 'CFrame', targetOven.Bottom.CFrame + Vector3.new(0, 0.7, 0))
+                            targetOven.Door.ClickDetector.Detector:FireServer()
+                            pendingOrders[needed] = pendingOrders[needed] + 1
+                            local cancelled = false
+                            spawn(function() dough.AncestryChanged:Wait(); if not cancelled then pendingOrders[needed] = pendingOrders[needed] - 1; cancelled = true end end)
+                            delay(40, function() if not cancelled then pendingOrders[needed] = pendingOrders[needed] - 1; cancelled = true end end)
+                        end
+                    else
+                        network:FireServer('UpdateProperty', dough, 'CFrame', CFrame.new(math.random(296, 446)/10, 3.7, math.random(425, 485)/10))
+                        task.wait()
+                        network:FireServer('SquishDough', dough)
+                    end
+                end
+            else
+                lastDewTime = tick()
+                network:FireServer('UpdateProperty', dew, 'CFrame', CFrame.new(53, 4.68, 36.5))
+            end
+        end
+
+        for _, oven in ipairs(ovens) do
+            local bar = oven.Door.Meter.SurfaceGui.ProgressBar.Bar
+            if not oven.IsOpen.Value and (not oven.IsCooking.Value or (Vector3.new(bar.ImageColor3.r, bar.ImageColor3.g, bar.ImageColor3.b) - Vector3.new(0.871, 0.518, 0.224)).magnitude > 0.1) then
+                oven.Door.ClickDetector.Detector:FireServer()
+                break
+            end
+        end
+
+        if burned and (not GetOvenNear(burned.Position) or OvenIsOpen(GetOvenNear(burned.Position))) then
+            network:FireServer('UpdateProperty', burned, 'CFrame', CFrame.new(0, -100, 0))
+        end
+    end
+
+    -- Boxer
+    if u3 then
+        local pizza, dew = GetLooseItems()
+        local closedBox, openBox, other = GetBoxes()
+        local teleported = false
+
+        if dew and tick() - lastDewTime > 0.8 then
+            lastDewTime = tick()
+            network:FireServer('UpdateProperty', dew, 'CFrame', CFrame.new(63, 4.9, -1, -1, 0, 0, 0, 1, 0, 0, 0, -1))
+            teleported = true
+        end
+        if other then
+            if other.Name ~= 'BoxOpen' then
+                if tick() - lastBoxTime > 0.8 then
+                    network:FireServer('UpdateProperty', other, 'CFrame', CFrame.new(68.2, 4.4, -1, -1, 0, 0, 0, 1, 0, 0, 0, -1))
+                    lastBoxTime = tick()
+                    teleported = true
+                end
+            else
+                network:FireServer('CloseBox', other)
+            end
+        end
+        if closedBox and not openBox then
+            network:FireServer('UpdateProperty', closedBox, 'CFrame', CFrame.new(math.random(625, 705)/10, 3.5, math.random(110, 250)/10))
+            task.wait()
+            network:FireServer('OpenBox', closedBox)
+        end
+        if openBox and pizza then
+            network:FireServer('UpdateProperty', pizza, 'Anchored', true)
+            network:FireServer('UpdateProperty', openBox, 'Anchored', true)
+            task.wait()
+            network:FireServer('UpdateProperty', pizza, 'CFrame', openBox.CFrame + Vector3.new(0, -2, 0))
+            task.wait()
+            network:FireServer('AssignPizzaToBox', openBox, pizza)
+        end
+        if teleported then task.wait(0.1) end
+    end
+
+    -- Supplier
+    if u5 then
+        local needRefill = false
+        for _, count in pairs(supplyCounts) do if count <= u1.refill_at then needRefill = true; break end end
+        if needRefill then
+            pcall(function() for _, box in ipairs(workspace.AllSupplyBoxes:GetChildren()) do if box:IsA('Part') and box.Position.Y > -100 then network:FireServer('UpdateProperty', box, 'CFrame', CFrame.new(0, -1000, 0)) end end end)
+            local placed = 0
+            while needRefill and u5 do
+                for _, btn in ipairs(supplyButtons) do
+                    local ingr = ingredientColorMap[btn.BrickColor.Name]
+                    if supplyCounts[ingr] < u1.refill_end then
+                        network:FireServer('UpdateProperty', btn, 'CFrame', btn.Position + Vector3.new(0, 0.2, 0))
+                        task.wait(0.05)
+                        network:FireServer('UpdateProperty', btn, 'CFrame', btn.Position)
+                        for _, box in ipairs(workspace.AllSupplyBoxes:GetChildren()) do
+                            if box.BrickColor.Name == btn.BrickColor.Name then
+                                placed = placed + 1
+                                network:FireServer('UpdateProperty', box, 'CFrame', CFrame.new(38 - 4.3 * math.floor(math.random(1, 15) / 2), 5, -7 - 5 * (math.random(1, 15) % 2)))
+                                if placed >= 30 then
+                                    network:FireServer('UpdateProperty', box, 'CFrame', CFrame.new(21, 9, -20))
+                                    local count = 0
+                                    for _, b in ipairs(workspace.AllSupplyBoxes:GetChildren()) do
+                                        count = count + 1
+                                        network:FireServer('UpdateProperty', b, 'CFrame', CFrame.new(38 - 4.3 * math.floor(count / 2), 5, -7 - 5 * (count % 2)))
+                                    end
+                                    placed = 0
+                                end
+                            end
+                        end
+                    end
+                end
+                local stillNeeded = false
+                for _, count in pairs(supplyCounts) do if count <= u1.refill_at then stillNeeded = true; break end end
+                if not stillNeeded then needRefill = false end
+                task.wait()
+            end
+        end
+    end
+
+    -- Delivery
+    if u6 then
+        local tool = FindDeliveryTool()
+        if not currentDeliveryTool and tool then
+            currentDeliveryTool = tool
+            if (rootPart.Position - currentDeliveryTool.Handle.Position).magnitude > 19 then
+                network:FireServer('UpdateProperty', currentDeliveryTool, 'CFrame', currentDeliveryTool.Handle.Position + Vector3.new(0, 1, -15))
+            end
+            currentDeliveryTool.Handle.CanCollide = false
+            currentDeliveryTool.Handle.CFrame = rootPart.CFrame
+            wait(0.9)
+            delay(6, EndDelivery)
+        elseif currentDeliveryTool and currentDeliveryTool.Parent == character and not deliveryInProgress then
+            local givePart = GetGivePizzaPart(currentDeliveryTool.Name)
+            if givePart then
+                deliveryInProgress = true
+                network:FireServer('UpdateProperty', givePart, 'CFrame', givePart.Position + Vector3.new(0, 2, 0))
+                wait(0.1)
+                firetouchinterest(givePart, rootPart, 0)
+                firetouchinterest(givePart, rootPart, 1)
+                wait(0.2)
+                deliveryInProgress = false
+            end
+        end
+    end
+
+    -- Anti‑idle
+    if u1.stay_in_kitchen then
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end
+end
