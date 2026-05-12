@@ -1,0 +1,698 @@
+-- Feather Hub | Restaurant Tycoon 2
+repeat task.wait() until game:IsLoaded()
+
+-- Anti-idle
+for _, conn in pairs(getconnections(game:GetService('Players').LocalPlayer.Idled)) do
+    conn:Disable()
+end
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local humanoid = character:FindFirstChild("Humanoid")
+local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+LocalPlayer.CharacterAdded:Connect(function()
+    repeat
+        task.wait()
+        LocalPlayer = Players.LocalPlayer
+        character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        humanoid = character:FindFirstChild("Humanoid")
+        rootPart = character:FindFirstChild("HumanoidRootPart")
+    until LocalPlayer and character and humanoid and rootPart
+end)
+
+game.StarterGui:SetCore("SendNotification", {
+    Title = "Feather Hub | Restaurant Tycoon 2",
+    Text = "Discord: sz1r",
+    Duration = 5,
+})
+task.wait(5)
+
+-- Wait for player tycoon
+while true do
+    task.wait()
+    for _, ty in pairs(workspace.Tycoons:GetChildren()) do
+        if tostring(ty.Player.Value) == tostring(LocalPlayer.Name) then
+            getgenv().PlayerPlot = ty
+            break
+        end
+    end
+    if getgenv().PlayerPlot then break end
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "Waiting",
+        Text = "Waiting for tycoon to load...",
+        Duration = 5,
+    })
+    task.wait(2)
+    if getgenv().PlayerPlot then break end
+end
+
+if getgenv().PlayerPlot.Stats.IsLoading.Value then
+    repeat task.wait() until not getgenv().PlayerPlot.Stats.IsLoading.Value
+end
+
+getgenv().settingsTable = {
+    billstoggle = false,
+    dishestoggle = false,
+    localplayerspeed = 16,
+    localplayerjump = 50,
+    localplayergravity = 196.2,
+    infjump = false,
+    autocook = false,
+    takeorders = false,
+    deliverfood = false,
+    deliverdrinks = false,
+    seatcustomers = false,
+}
+
+--------------------------------------------------
+-- AUTOMATION FUNCTIONS (unchanged logic)
+--------------------------------------------------
+function SeatCustomers()
+    for _, group in ipairs(getgenv().PlayerPlot.Customers:GetChildren()) do
+        task.wait(0.05)
+        local groupnumber = group.Name
+        if group:FindFirstChild("Data") and group.Data.SeatedAt ~= "" and group:FindFirstChild("Customers") then
+            for _, customer in ipairs(group.Customers:GetChildren()) do
+                task.wait(0.05)
+                local customernumber = customer.Name
+                for _, surface in ipairs(getgenv().PlayerPlot.Items.OftenFiltered.Surface:GetChildren()) do
+                    task.wait(0.05)
+                    if surface:FindFirstChild("InUse") and surface.InUse.Value == false then
+                        local args = {
+                            name = "SendToTable",
+                            obj = surface,
+                            group = groupnumber,
+                            tycoon = workspace.Tycoons.Tycoon,
+                            customer = customernumber,
+                        }
+                        game:GetService("ReplicatedStorage").Events.ClientTycoonInput:FireServer(getgenv().PlayerPlot, args)
+                    end
+                end
+            end
+        end
+    end
+end
+
+function DeliverDrinks()
+    for _, tableObj in ipairs(getgenv().PlayerPlot.Customers:GetChildren()) do
+        task.wait(0.05)
+        local tablenumber = tableObj.Name
+        if tableObj:FindFirstChild("Customers") then
+            for _, customer in ipairs(tableObj.Customers:GetChildren()) do
+                task.wait(0.05)
+                local customernumber = customer.Name
+                local mealChoice = customer:FindFirstChild("MealChoice")
+                if mealChoice then
+                    local drinkName = mealChoice.Value
+                    local fridge = getgenv().PlayerPlot.Items.OftenFiltered.Kitchen:FindFirstChild("68")
+                    if fridge then
+                        game:GetService("ReplicatedStorage").Events.RequestGrab:InvokeServer("Fridge", fridge, getgenv().PlayerPlot)
+                    end
+                    for _, drink in ipairs(getgenv().PlayerPlot.Resources.Drinks:GetChildren()) do
+                        task.wait(0.05)
+                        if drink.Name == drinkName then
+                            local args = {
+                                models = {},
+                                name = "ManageFood",
+                                model = drink,
+                                customer = customernumber,
+                                tycoon = getgenv().PlayerPlot,
+                                group = tablenumber,
+                            }
+                            game:GetService("ReplicatedStorage").Events.ClientTycoonInput:FireServer(getgenv().PlayerPlot, args)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+function DeliverFood()
+    for _, tableObj in ipairs(getgenv().PlayerPlot.Customers:GetChildren()) do
+        task.wait(0.05)
+        local tablenumber = tableObj.Name
+        if tableObj:FindFirstChild("Customers") then
+            for _, customer in ipairs(tableObj.Customers:GetChildren()) do
+                task.wait(0.05)
+                local customernumber = customer.Name
+                local mealChoice = customer:FindFirstChild("MealChoice")
+                if mealChoice then
+                    local meal = mealChoice.Value
+                    for _, surface in ipairs(getgenv().PlayerPlot.Items.OftenFiltered.Surface:GetChildren()) do
+                        task.wait(0.05)
+                        if surface:FindFirstChild("OrderedFoods") and surface.OrderedFoods:FindFirstChild(meal) then
+                            local args = {
+                                models = { surface.OrderedFoods[meal] },
+                                name = "ManageFood",
+                                model = surface.OrderedFoods[meal],
+                                customer = customernumber,
+                                tycoon = getgenv().PlayerPlot,
+                                group = tablenumber,
+                            }
+                            game:GetService("ReplicatedStorage").Events.ClientTycoonInput:FireServer(getgenv().PlayerPlot, args)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+function TakeOrders()
+    for _, group in ipairs(getgenv().PlayerPlot.Customers:GetChildren()) do
+        task.wait(0.05)
+        local groupnumber = group.Name
+        if group:FindFirstChild("Customers") then
+            for _, customer in ipairs(group.Customers:GetChildren()) do
+                task.wait(0.05)
+                local args = {
+                    customer = customer.Name,
+                    tycoon = getgenv().PlayerPlot,
+                    name = "ManageCustomers",
+                    group = groupnumber,
+                }
+                game:GetService("ReplicatedStorage").Events.ClientTycoonInput:FireServer(getgenv().PlayerPlot, args)
+            end
+        end
+    end
+end
+
+function GetBills()
+    for _, surface in ipairs(getgenv().PlayerPlot.Items.OftenFiltered.Surface:GetChildren()) do
+        if surface:FindFirstChild("Bill") then
+            game:GetService("ReplicatedStorage").Events.ClientTycoonInput:FireServer(getgenv().PlayerPlot, {
+                name = "CollectBill",
+                model = surface,
+            })
+        end
+    end
+    for _, furniture in ipairs(getgenv().PlayerPlot.Items.AlwaysFiltered.Furniture:GetChildren()) do
+        if furniture:FindFirstChild("Jar") and furniture.Jar.BillboardGui.Frame.Amt.Text ~= "0 Cash" then
+            game:GetService("ReplicatedStorage").Events.ClientTycoonInput:FireServer(getgenv().PlayerPlot, {
+                name = "CollectTip",
+            })
+        end
+    end
+    for _, drop in ipairs(workspace.DropFolder:GetChildren()) do
+        if drop:FindFirstChild("TouchInterest") then
+            firetouchinterest(rootPart, drop, 0)
+            task.wait(0.25)
+            firetouchinterest(rootPart, drop, 1)
+        end
+    end
+end
+
+function CollectDishes()
+    for _, surface in ipairs(getgenv().PlayerPlot.Items.OftenFiltered.Surface:GetChildren()) do
+        if surface:FindFirstChild("Trash") then
+            game:GetService("ReplicatedStorage").Events.ClientTycoonInput:FireServer(getgenv().PlayerPlot, {
+                name = "ClearTrash",
+                model = surface,
+            })
+        end
+    end
+end
+
+--------------------------------------------------
+-- FEATHER HUB UI (modern purple theme)
+--------------------------------------------------
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+-- Theme colors
+local T = {
+    bg          = Color3.fromRGB(8, 8, 14),
+    card        = Color3.fromRGB(14, 14, 20),
+    accent      = Color3.fromRGB(110, 95, 210),
+    accentDim   = Color3.fromRGB(90, 78, 170),
+    accentLt    = Color3.fromRGB(130, 115, 225),
+    text        = Color3.fromRGB(210, 210, 220),
+    muted       = Color3.fromRGB(140, 140, 155),
+    dim         = Color3.fromRGB(30, 30, 40),
+    border      = Color3.fromRGB(40, 40, 55),
+    inputBg     = Color3.fromRGB(18, 18, 26),
+    sep         = Color3.fromRGB(25, 25, 35),
+    gold        = Color3.fromRGB(255, 200, 50),
+    green       = Color3.fromRGB(80, 220, 100),
+    red         = Color3.fromRGB(255, 80, 80),
+}
+
+local function tw(d)
+    return TweenInfo.new(d or 0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+end
+
+-- UI building blocks
+local function makeCard(parent, order)
+    local c = Instance.new("Frame")
+    c.Size = UDim2.new(1, 0, 0, 0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = T.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.ZIndex = 3
+    c.Parent = parent
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 11)
+    local s = Instance.new("UIStroke")
+    s.Color = T.border
+    s.Thickness = 1
+    s.Parent = c
+    local ll = Instance.new("UIListLayout", c)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+
+local function makeRow(card, order, isLast, height)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, height or 46)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.ZIndex = 4
+    row.Parent = card
+    if not isLast then
+        local sep = Instance.new("Frame")
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = T.sep
+        sep.BorderSizePixel = 0
+        sep.ZIndex = 4
+        sep.Parent = row
+    end
+    return row
+end
+
+local function makeSection(parent, label, order)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 22)
+    f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0
+    f.LayoutOrder = order
+    f.ZIndex = 3
+    f.Parent = parent
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = label
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = T.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 3
+    lbl.Parent = f
+    local line = Instance.new("Frame")
+    line.Size = UDim2.new(0, 28, 0, 2)
+    line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = T.accent
+    line.BorderSizePixel = 0
+    line.ZIndex = 3
+    line.Parent = f
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return f
+end
+
+local function makeToggleRow(card, order, labelText, initialState, isLast, onToggle)
+    local row = makeRow(card, order, isLast, 44)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(0.65, 0, 1, 0)
+    l.Position = UDim2.new(0, 16, 0, 0)
+    l.Text = labelText
+    l.Font = Enum.Font.GothamSemibold
+    l.TextSize = 10
+    l.TextColor3 = T.text
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.BackgroundTransparency = 1
+    l.ZIndex = 5
+    l.Parent = row
+
+    local track = Instance.new("TextButton")
+    track.Size = UDim2.new(0, 38, 0, 20)
+    track.Position = UDim2.new(1, -52, 0.5, -10)
+    track.BackgroundColor3 = initialState and T.accent or T.dim
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Text = ""
+    track.ZIndex = 5
+    track.Parent = row
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = initialState and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.new(1, 1, 1)
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 6
+    knob.Parent = track
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local state = initialState
+    track.MouseButton1Click:Connect(function()
+        state = not state
+        onToggle(state)
+        TweenService:Create(track, tw(0.15), {BackgroundColor3 = state and T.accent or T.dim}):Play()
+        TweenService:Create(knob, tw(0.15), {
+            Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+        }):Play()
+    end)
+end
+
+local function makeButtonRow(card, order, labelText, buttonText, isLast, onClick)
+    local row = makeRow(card, order, isLast, 44)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(0.55, 0, 1, 0)
+    l.Position = UDim2.new(0, 16, 0, 0)
+    l.Text = labelText
+    l.Font = Enum.Font.GothamSemibold
+    l.TextSize = 10
+    l.TextColor3 = T.text
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.BackgroundTransparency = 1
+    l.ZIndex = 5
+    l.Parent = row
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 100, 0, 28)
+    btn.Position = UDim2.new(1, -114, 0.5, -14)
+    btn.Text = buttonText
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 9
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.BackgroundColor3 = T.accent
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 6
+    btn.Parent = row
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accentLt}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = T.accent}):Play() end)
+    btn.MouseButton1Click:Connect(onClick)
+    return row
+end
+
+-- Notification
+local function notify(title, msg, level)
+    local color = level == "error" and T.red or level == "warning" and Color3.fromRGB(255, 180, 0) or T.accent
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 240, 0, 52)
+    notif.Position = UDim2.new(1, -260, 0, 100)
+    notif.BackgroundColor3 = T.card
+    notif.BorderSizePixel = 0
+    notif.ZIndex = 20
+    notif.Parent = gui
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
+    local s = Instance.new("UIStroke")
+    s.Color = color
+    s.Thickness = 1.5
+    s.Parent = notif
+    local t = Instance.new("TextLabel")
+    t.Size = UDim2.new(1, -16, 0, 22)
+    t.Position = UDim2.new(0, 8, 0, 6)
+    t.Text = title
+    t.Font = Enum.Font.GothamBold
+    t.TextSize = 11
+    t.TextColor3 = color
+    t.BackgroundTransparency = 1
+    t.Parent = notif
+    local m = Instance.new("TextLabel")
+    m.Size = UDim2.new(1, -16, 0, 18)
+    m.Position = UDim2.new(0, 8, 0, 28)
+    m.Text = msg
+    m.Font = Enum.Font.Gotham
+    m.TextSize = 9
+    m.TextColor3 = T.text
+    m.BackgroundTransparency = 1
+    m.Parent = notif
+    task.spawn(function()
+        for i = 1, 30 do
+            if not notif.Parent then break end
+            task.wait(0.1)
+        end
+        if notif.Parent then
+            TweenService:Create(notif, TweenInfo.new(0.4), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+            task.wait(0.4)
+            notif:Destroy()
+        end
+    end)
+end
+
+-- Dialog helper
+local function showDialog(title, content, callback)
+    local dialogGui = Instance.new("ScreenGui")
+    dialogGui.Name = "Dialog"
+    dialogGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    dialogGui.Parent = CoreGui
+    local blur = Instance.new("Frame")
+    blur.Size = UDim2.new(1, 0, 1, 0)
+    blur.BackgroundColor3 = Color3.new(0, 0, 0)
+    blur.BackgroundTransparency = 0.7
+    blur.BorderSizePixel = 0
+    blur.ZIndex = 30
+    blur.Parent = dialogGui
+    blur.InputBegan:Connect(function() end)  -- block clicks through
+    local dialogFrame = Instance.new("Frame")
+    dialogFrame.Size = UDim2.new(0, 260, 0, 130)
+    dialogFrame.Position = UDim2.new(0.5, -130, 0.5, -65)
+    dialogFrame.BackgroundColor3 = T.card
+    dialogFrame.BorderSizePixel = 0
+    dialogFrame.ZIndex = 31
+    dialogFrame.Parent = dialogGui
+    Instance.new("UICorner", dialogFrame).CornerRadius = UDim.new(0, 12)
+    local dS = Instance.new("UIStroke")
+    dS.Color = T.accent
+    dS.Thickness = 1.5
+    dS.Parent = dialogFrame
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1, -32, 0, 30)
+    titleLbl.Position = UDim2.new(0, 16, 0, 10)
+    titleLbl.Text = title
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.TextSize = 14
+    titleLbl.TextColor3 = T.accent
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Parent = dialogFrame
+    local contentLbl = Instance.new("TextLabel")
+    contentLbl.Size = UDim2.new(1, -32, 0, 30)
+    contentLbl.Position = UDim2.new(0, 16, 0, 44)
+    contentLbl.Text = content
+    contentLbl.Font = Enum.Font.Gotham
+    contentLbl.TextSize = 10
+    contentLbl.TextColor3 = T.text
+    contentLbl.BackgroundTransparency = 1
+    contentLbl.TextWrapped = true
+    contentLbl.Parent = dialogFrame
+    local btnConfirm = Instance.new("TextButton")
+    btnConfirm.Size = UDim2.new(0, 80, 0, 28)
+    btnConfirm.Position = UDim2.new(0, 40, 0, 84)
+    btnConfirm.Text = "Confirm"
+    btnConfirm.Font = Enum.Font.GothamBold
+    btnConfirm.TextSize = 10
+    btnConfirm.TextColor3 = Color3.new(1, 1, 1)
+    btnConfirm.BackgroundColor3 = T.accent
+    btnConfirm.AutoButtonColor = false
+    btnConfirm.BorderSizePixel = 0
+    btnConfirm.ZIndex = 32
+    btnConfirm.Parent = dialogFrame
+    Instance.new("UICorner", btnConfirm).CornerRadius = UDim.new(0, 6)
+    local btnCancel = Instance.new("TextButton")
+    btnCancel.Size = UDim2.new(0, 80, 0, 28)
+    btnCancel.Position = UDim2.new(0, 140, 0, 84)
+    btnCancel.Text = "Cancel"
+    btnCancel.Font = Enum.Font.GothamBold
+    btnCancel.TextSize = 10
+    btnCancel.TextColor3 = T.text
+    btnCancel.BackgroundColor3 = T.dim
+    btnCancel.AutoButtonColor = false
+    btnCancel.BorderSizePixel = 0
+    btnCancel.ZIndex = 32
+    btnCancel.Parent = dialogFrame
+    Instance.new("UICorner", btnCancel).CornerRadius = UDim.new(0, 6)
+    btnConfirm.MouseButton1Click:Connect(function()
+        dialogGui:Destroy()
+        if callback then callback() end
+    end)
+    btnCancel.MouseButton1Click:Connect(function()
+        dialogGui:Destroy()
+    end)
+end
+
+-- Build main UI
+local gui = Instance.new("ScreenGui")
+gui.Name = "FeatherHub"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+if not pcall(function() gui.Parent = CoreGui end) then
+    gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local win = Instance.new("Frame")
+win.Size = UDim2.new(0, 360, 0, 420)
+win.Position = UDim2.new(0.5, -180, 0.5, -210)
+win.BackgroundColor3 = T.bg
+win.BackgroundTransparency = 0.1
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 2
+win.Parent = gui
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
+local winStroke = Instance.new("UIStroke")
+winStroke.Color = T.accent
+winStroke.Thickness = 1
+winStroke.Parent = win
+
+-- Title bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 36)
+titleBar.BackgroundColor3 = T.bg
+titleBar.BackgroundTransparency = 0.3
+titleBar.BorderSizePixel = 0
+titleBar.ZIndex = 4
+titleBar.Parent = win
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, -40, 1, 0)
+titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.Text = "Feather Hub – Restaurant Tycoon 2"
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 12
+titleText.TextColor3 = T.accent
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.BackgroundTransparency = 1
+titleText.Parent = titleBar
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -36, 0, 4)
+closeBtn.Text = "✕"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = T.text
+closeBtn.BackgroundColor3 = T.dim
+closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 5
+closeBtn.Parent = titleBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+closeBtn.MouseButton1Click:Connect(function() gui.Enabled = false end)
+
+-- Dragging
+local dragToggle, dragStart, startPos
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = true
+        dragStart = input.Position
+        startPos = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragToggle and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = false
+    end
+end)
+
+-- Content area
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Size = UDim2.new(1, -16, 1, -52)
+contentFrame.Position = UDim2.new(0, 8, 0, 44)
+contentFrame.BackgroundTransparency = 1
+contentFrame.BorderSizePixel = 0
+contentFrame.ScrollBarThickness = 3
+contentFrame.ScrollBarImageColor3 = T.accent
+contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+contentFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+contentFrame.ZIndex = 2
+contentFrame.Parent = win
+local list = Instance.new("UIListLayout", contentFrame)
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+list.Padding = UDim.new(0, 8)
+
+makeSection(contentFrame, "MAIN", 1)
+local mainCard = makeCard(contentFrame, 2)
+
+-- Instant Cook button (with dialog)
+makeButtonRow(mainCard, 1, "Instant Cook Auto", "Load", false, function()
+    showDialog("Instant Cook", "This will load the instant cook module. Continue?", function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/iz037/Zeld-Hub/main/Restaurant%20Tycoon%202/Function.lua"))()
+        notify("Instant Cook", "Module loaded!", "success")
+    end)
+end)
+
+-- Toggles
+makeToggleRow(mainCard, 2, "Take Orders Auto", false, false, function(on)
+    getgenv().settingsTable.takeorders = on
+    if on then
+        task.spawn(function()
+            while getgenv().settingsTable.takeorders do
+                task.wait()
+                TakeOrders()
+            end
+        end)
+    end
+end)
+makeToggleRow(mainCard, 3, "Deliver Food Auto", false, false, function(on)
+    getgenv().settingsTable.deliverfood = on
+    if on then
+        task.spawn(function()
+            while getgenv().settingsTable.deliverfood do
+                task.wait()
+                DeliverFood()
+            end
+        end)
+    end
+end)
+makeToggleRow(mainCard, 4, "Deliver Drinks Auto", false, false, function(on)
+    getgenv().settingsTable.deliverdrinks = on
+    if on then
+        task.spawn(function()
+            while getgenv().settingsTable.deliverdrinks do
+                task.wait()
+                DeliverDrinks()
+            end
+        end)
+    end
+end)
+makeToggleRow(mainCard, 5, "Seat Customers Auto", false, false, function(on)
+    getgenv().settingsTable.seatcustomers = on
+    if on then
+        task.spawn(function()
+            while getgenv().settingsTable.seatcustomers do
+                task.wait()
+                SeatCustomers()
+            end
+        end)
+    end
+end)
+makeToggleRow(mainCard, 6, "Collect Bills/Tips/Drops Auto", false, false, function(on)
+    getgenv().settingsTable.billstoggle = on
+    if on then
+        task.spawn(function()
+            while getgenv().settingsTable.billstoggle do
+                task.wait()
+                GetBills()
+            end
+        end)
+    end
+end)
+makeToggleRow(mainCard, 7, "Collect Dishes Auto", false, true, function(on)
+    getgenv().settingsTable.dishestoggle = on
+    if on then
+        task.spawn(function()
+            while getgenv().settingsTable.dishestoggle do
+                task.wait()
+                CollectDishes()
+            end
+        end)
+    end
+end)
+
+notify("Feather Hub", "Restaurant Tycoon 2 script loaded!", "success")
