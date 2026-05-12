@@ -320,7 +320,7 @@ titleText.Parent = titleBar
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 28, 0, 28)
 closeBtn.Position = UDim2.new(1, -36, 0, 4)
-closeBtn.Text = "✕"
+closeBtn.Text = "x"
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 14
 closeBtn.TextColor3 = T.text
@@ -1411,10 +1411,3 @@ end)
 -- ============================================================
 switchTab(1)
 notify("Feather Hub", "Rake Remastered loaded. Press Q to toggle UI.", "success")
-
--- Allow re‑execution on teleport
-if syn and syn.queue_on_teleport then
-    syn.queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/YourRepo/.../featherhub.lua'))()")
-elseif queue_on_teleport then
-    queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/YourRepo/.../featherhub.lua'))()")
-end
