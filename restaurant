@@ -24,7 +24,7 @@ end)
 
 game.StarterGui:SetCore("SendNotification", {
     Title = "Feather Hub | Restaurant Tycoon 2",
-    Text = "Discord: sz1r",
+    Text = "",
     Duration = 5,
 })
 task.wait(5)
@@ -565,7 +565,7 @@ titleText.Parent = titleBar
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 28, 0, 28)
 closeBtn.Position = UDim2.new(1, -36, 0, 4)
-closeBtn.Text = "✕"
+closeBtn.Text = "x"
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 14
 closeBtn.TextColor3 = T.text
