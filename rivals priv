@@ -856,9 +856,9 @@ if not shared.__featherRivalsReloaded then
     shared.__featherRivalsReloaded = true
     pcall(function()
         if syn and syn.queue_on_teleport then
-            syn.queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/MADMONEYDISTRO/feather-hub/refs/heads/main/rivals'))()")
+            syn.queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/MADMONEYDISTRO/feather-hub/refs/heads/main/rivals%20priv'))()")
         elseif queue_on_teleport then
-            queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/MADMONEYDISTRO/feather-hub/refs/heads/main/rivals'))()")
+            queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/MADMONEYDISTRO/feather-hub/refs/heads/main/rivals%20priv'))()")
         end
     end)
 end
