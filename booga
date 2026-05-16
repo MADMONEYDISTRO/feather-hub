@@ -1,0 +1,1187 @@
+-- Feather Hub – Booga Booga Reborn (complete, self‑contained)
+repeat task.wait() until game:IsLoaded()
+
+getupvalues = getupvalues or debug.getupvalues
+setupvalue = setupvalue or debug.setupvalue
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local PathfindingService = game:GetService("PathfindingService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+
+-- Safe Character assignment
+local Character
+if LocalPlayer.Character then
+    Character = LocalPlayer.Character
+else
+    Character = LocalPlayer.CharacterAdded:Wait()
+end
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local Humanoid = Character:WaitForChild("Humanoid")
+
+local packets = require(ReplicatedStorage.Modules.Packets)
+local ByteNetReliable = ReplicatedStorage:WaitForChild("ByteNetReliable")
+
+local _GameUtil = nil
+pcall(function() _GameUtil = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("GameUtil")) end)
+
+-- ====================== ORIGINAL HELPERS ======================
+local function _nameHasGodRock(nm)
+    local s = string.lower(tostring(nm))
+    return s:find("god") and s:find("rock") and not s:find("axe") and not s:find("pick")
+end
+local function isGodRockEquipped()
+    local char = LocalPlayer.Character
+    if char then
+        for _, ch in ipairs(char:GetChildren()) do
+            if ch:IsA("Tool") and _nameHasGodRock(ch.Name) then return true end
+        end
+    end
+    if _GameUtil and _GameUtil.Data then
+        local idx = _GameUtil.Data.equipped
+        local toolbar = _GameUtil.Data.toolbar
+        if idx and toolbar and toolbar[idx] then
+            local slot = toolbar[idx]
+            if slot and slot.name and _nameHasGodRock(slot.name) then return true end
+        end
+    end
+    return false
+end
+local function getPlayerTribeColor(player)
+    if not _GameUtil then return nil end
+    local ok, color = pcall(function()
+        local c, _ = _GameUtil.isInATribe(player.UserId)
+        return c
+    end)
+    if ok and color and color ~= "" then return tostring(color) end
+    return nil
+end
+local function getLocalTribeColor() return getPlayerTribeColor(LocalPlayer) end
+local function isEnemy(player)
+    if player == LocalPlayer then return false end
+    if not Settings.ka_teamCheck then return true end
+    local myTribe = getLocalTribeColor()
+    if myTribe == nil then return true end
+    local theirTribe = getPlayerTribeColor(player)
+    if theirTribe == nil then return true end
+    return myTribe ~= theirTribe
+end
+local function isPichEnemy(player)
+    if player == LocalPlayer then return false end
+    if not Settings.pich_teamCheck then return true end
+    local myTribe = getLocalTribeColor()
+    if myTribe == nil then return true end
+    local theirTribe = getPlayerTribeColor(player)
+    if theirTribe == nil then return true end
+    return myTribe ~= theirTribe
+end
+
+local SlashAnim = ReplicatedStorage:WaitForChild("Animations"):WaitForChild("Slash")
+local AnimTrack, CurrentAnimator, lastSlashTime = nil, nil, 0
+local function playSlash()
+    if not Settings.ka_animToggle then return end
+    if not isGodRockEquipped() then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local now = os.clock()
+    if now - lastSlashTime < 0.45 then return end
+    lastSlashTime = now
+    local hum = char:FindFirstChild("Humanoid")
+    if not hum then return end
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = hum
+    end
+    if CurrentAnimator ~= animator then
+        if AnimTrack then AnimTrack:Stop() end
+        CurrentAnimator = animator
+        AnimTrack = nil
+    end
+    if not AnimTrack then
+        AnimTrack = animator:LoadAnimation(SlashAnim)
+        AnimTrack.Priority = Enum.AnimationPriority.Action4
+        AnimTrack.Looped = false
+    end
+    AnimTrack:Play(0.05, 1, 0.45)
+    AnimTrack:AdjustSpeed(1)
+end
+
+-- Packet encoding utilities
+local function decode(str)
+    local b1, b2, b3 = string.byte(str, -4, -2)
+    return b1 + b2*256 + b3*65536
+end
+local function to_half(value)
+    local bits = string.unpack("<I4", string.pack("<f", value))
+    local sign = bit32.rshift(bits, 31)
+    local exp  = bit32.band(bit32.rshift(bits, 23), 0xFF)
+    local mant = bit32.band(bits, 0x7FFFFF)
+    if exp == 0xFF then
+        if mant == 0 then return bit32.bor(bit32.lshift(sign, 15), 0x7C00)
+        else return bit32.bor(bit32.lshift(sign, 15), 0x7E00, bit32.rshift(mant, 13)) end
+    end
+    exp = exp - 127
+    if exp <= -15 then return bit32.lshift(sign, 15) end
+    if exp >=  16 then return bit32.bor(bit32.lshift(sign, 15), 0x7C00) end
+    exp = exp + 15
+    local half = bit32.bor(bit32.lshift(sign, 15), bit32.lshift(exp, 10), bit32.rshift(mant, 13))
+    if bit32.band(mant, 0x1000) ~= 0 then half = half + 1 end
+    return half
+end
+local SWING_FOOTER = string.char(0x8C, 0x7D, 0xDA, 0x41)
+local function getHRP()
+    local char = LocalPlayer.Character
+    if char then return char:FindFirstChild("HumanoidRootPart") end
+    return nil
+end
+local function swingencode(ids)
+    if typeof(ids) ~= "table" then ids = {ids} end
+    local count = #ids
+    local hrp = getHRP()
+    local pos, cf
+    if hrp then
+        pos = hrp.Position
+        cf = hrp.CFrame
+    else
+        pos = Vector3.new()
+        cf = CFrame.new()
+    end
+    local out = {string.char(0x00, 0x13, count, 0x00)}
+    for i = 1, count do
+        local num = ids[i]
+        out[#out+1] = string.char(
+            num % 256,
+            math.floor(num / 256)      % 256,
+            math.floor(num / 65536)    % 256,
+            math.floor(num / 16777216) % 256,
+            0x00
+        )
+    end
+    out[#out+1] = string.pack("<f", pos.X)
+    out[#out+1] = string.pack("<f", pos.Y)
+    out[#out+1] = string.pack("<f", pos.Z)
+    local ex, ey, ez = cf:ToEulerAnglesXYZ()
+    local rx, ry, rz = to_half(ex), to_half(ey), to_half(ez)
+    out[#out+1] = string.char(rx % 256, math.floor(rx / 256))
+    out[#out+1] = string.char(ry % 256, math.floor(ry / 256))
+    out[#out+1] = string.char(rz % 256, math.floor(rz / 256))
+    out[#out+1] = string.pack("<f", os.clock() % 1000)
+    out[#out+1] = SWING_FOOTER
+    return table.concat(out)
+end
+local function sendSwing(ids) ByteNetReliable:FireServer(buffer.fromstring(swingencode(ids))) end
+local function healencode(slot) return string.char(0x00, 0x32, slot, 0x00) end
+local function pickupencode(eid) return string.char(0x00, 0xE7, eid%256, math.floor(eid/256)%256, math.floor(eid/65536)%256, 0x00) end
+local function harvestencode(eid) return string.char(0x00, 0xE7, eid%256, math.floor(eid/256)%256, math.floor(eid/65536)%256, 0x00) end
+local function dropencode(slot) return string.char(0x00, 0x5D, slot, 0x00) end
+local function toggledoorencode(eid) return string.char(0x00, 0x07, eid%256, math.floor(eid/256)%256, math.floor(eid/65536)%256, 0x00) end
+local function interactstructureencode(eid, itemid) return string.char(0x00, 0xC9, eid%256, math.floor(eid/256)%256, math.floor(eid/65536)%256, 0x00, itemid%256, math.floor(itemid/256)%256) end
+local function placeencode(name, x, y, z, rx, ry, rz)
+    local len = #name
+    local out = {string.char(0x00, 0xE1, len%256, math.floor(len/256))}
+    out[#out+1] = name
+    out[#out+1] = string.pack("<f", x)
+    out[#out+1] = string.pack("<f", y)
+    out[#out+1] = string.pack("<f", z)
+    local hrx, hry, hrz = to_half(rx), to_half(ry), to_half(rz)
+    out[#out+1] = string.char(hrx%256, math.floor(hrx/256))
+    out[#out+1] = string.char(hry%256, math.floor(hry/256))
+    out[#out+1] = string.char(hrz%256, math.floor(hrz/256))
+    return table.concat(out)
+end
+local function sendPacket(packet) ByteNetReliable:FireServer(buffer.fromstring(packet)) end
+
+-- Ground detection (raycast)
+local _rayParams = RaycastParams.new()
+_rayParams.FilterType = Enum.RaycastFilterType.Exclude
+_rayParams.FilterDescendantsInstances = {LocalPlayer.Character or Instance.new("Folder")}
+LocalPlayer.CharacterAdded:Connect(function(c) _rayParams.FilterDescendantsInstances = {c} end)
+
+local function groundAt(pos)
+    local origin = pos + Vector3.new(0, 60, 0)
+    local result = Workspace:Raycast(origin, Vector3.new(0, -120, 0), _rayParams)
+    if result then
+        return Vector3.new(pos.X, result.Position.Y + 0.1, pos.Z)
+    end
+    return Vector3.new(pos.X, pos.Y + 0.1, pos.Z)
+end
+
+-- ====================== SETTINGS TABLE ======================
+local Settings = {
+    wstoggle = false, wsslider = 16, jptoggle = false, jpslider = 50, hheighttoggle = false, hheightslider = 2, msatoggle = false,
+    autoeattoggle = false, fooditemdropdown = "Berry", foodthresholdslider = 50, foodcpsslider = 100,
+    ow_toggle = false, ow_threshold = 95,
+    void_toggle = false, void_item = "Bloodfruit", void_threshold = 95, void_cps = 95,
+    ka_toggle = false, ka_range = 8, ka_targets = "1", ka_cooldown = 0.01, ka_animToggle = true, ka_teamCheck = true,
+    resourceauratoggle = false, resourceaurarange = 20, resourcetargetdropdown = "1", resourcecooldownslider = 0.1,
+    critterauratoggle = false, critterrangeslider = 20, crittertargetdropdown = "1", crittercooldownslider = 0.1,
+    servantauratoggle = false, servantrangeslider = 20, servanttargetdropdown = "1", servantcooldownslider = 0.1,
+    autopickuptoggle = false, chestpickuptoggle = false, pickuprange = 20,
+    itemdropdown = {["Leaves"] = true, ["Log"] = true},
+    autocoinpresstoggle = false, coinpressspeed = 0.1, coinpressmaxdistance = 1000,
+    autocampfiresettoggle = false, campfirespeed = 0.1, campfiredistance = 1000, campfireitemdropdown = "Log",
+    droptoggle = false, dropdropdown = "Bloodfruit",
+    droptogglemanual = false, droptextbox = "Bloodfruit",
+    planttoggle = false, plantrange = 30, plantdelay = 0.05,
+    harvesttoggle = false, harvestrange = 30,
+    fruitdropdown = {["Bloodfruit"] = true},
+    tweentoplantbox = false, tweentobush = false, tweenbushonly = false, tweenrange = 250, tweenspeed = 18, oldboardsnoclip = false,
+    pp_method = "tween", pp_rows = 10, pp_cols = 10, pp_speed = 80, pp_delay = 0.25, pp_serpentine = true, pp_antiOverlap = true,
+    pot_dropToggle = false, pot_dropDropdown = "Haste Potion",
+    pot_potionType = "Haste", pot_pickupCount = 2, pot_cauldronRange = 50, pot_autoPotionToggle = false,
+    pot_campfireToggle = false, pot_campfireFuel = "Log", pot_feedAmount = 10, pot_campfireDistance = 1000, pot_campfireSpeed = 1,
+    esp_enabled = false, esp_mode = "All", esp_teamcheck = true, esp_highlight = true, esp_distance = true, esp_health = true,
+    esp_tribe = true, esp_tracers = true, esp_box = true, esp_range = 500, esp_textscale = 1,
+    tribe_enabled = false, tribe_range = 200, tribe_textscale = 1,
+    lock_chest_esp = false,
+    heart_enabled = false, heart_range = 500, heart_textscale = 1,
+    ae_turboToggle = false, ae_plantboxDist = 18, antilag_toggle = false, visualToggle = false, visualtooldropdown = "Activate Item ESP",
+    extra_bedSpawnToggle = false,
+    orbittoggle = false, orbitrange = 20, orbitradius = 10, orbitspeed = 5, itemheight = 3,
+    extra_autoWasteToggle = false, extra_autoWasteItemDropdown = "Bloodfruit", extra_autoWasteThreshold = 1000, extra_autoWasteCPS = 100,
+    extra_autoWasteLeavesToggle = false, extra_ultrafps_toggle = false, extra_autoRebirthToggle = false, extra_autoRebirthInterval = 1,
+    clearLagDropdown = {}, customClearInput = "", autoClearToggle = false,
+    twinName = "Pos", twinDelay = 0, twinList = "", twinFileName = "positions", twinEditDelay = 1, twinMoveMethod = "Tween", twinSpeed = 100, twinLoopToggle = false,
+    recordInterval = 2, recordToggle = false,
+}
+
+local function SaveSettings()
+    local data = {}
+    for k, v in pairs(Settings) do data[k] = v end
+    pcall(function() writefile("FeatherHub_Booga.json", game:GetService("HttpService"):JSONEncode(data)) end)
+end
+local function LoadSettings()
+    pcall(function()
+        if isfile and isfile("FeatherHub_Booga.json") then
+            local raw = readfile("FeatherHub_Booga.json")
+            local decoded = game:GetService("HttpService"):JSONDecode(raw)
+            for k, v in pairs(decoded) do
+                if Settings[k] ~= nil then Settings[k] = v end
+            end
+        end
+    end)
+end
+
+-- ====================== UI THEME ======================
+local Theme = {
+    bg = Color3.fromRGB(6, 5, 4), sidebar = Color3.fromRGB(10, 9, 7), card = Color3.fromRGB(14, 12, 9),
+    border = Color3.fromRGB(55, 45, 20), text = Color3.fromRGB(245, 238, 215), muted = Color3.fromRGB(130, 110, 65),
+    dim = Color3.fromRGB(22, 18, 10), sep = Color3.fromRGB(48, 38, 18), header = Color3.fromRGB(9, 8, 5),
+    inputBg = Color3.fromRGB(4, 3, 2), accent = Color3.fromRGB(195, 160, 60), accentLt = Color3.fromRGB(225, 190, 90),
+    accentDim = Color3.fromRGB(110, 88, 28), green = Color3.fromRGB(140, 195, 100), red = Color3.fromRGB(210, 75, 75),
+    gold = Color3.fromRGB(195, 160, 60), toggleOn = Color3.fromRGB(170, 140, 45), toggleOff = Color3.fromRGB(45, 35, 18),
+}
+local WIN_W, WIN_H, SIDEBAR_W, HDR_H, MARGIN, CONTENT_GAP = 630, 480, 134, 40, 8, 8
+
+local function tw(t, s, d)
+    local dur = t; if dur == nil then dur = 0.22 end
+    local style = s; if style == nil then style = Enum.EasingStyle.Quart end
+    local dir = d; if dir == nil then dir = Enum.EasingDirection.Out end
+    return TweenInfo.new(dur, style, dir)
+end
+
+local function Notify(title, msg, level)
+    local col
+    if level == "error" then col = Theme.red
+    elseif level == "warning" then col = Theme.orange
+    else col = Theme.accent end
+    local n = Instance.new("Frame", gui)
+    n.Size = UDim2.new(0, 240, 0, 52); n.Position = UDim2.new(1, -260, 0, 100)
+    n.BackgroundColor3 = Theme.card; n.BorderSizePixel = 0; n.ZIndex = 50
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 8)
+    local st = Instance.new("UIStroke", n); st.Color = col; st.Thickness = 1.5
+    local t = Instance.new("TextLabel", n); t.Size = UDim2.new(1, -16, 0, 22); t.Position = UDim2.new(0, 8, 0, 6)
+    t.Text = title; t.Font = Enum.Font.GothamBold; t.TextSize = 11; t.TextColor3 = col; t.BackgroundTransparency = 1
+    local m = Instance.new("TextLabel", n); m.Size = UDim2.new(1, -16, 0, 18); m.Position = UDim2.new(0, 8, 0, 28)
+    m.Text = msg; m.Font = Enum.Font.Gotham; m.TextSize = 9; m.TextColor3 = Theme.text; m.BackgroundTransparency = 1
+    task.delay(3, function()
+        if n.Parent then
+            TweenService:Create(n, TweenInfo.new(0.4), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+            task.wait(0.4); n:Destroy()
+        end
+    end)
+end
+
+-- Build UI
+local gui = Instance.new("ScreenGui")
+gui.Name = "FeatherHub"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+do
+    local success = pcall(function() gui.Parent = CoreGui end)
+    if not success then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+end
+
+local win = Instance.new("Frame", gui)
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = Theme.bg
+win.BackgroundTransparency = 0.05
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 2
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
+
+local titleBar = Instance.new("Frame", win)
+titleBar.Size = UDim2.new(1, 0, 0, HDR_H)
+titleBar.BackgroundColor3 = Theme.header
+titleBar.BorderSizePixel = 0
+titleBar.ZIndex = 3
+local titleText = Instance.new("TextLabel", titleBar)
+titleText.Size = UDim2.new(1, -160, 1, 0)
+titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.Text = "Feather Hub"
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 12
+titleText.TextColor3 = Theme.accent
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.BackgroundTransparency = 1
+
+local freeBadge = Instance.new("Frame", titleBar)
+freeBadge.Size = UDim2.new(0, 44, 0, 18)
+freeBadge.Position = UDim2.new(1, -120, 0.5, -9)
+freeBadge.BackgroundColor3 = Theme.accentDim
+freeBadge.BorderSizePixel = 0
+freeBadge.ZIndex = 5
+Instance.new("UICorner", freeBadge).CornerRadius = UDim.new(0, 5)
+local freeLbl = Instance.new("TextLabel", freeBadge)
+freeLbl.Size = UDim2.new(1, 0, 1, 0)
+freeLbl.Text = "FREE"
+freeLbl.Font = Enum.Font.GothamBold
+freeLbl.TextSize = 7
+freeLbl.TextColor3 = Theme.gold
+freeLbl.BackgroundTransparency = 1
+
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.new(0, 26, 0, 26)
+closeBtn.Position = UDim2.new(1, -66, 0.5, -13)
+closeBtn.Text = "×"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 16
+closeBtn.TextColor3 = Theme.muted
+closeBtn.BackgroundColor3 = Theme.dim
+closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 5
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 7)
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- Drag
+local dragToggle, dragStart, winStart = false
+titleBar.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = true; dragStart = i.Position; winStart = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragToggle and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = i.Position - dragStart
+        win.Position = UDim2.new(winStart.X.Scale, winStart.X.Offset + delta.X, winStart.Y.Scale, winStart.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragToggle = false end
+end)
+
+local sidebarY = HDR_H + MARGIN
+local bodyH = WIN_H - sidebarY - MARGIN
+local sidebar = Instance.new("Frame", win)
+sidebar.Size = UDim2.new(0, SIDEBAR_W, 0, bodyH)
+sidebar.Position = UDim2.new(0, MARGIN, 0, sidebarY)
+sidebar.BackgroundColor3 = Theme.sidebar
+sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 3
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+
+local sideScroll = Instance.new("ScrollingFrame", sidebar)
+sideScroll.Size = UDim2.new(1, -8, 1, -8)
+sideScroll.Position = UDim2.new(0, 4, 0, 4)
+sideScroll.BackgroundTransparency = 1
+sideScroll.BorderSizePixel = 0
+sideScroll.ScrollBarThickness = 2
+sideScroll.ScrollBarImageColor3 = Theme.accent
+sideScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+sideScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+sideScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+local tabListLayout = Instance.new("UIListLayout", sideScroll)
+tabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+tabListLayout.Padding = UDim.new(0, 6)
+
+local contentX = MARGIN + SIDEBAR_W + CONTENT_GAP
+local contentW = WIN_W - contentX - MARGIN
+local contentArea = Instance.new("Frame", win)
+contentArea.Size = UDim2.new(0, contentW, 0, bodyH)
+contentArea.Position = UDim2.new(0, contentX, 0, sidebarY)
+contentArea.BackgroundTransparency = 1
+contentArea.BorderSizePixel = 0
+contentArea.ZIndex = 2
+
+-- Search
+local FeatureRegistry = {}
+local function registerFeature(label, tabIdx) table.insert(FeatureRegistry, {label = label, tab = tabIdx}) end
+local searchFrame = Instance.new("Frame", contentArea)
+searchFrame.Size = UDim2.new(1, -8, 0, 34)
+searchFrame.Position = UDim2.new(0, 4, 0, 0)
+searchFrame.BackgroundColor3 = Theme.card
+searchFrame.BorderSizePixel = 0
+searchFrame.ZIndex = 5
+Instance.new("UICorner", searchFrame).CornerRadius = UDim.new(0, 9)
+local searchBox = Instance.new("TextBox", searchFrame)
+searchBox.Size = UDim2.new(1, -14, 0, 26)
+searchBox.Position = UDim2.new(0, 7, 0.5, -13)
+searchBox.PlaceholderText = "Search features..."
+searchBox.Text = ""
+searchBox.Font = Enum.Font.Gotham
+searchBox.TextSize = 10
+searchBox.TextColor3 = Theme.text
+searchBox.PlaceholderColor3 = Theme.muted
+searchBox.BackgroundColor3 = Theme.inputBg
+searchBox.BorderSizePixel = 0
+searchBox.ZIndex = 6
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
+
+local srPanel = Instance.new("Frame", gui)
+srPanel.BackgroundColor3 = Theme.card
+srPanel.BorderSizePixel = 0
+srPanel.ClipsDescendants = true
+srPanel.Visible = false
+srPanel.ZIndex = 40
+Instance.new("UICorner", srPanel).CornerRadius = UDim.new(0, 9)
+local srScroll = Instance.new("ScrollingFrame", srPanel)
+srScroll.Size = UDim2.new(1, 0, 1, 0)
+srScroll.BackgroundTransparency = 1
+srScroll.BorderSizePixel = 0
+srScroll.ScrollBarThickness = 2
+srScroll.ScrollBarImageColor3 = Theme.accent
+srScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+srScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+srScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+srScroll.ZIndex = 41
+local srLayout = Instance.new("UIListLayout", srScroll)
+srLayout.SortOrder = Enum.SortOrder.LayoutOrder
+srLayout.Padding = UDim.new(0, 2)
+local srPad = Instance.new("UIPadding", srScroll)
+srPad.PaddingTop = UDim.new(0, 4)
+srPad.PaddingBottom = UDim.new(0, 4)
+srPad.PaddingLeft = UDim.new(0, 4)
+srPad.PaddingRight = UDim.new(0, 4)
+
+local TAB_NAMES = {"Main", "Combat", "Map", "Pickup", "Farming", "Potions", "ESP", "Extra", "Twins", "Settings"}
+local tabBtns = {}
+
+local function updateSearch(query)
+    local children = srScroll:GetChildren()
+    for i = 1, #children do
+        local c = children[i]
+        if c:IsA("Frame") or c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
+    end
+    query = query:lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if query == "" then srPanel.Visible = false; return end
+    local matches = {}
+    for i = 1, #FeatureRegistry do
+        local e = FeatureRegistry[i]
+        if e.label:lower():find(query, 1, true) then table.insert(matches, e) end
+    end
+    if #matches == 0 then
+        local noRes = Instance.new("TextLabel", srScroll)
+        noRes.Size = UDim2.new(1, -8, 0, 32)
+        noRes.Text = 'No results for "' .. query .. '"'
+        noRes.Font = Enum.Font.Gotham; noRes.TextSize = 9; noRes.TextColor3 = Theme.muted
+        noRes.BackgroundTransparency = 1; noRes.ZIndex = 42; noRes.LayoutOrder = 1
+    else
+        for idx = 1, #matches do
+            local e = matches[idx]; local tabName = TAB_NAMES[e.tab]; if tabName == nil then tabName = "?" end
+            local row = Instance.new("Frame", srScroll)
+            row.Size = UDim2.new(1, -4, 0, 34); row.BackgroundColor3 = Theme.dim; row.BorderSizePixel = 0; row.ZIndex = 42; row.LayoutOrder = idx
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+            local hitbox = Instance.new("TextButton", row)
+            hitbox.Size = UDim2.new(1, 0, 1, 0); hitbox.BackgroundTransparency = 1; hitbox.Text = ""; hitbox.ZIndex = 43
+            local nameLbl = Instance.new("TextLabel", row)
+            nameLbl.Size = UDim2.new(0.65, 0, 1, 0); nameLbl.Position = UDim2.new(0, 10, 0, 0)
+            nameLbl.Text = e.label; nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 10
+            nameLbl.TextColor3 = Theme.text; nameLbl.TextXAlignment = Enum.TextXAlignment.Left; nameLbl.BackgroundTransparency = 1; nameLbl.ZIndex = 43
+            local badge = Instance.new("TextLabel", row)
+            badge.Size = UDim2.new(0, 64, 0, 18); badge.Position = UDim2.new(1, -70, 0.5, -9)
+            badge.Text = tabName; badge.Font = Enum.Font.GothamBold; badge.TextSize = 8
+            badge.TextColor3 = Theme.accent; badge.BackgroundColor3 = Theme.accentDim; badge.BackgroundTransparency = 0.5; badge.BorderSizePixel = 0; badge.ZIndex = 43
+            Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 4)
+            hitbox.MouseEnter:Connect(function() TweenService:Create(row, tw(0.1), {BackgroundColor3 = Theme.accentDim}):Play() end)
+            hitbox.MouseLeave:Connect(function() TweenService:Create(row, tw(0.1), {BackgroundColor3 = Theme.dim}):Play() end)
+            local capturedTab = e.tab
+            hitbox.MouseButton1Click:Connect(function()
+                searchBox.Text = ""; srPanel.Visible = false
+                for i = 1, #tabBtns do
+                    if tabBtns[i].Text == TAB_NAMES[capturedTab] then tabBtns[i].MouseButton1Click:Fire(); break end
+                end
+            end)
+        end
+    end
+    local absPos = searchFrame.AbsolutePosition; local absSize = searchFrame.AbsoluteSize
+    srPanel.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 4)
+    srPanel.Size = UDim2.new(0, absSize.X, 0, math.min(#matches, 5) * 36 + 8)
+    srPanel.Visible = true
+end
+searchBox:GetPropertyChangedSignal("Text"):Connect(function() updateSearch(searchBox.Text) end)
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    if not srPanel.Visible then return end
+    local mp = UserInputService:GetMouseLocation()
+    local sp = srPanel.AbsolutePosition; local ss = srPanel.AbsoluteSize
+    local sfp = searchFrame.AbsolutePosition; local sfs = searchFrame.AbsoluteSize
+    local inPanel = mp.X >= sp.X and mp.X <= sp.X + ss.X and mp.Y >= sp.Y and mp.Y <= sp.Y + ss.Y
+    local inSearch = mp.X >= sfp.X and mp.X <= sfp.X + sfs.X and mp.Y >= sfp.Y and mp.Y <= sfp.Y + sfs.Y
+    if not inPanel and not inSearch then srPanel.Visible = false end
+end)
+
+local SEARCH_H = 34; local SEARCH_GAP = 8; local PAGES_TOP = SEARCH_H + SEARCH_GAP
+local pagesFrame = Instance.new("Frame", contentArea)
+pagesFrame.Size = UDim2.new(1, 0, 1, -PAGES_TOP); pagesFrame.Position = UDim2.new(0, 0, 0, PAGES_TOP)
+pagesFrame.BackgroundTransparency = 1; pagesFrame.BorderSizePixel = 0; pagesFrame.ZIndex = 2
+
+local pages = {}
+for i = 1, #TAB_NAMES do
+    local page = Instance.new("ScrollingFrame", pagesFrame)
+    page.Size = UDim2.new(1, 0, 1, 0); page.BackgroundTransparency = 1; page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3; page.ScrollBarImageColor3 = Theme.accent
+    page.CanvasSize = UDim2.new(0, 0, 0, 0); page.AutomaticCanvasSize = Enum.AutomaticSize.Y; page.ScrollingDirection = Enum.ScrollingDirection.Y
+    page.ZIndex = 2; page.Visible = (i == 1)
+    local ll = Instance.new("UIListLayout", page)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.Padding = UDim.new(0, 8)
+    pages[i] = page
+
+    local btn = Instance.new("TextButton", sideScroll)
+    btn.Size = UDim2.new(1, -16, 0, 36)
+    if i == 1 then btn.BackgroundColor3 = Theme.accent else btn.BackgroundColor3 = Theme.dim end
+    btn.BorderSizePixel = 0; btn.AutoButtonColor = false
+    btn.Text = TAB_NAMES[i]; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10
+    if i == 1 then btn.TextColor3 = Color3.new(1, 1, 1) else btn.TextColor3 = Theme.text end
+    btn.ZIndex = 4; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+    local idx = i
+    btn.MouseButton1Click:Connect(function()
+        for j = 1, #pages do pages[j].Visible = (j == idx) end
+        for j = 1, #tabBtns do
+            local on = (j == idx)
+            local bg, tc
+            if on then bg = Theme.accent; tc = Color3.new(1, 1, 1) else bg = Theme.dim; tc = Theme.text end
+            TweenService:Create(tabBtns[j], tw(0.15), {BackgroundColor3 = bg, TextColor3 = tc}):Play()
+        end
+    end)
+    tabBtns[i] = btn
+end
+
+-- UI Element Factories
+local function makeCard(parent, order)
+    local c = Instance.new("Frame", parent)
+    c.Size = UDim2.new(1, 0, 0, 0); c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = Theme.card; c.BorderSizePixel = 0; c.LayoutOrder = order; c.ZIndex = 3
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 10)
+    local s = Instance.new("UIStroke", c); s.Color = Theme.border; s.Thickness = 1
+    local ll = Instance.new("UIListLayout", c); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+local function makeRow(card, order, isLast, height)
+    local h = height; if h == nil then h = 46 end
+    local row = Instance.new("Frame", card)
+    row.Size = UDim2.new(1, 0, 0, h); row.BackgroundTransparency = 1; row.BorderSizePixel = 0; row.LayoutOrder = order; row.ZIndex = 4
+    if not isLast then
+        local sep = Instance.new("Frame", row)
+        sep.Size = UDim2.new(1, -28, 0, 1); sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = Theme.sep; sep.BorderSizePixel = 0; sep.ZIndex = 4
+    end
+    return row
+end
+local function makeSection(parent, label, order)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1, 0, 0, 22); f.BackgroundTransparency = 1; f.BorderSizePixel = 0; f.LayoutOrder = order; f.ZIndex = 3
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1, 0, 1, 0); lbl.Text = string.upper(label); lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 8
+    lbl.TextColor3 = Theme.accent; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.ZIndex = 3
+    local line = Instance.new("Frame", f)
+    line.Size = UDim2.new(0, 28, 0, 2); line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = Theme.accent; line.BorderSizePixel = 0; line.ZIndex = 3
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return f
+end
+local function CreateToggle(parent, order, title, desc, getter, setter, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 48)
+    local strip = Instance.new("Frame", row)
+    strip.Size = UDim2.new(0, 3, 0.45, 0); strip.Position = UDim2.new(0, 0, 0.275, 0)
+    local init = getter(); strip.BackgroundColor3 = init and Theme.accent or Theme.sep; strip.BorderSizePixel = 0; strip.ZIndex = 5
+    Instance.new("UICorner", strip).CornerRadius = UDim.new(1, 0)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.65, -20, 0, 18); titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1; titleLbl.Text = title; titleLbl.TextColor3 = Theme.text; titleLbl.Font = Enum.Font.GothamSemibold; titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5
+    local descLbl = Instance.new("TextLabel", row)
+    descLbl.Size = UDim2.new(0.65, -20, 0, 13); descLbl.Position = UDim2.new(0, 16, 0, 27)
+    descLbl.BackgroundTransparency = 1; descLbl.Text = desc; descLbl.TextColor3 = Theme.muted; descLbl.Font = Enum.Font.Gotham; descLbl.TextSize = 8
+    descLbl.TextXAlignment = Enum.TextXAlignment.Left; descLbl.ZIndex = 5
+    local toggleBg = Instance.new("Frame", row)
+    toggleBg.Size = UDim2.new(0, 44, 0, 22); toggleBg.Position = UDim2.new(1, -60, 0.5, -11)
+    toggleBg.BackgroundColor3 = init and Theme.toggleOn or Theme.toggleOff; toggleBg.BorderSizePixel = 0; toggleBg.ZIndex = 5
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+    local toggleStroke = Instance.new("UIStroke", toggleBg)
+    toggleStroke.Color = init and Theme.accent or Theme.sep; toggleStroke.Thickness = 1
+    local toggleKnob = Instance.new("Frame", toggleBg)
+    toggleKnob.Size = UDim2.new(0, 16, 0, 16); toggleKnob.Position = init and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+    toggleKnob.BackgroundColor3 = Color3.new(1, 1, 1); toggleKnob.BorderSizePixel = 0; toggleKnob.ZIndex = 6
+    Instance.new("UICorner", toggleKnob).CornerRadius = UDim.new(1, 0)
+    local hitBtn = Instance.new("TextButton", row)
+    hitBtn.Size = UDim2.new(0, 60, 0, 30); hitBtn.Position = UDim2.new(1, -70, 0.5, -15)
+    hitBtn.BackgroundTransparency = 1; hitBtn.Text = ""; hitBtn.ZIndex = 7
+    local state = init
+    hitBtn.MouseButton1Click:Connect(function()
+        state = not state; setter(state); SaveSettings(); local on = getter()
+        local newBg, newStroke, newStripBg, newPos
+        if on then newBg = Theme.toggleOn; newStroke = Theme.accent; newStripBg = Theme.accent; newPos = UDim2.new(1, -19, 0.5, -8)
+        else newBg = Theme.toggleOff; newStroke = Theme.sep; newStripBg = Theme.sep; newPos = UDim2.new(0, 3, 0.5, -8) end
+        TweenService:Create(toggleBg, tw(0.2), {BackgroundColor3 = newBg}):Play()
+        TweenService:Create(toggleStroke, tw(0.2), {Color = newStroke}):Play()
+        TweenService:Create(toggleKnob, tw(0.2, Enum.EasingStyle.Back), {Position = newPos}):Play()
+        TweenService:Create(strip, tw(0.2), {BackgroundColor3 = newStripBg}):Play()
+    end)
+    return row
+end
+local function CreateButton(parent, order, title, desc, callback, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 50)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.6, -16, 0, 16); titleLbl.Position = UDim2.new(0, 16, 0, 9)
+    titleLbl.BackgroundTransparency = 1; titleLbl.Text = title; titleLbl.TextColor3 = Theme.text; titleLbl.Font = Enum.Font.GothamSemibold; titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5
+    local descLbl = Instance.new("TextLabel", row)
+    descLbl.Size = UDim2.new(0.6, -16, 0, 12); descLbl.Position = UDim2.new(0, 16, 0, 27)
+    descLbl.BackgroundTransparency = 1; descLbl.Text = desc; descLbl.TextColor3 = Theme.muted; descLbl.Font = Enum.Font.Gotham; descLbl.TextSize = 8
+    descLbl.TextXAlignment = Enum.TextXAlignment.Left; descLbl.ZIndex = 5
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 80, 0, 28); btn.Position = UDim2.new(1, -96, 0.5, -14)
+    btn.BackgroundColor3 = Theme.accentDim; btn.Text = "EXECUTE"; btn.TextColor3 = Color3.new(1, 1, 1); btn.Font = Enum.Font.GothamBold; btn.TextSize = 9
+    btn.BorderSizePixel = 0; btn.AutoButtonColor = false; btn.ZIndex = 5; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = Theme.accent}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = Theme.accentDim}):Play() end)
+    btn.MouseButton1Click:Connect(callback)
+    return row
+end
+local function CreateSlider(parent, order, title, desc, min, max, getter, setter, isInt, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 68)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.65, -16, 0, 16); titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1; titleLbl.Text = title; titleLbl.TextColor3 = Theme.text; titleLbl.Font = Enum.Font.GothamSemibold; titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5
+    local descLbl = Instance.new("TextLabel", row)
+    descLbl.Size = UDim2.new(0.65, -16, 0, 12); descLbl.Position = UDim2.new(0, 16, 0, 24)
+    descLbl.BackgroundTransparency = 1; descLbl.Text = desc; descLbl.TextColor3 = Theme.muted; descLbl.Font = Enum.Font.Gotham; descLbl.TextSize = 8
+    descLbl.TextXAlignment = Enum.TextXAlignment.Left; descLbl.ZIndex = 5
+    local val = getter()
+    local valueBox = Instance.new("TextBox", row)
+    valueBox.Size = UDim2.new(0, 55, 0, 22); valueBox.Position = UDim2.new(1, -70, 0, 8)
+    valueBox.BackgroundColor3 = Theme.inputBg; valueBox.Text = tostring(val); valueBox.TextColor3 = Theme.gold; valueBox.Font = Enum.Font.GothamBold; valueBox.TextSize = 10
+    valueBox.BorderSizePixel = 0; valueBox.ZIndex = 5; Instance.new("UICorner", valueBox).CornerRadius = UDim.new(0, 5)
+    local track = Instance.new("Frame", row)
+    track.Size = UDim2.new(1, -32, 0, 4); track.Position = UDim2.new(0, 16, 0, 50)
+    track.BackgroundColor3 = Theme.dim; track.BorderSizePixel = 0; track.ZIndex = 5; Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new((val - min) / (max - min), 0, 1, 0); fill.BackgroundColor3 = Theme.accent; fill.BorderSizePixel = 0; fill.ZIndex = 6
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    local knob = Instance.new("TextButton", track)
+    knob.Size = UDim2.new(0, 14, 0, 14); knob.Position = UDim2.new((val - min) / (max - min), -7, 0.5, -7)
+    knob.BackgroundColor3 = Theme.gold; knob.Text = ""; knob.BorderSizePixel = 0; knob.ZIndex = 7; Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    local ds = false
+    knob.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then ds = true end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then ds = false end end)
+    UserInputService.InputChanged:Connect(function(i)
+        if ds and i.UserInputType == Enum.UserInputType.MouseMovement then
+            local ap = track.AbsolutePosition; local sz = track.AbsoluteSize
+            local ratio = math.clamp((i.Position.X - ap.X) / sz.X, 0, 1)
+            local newVal = isInt and math.floor(min + ratio*(max - min)) or min + ratio*(max - min)
+            setter(newVal); SaveSettings()
+            valueBox.Text = tostring(newVal); fill.Size = UDim2.new(ratio, 0, 1, 0); knob.Position = UDim2.new(ratio, -7, 0.5, -7)
+        end
+    end)
+    valueBox.FocusLost:Connect(function()
+        local num = tonumber(valueBox.Text)
+        if num then
+            num = math.clamp(num, min, max); if isInt then num = math.floor(num) end
+            setter(num); SaveSettings()
+            local pct = (num - min) / (max - min)
+            fill.Size = UDim2.new(pct, 0, 1, 0); knob.Position = UDim2.new(pct, -7, 0.5, -7); valueBox.Text = tostring(num)
+        else valueBox.Text = tostring(getter()) end
+    end)
+    return row
+end
+-- FIXED CreateDropdown: button text is always a string, never a table
+local function CreateDropdown(parent, order, title, desc, options, getter, setter, isMulti, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 48)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.55, -16, 0, 16); titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1; titleLbl.Text = title; titleLbl.TextColor3 = Theme.text; titleLbl.Font = Enum.Font.GothamSemibold; titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5
+    local descLbl = Instance.new("TextLabel", row)
+    descLbl.Size = UDim2.new(0.55, -16, 0, 12); descLbl.Position = UDim2.new(0, 16, 0, 26)
+    descLbl.BackgroundTransparency = 1; descLbl.Text = desc; descLbl.TextColor3 = Theme.muted; descLbl.Font = Enum.Font.Gotham; descLbl.TextSize = 8
+    descLbl.TextXAlignment = Enum.TextXAlignment.Left; descLbl.ZIndex = 5
+
+    local selected = getter()
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 140, 0, 28); btn.Position = UDim2.new(1, -156, 0.5, -14)
+    btn.BackgroundColor3 = Theme.inputBg
+
+    -- Determine the display text for the button
+    local displayText
+    if isMulti then
+        -- For multi‑select we always show a fixed label, because the value is a table
+        displayText = "Select..."
+    else
+        if selected == "" or selected == nil then
+            if #options > 0 then
+                selected = options[1]
+                if type(selected) == "table" and selected.Title then selected = selected.Title end
+                setter(selected)
+            else
+                selected = ""
+            end
+        end
+        displayText = selected
+    end
+
+    btn.Text = displayText
+    btn.TextColor3 = Theme.gold; btn.Font = Enum.Font.GothamSemibold; btn.TextSize = 9; btn.BorderSizePixel = 0; btn.AutoButtonColor = false; btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    local drop = Instance.new("Frame", gui)
+    drop.Size = UDim2.new(0, 140, 0, #options * 24); drop.Position = UDim2.new(1, -156, 0, 42)
+    drop.BackgroundColor3 = Theme.card; drop.BorderSizePixel = 0; drop.Visible = false; drop.ZIndex = 20; Instance.new("UICorner", drop).CornerRadius = UDim.new(0, 6)
+    local scroll = Instance.new("ScrollingFrame", drop)
+    scroll.Size = UDim2.new(1, 0, 1, 0); scroll.BackgroundTransparency = 1; scroll.ScrollBarThickness = 3; scroll.ScrollBarImageColor3 = Theme.accent
+    scroll.CanvasSize = UDim2.new(0, 0, 0, #options * 24); scroll.ZIndex = 21
+    local listLayout = Instance.new("UIListLayout", scroll); listLayout.Padding = UDim.new(0, 1); listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local function refresh(newOptions)
+        options = newOptions; scroll:ClearAllChildren()
+        for _, opt in ipairs(options) do
+            local optTitle = type(opt) == "table" and opt.Title or opt
+            local ob = Instance.new("TextButton", scroll)
+            ob.Size = UDim2.new(1, 0, 0, 23); ob.BackgroundColor3 = Theme.dim; ob.BackgroundTransparency = 0.5
+            ob.Text = optTitle; ob.TextColor3 = Theme.text; ob.Font = Enum.Font.Gotham; ob.TextSize = 9; ob.BorderSizePixel = 0; ob.ZIndex = 22
+            ob.MouseEnter:Connect(function() TweenService:Create(ob, tw(0.1), {BackgroundTransparency = 0}):Play() end)
+            ob.MouseLeave:Connect(function() TweenService:Create(ob, tw(0.1), {BackgroundTransparency = 0.5}):Play() end)
+            ob.MouseButton1Click:Connect(function()
+                if isMulti then
+                    local current = getter(); if not current then current = {} end
+                    current[optTitle] = not current[optTitle]; setter(current)
+                else
+                    setter(optTitle)
+                    btn.Text = optTitle
+                end
+                drop.Visible = false; SaveSettings()
+            end)
+        end
+    end; refresh(options)
+
+    btn.MouseButton1Click:Connect(function() drop.Visible = not drop.Visible end)
+    UserInputService.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 and drop.Visible then
+            local mp = UserInputService:GetMouseLocation(); local dp = drop.AbsolutePosition; local ds2 = drop.AbsoluteSize
+            if mp.X < dp.X or mp.X > dp.X + ds2.X or mp.Y < dp.Y or mp.Y > dp.Y + ds2.Y then drop.Visible = false end
+        end
+    end)
+    return {button = btn, refresh = refresh, getSelected = function() return btn.Text end}
+end
+
+local function CreateInput(parent, order, title, default, placeholder, callback, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 46)
+    local l = Instance.new("TextLabel", row)
+    l.Size = UDim2.new(0.4, 0, 1, 0); l.Position = UDim2.new(0, 16, 0, 0)
+    l.Text = title; l.Font = Enum.Font.GothamSemibold; l.TextSize = 10; l.TextColor3 = Theme.text; l.TextXAlignment = Enum.TextXAlignment.Left; l.BackgroundTransparency = 1; l.ZIndex = 5
+    local box = Instance.new("TextBox", row)
+    box.Size = UDim2.new(0, 130, 0, 28); box.Position = UDim2.new(1, -144, 0.5, -14)
+    box.Text = default; if box.Text == nil then box.Text = "" end; box.PlaceholderText = placeholder; box.Font = Enum.Font.Code; box.TextSize = 12; box.TextColor3 = Theme.text
+    box.BackgroundColor3 = Theme.inputBg; box.BorderSizePixel = 0; box.ZIndex = 6; Instance.new("UICorner", box).CornerRadius = UDim.new(0, 7)
+    local stroke = Instance.new("UIStroke", box); stroke.Color = Theme.border; stroke.Thickness = 1
+    box.Focused:Connect(function() TweenService:Create(stroke, tw(), {Color = Theme.accent, Thickness = 1.5}):Play() end)
+    box.FocusLost:Connect(function() TweenService:Create(stroke, tw(), {Color = Theme.border, Thickness = 1}):Play() end)
+    if callback then box:GetPropertyChangedSignal("Text"):Connect(function() callback(box.Text) end) end
+    return box
+end
+
+-- ====================== BUILD ALL TABS ======================
+local function BuildTabs()
+    -- Main Tab
+    local pg1 = pages[1]
+    makeSection(pg1, "Movement Modifications", 1)
+    local moveCard = makeCard(pg1, 2)
+    CreateToggle(moveCard, 1, "Walkspeed", "Modify your walkspeed", function() return Settings.wstoggle end, function(v) Settings.wstoggle = v end, false, 1)
+    CreateSlider(moveCard, 2, "Value", "Walk speed", 1, 35, function() return Settings.wsslider end, function(v) Settings.wsslider = v end, true, false, 1)
+    CreateToggle(moveCard, 3, "JumpPower", "Modify your jump power", function() return Settings.jptoggle end, function(v) Settings.jptoggle = v end, false, 1)
+    CreateSlider(moveCard, 4, "Value", "Jump height", 1, 65, function() return Settings.jpslider end, function(v) Settings.jpslider = v end, true, false, 1)
+    CreateToggle(moveCard, 5, "HipHeight", "Modify your hip height", function() return Settings.hheighttoggle end, function(v) Settings.hheighttoggle = v end, false, 1)
+    CreateSlider(moveCard, 6, "Value", "Hip height", 0.1, 6.5, function() return Settings.hheightslider end, function(v) Settings.hheightslider = v end, false, false, 1)
+    CreateToggle(moveCard, 7, "No Mountain Slip", "Prevent sliding on slopes", function() return Settings.msatoggle end, function(v) Settings.msatoggle = v end, true, 1)
+    makeSection(pg1, "Copy Information", 3)
+    local copyCard = makeCard(pg1, 4)
+    CreateButton(copyCard, 1, "Copy Job ID", "Copy the server Job ID", function() setclipboard(game.JobId) end, false, 1)
+    CreateButton(copyCard, 2, "Copy HWID", "Copy your Hardware ID", function() setclipboard(RbxAnalytics:GetClientId()) end, false, 1)
+    CreateButton(copyCard, 3, "Copy Session ID (SID)", "Copy your Session ID", function() setclipboard(RbxAnalytics:GetSessionId()) end, true, 1)
+
+    -- Combat Tab
+    local pg2 = pages[2]
+    makeSection(pg2, "Auto Eat", 1)
+    local autoEatCard = makeCard(pg2, 2)
+    CreateToggle(autoEatCard, 1, "Enable Auto Eat", "Automatically eat when hungry", function() return Settings.autoeattoggle end, function(v) Settings.autoeattoggle = v end, false, 2)
+    CreateDropdown(autoEatCard, 2, "Food Item", "Select food to use", {"Berry","Bluefruit","Bloodfruit","Jelly","Lemon","Pumpkin","Cooked Meat"}, function() return Settings.fooditemdropdown end, function(v) Settings.fooditemdropdown = v end, false, false, 2)
+    CreateSlider(autoEatCard, 3, "Min Food (%)", "Eat when food drops below this", 5, 100, function() return Settings.foodthresholdslider end, function(v) Settings.foodthresholdslider = v end, false, false, 2)
+    CreateSlider(autoEatCard, 4, "CPS", "Consumption speed", 1, 20000, function() return Settings.foodcpsslider end, function(v) Settings.foodcpsslider = v end, false, true, 2)
+    makeSection(pg2, "OW Heal", 3)
+    local owCard = makeCard(pg2, 4)
+    CreateToggle(owCard, 1, "Enable OW Heal", "Heal using Bloodfruit (fast)", function() return Settings.ow_toggle end, function(v) Settings.ow_toggle = v end, false, 2)
+    CreateSlider(owCard, 2, "Health %", "Heal when HP below this", 5, 100, function() return Settings.ow_threshold end, function(v) Settings.ow_threshold = v end, false, true, 2)
+    makeSection(pg2, "Void Heal", 5)
+    local voidCard = makeCard(pg2, 6)
+    CreateToggle(voidCard, 1, "Enable Void Heal", "Heal using selected item (slower)", function() return Settings.void_toggle end, function(v) Settings.void_toggle = v end, false, 2)
+    CreateDropdown(voidCard, 2, "Healing Item", "Item to use", {"Bloodfruit","Berry","Bluefruit","Lemon"}, function() return Settings.void_item end, function(v) Settings.void_item = v end, false, false, 2)
+    CreateSlider(voidCard, 3, "Health %", "Heal when HP below this", 5, 100, function() return Settings.void_threshold end, function(v) Settings.void_threshold = v end, false, false, 2)
+    CreateSlider(voidCard, 4, "CPS", "Consumption speed", 1, 170, function() return Settings.void_cps end, function(v) Settings.void_cps = v end, false, true, 2)
+    makeSection(pg2, "Kill Aura", 7)
+    local kaCard = makeCard(pg2, 8)
+    CreateToggle(kaCard, 1, "Enable Kill Aura", "Auto‑attack nearby enemies", function() return Settings.ka_toggle end, function(v) Settings.ka_toggle = v end, false, 2)
+    CreateSlider(kaCard, 2, "Range", "Attack range (studs)", 1, 20, function() return Settings.ka_range end, function(v) Settings.ka_range = v end, true, false, 2)
+    CreateDropdown(kaCard, 3, "Max Targets", "How many enemies per swing", {"1","2","3","4","5","6","8","10"}, function() return tostring(Settings.ka_targets) end, function(v) Settings.ka_targets = v end, false, false, 2)
+    CreateSlider(kaCard, 4, "Attack Cooldown (s)", "Swing interval", 0.005, 1.0, function() return Settings.ka_cooldown end, function(v) Settings.ka_cooldown = v end, false, false, 2)
+    CreateToggle(kaCard, 5, "Legit Animation", "Play slash animation", function() return Settings.ka_animToggle end, function(v) Settings.ka_animToggle = v end, false, 2)
+    CreateToggle(kaCard, 6, "Team Check", "Ignore teammates", function() return Settings.ka_teamCheck end, function(v) Settings.ka_teamCheck = v end, true, 2)
+
+    -- Map Tab
+    local pg3 = pages[3]
+    makeSection(pg3, "Resource Aura", 1)
+    local resCard = makeCard(pg3, 2)
+    CreateToggle(resCard, 1, "Enable Resource Aura", "Swing at resources", function() return Settings.resourceauratoggle end, function(v) Settings.resourceauratoggle = v end, false, 3)
+    CreateSlider(resCard, 2, "Range", "Search radius", 1, 20, function() return Settings.resourceaurarange end, function(v) Settings.resourceaurarange = v end, true, false, 3)
+    CreateDropdown(resCard, 3, "Max Targets", "How many to hit", {"1","2","3","4","5","6"}, function() return tostring(Settings.resourcetargetdropdown) end, function(v) Settings.resourcetargetdropdown = v end, false, false, 3)
+    CreateSlider(resCard, 4, "Swing Cooldown (s)", "Interval between swings", 0.01, 1.01, function() return Settings.resourcecooldownslider end, function(v) Settings.resourcecooldownslider = v end, false, true, 3)
+    makeSection(pg3, "Critter Aura", 3)
+    local critCard = makeCard(pg3, 4)
+    CreateToggle(critCard, 1, "Enable Critter Aura", "Swing at critters", function() return Settings.critterauratoggle end, function(v) Settings.critterauratoggle = v end, false, 3)
+    CreateSlider(critCard, 2, "Range", "Search radius", 1, 20, function() return Settings.critterrangeslider end, function(v) Settings.critterrangeslider = v end, true, false, 3)
+    CreateDropdown(critCard, 3, "Max Targets", "How many to hit", {"1","2","3","4","5","6"}, function() return tostring(Settings.crittertargetdropdown) end, function(v) Settings.crittertargetdropdown = v end, false, false, 3)
+    CreateSlider(critCard, 4, "Swing Cooldown (s)", "Interval", 0.01, 1.01, function() return Settings.crittercooldownslider end, function(v) Settings.crittercooldownslider = v end, false, true, 3)
+    makeSection(pg3, "Servant Aura", 5)
+    local servCard = makeCard(pg3, 6)
+    CreateToggle(servCard, 1, "Enable Servant Aura", "Swing at Queen Ant's Servants", function() return Settings.servantauratoggle end, function(v) Settings.servantauratoggle = v end, false, 3)
+    CreateSlider(servCard, 2, "Range", "Search radius", 1, 30, function() return Settings.servantrangeslider end, function(v) Settings.servantrangeslider = v end, true, false, 3)
+    CreateDropdown(servCard, 3, "Max Targets", "How many to hit", {"1","2","3","4","5","6"}, function() return tostring(Settings.servanttargetdropdown) end, function(v) Settings.servanttargetdropdown = v end, false, false, 3)
+    CreateSlider(servCard, 4, "Swing Cooldown (s)", "Interval", 0.01, 1.01, function() return Settings.servantcooldownslider end, function(v) Settings.servantcooldownslider = v end, false, true, 3)
+
+    -- Pickup Tab
+    local pg4 = pages[4]
+    makeSection(pg4, "Auto Pickup System", 1)
+    local puCard = makeCard(pg4, 2)
+    CreateToggle(puCard, 1, "Enable Auto Pickup", "Pickup items automatically", function() return Settings.autopickuptoggle end, function(v) Settings.autopickuptoggle = v end, false, 4)
+    CreateToggle(puCard, 2, "Pickup From Chests", "Also loot chests", function() return Settings.chestpickuptoggle end, function(v) Settings.chestpickuptoggle = v end, false, 4)
+    CreateSlider(puCard, 3, "Pickup Range", "Max distance", 1, 35, function() return Settings.pickuprange end, function(v) Settings.pickuprange = v end, true, false, 4)
+    local puItems = {"Berry","Bloodfruit","Bluefruit","Lemon","Strawberry","Gold","Raw Gold","Crystal Chunk","Coin","Coins","Coin2","Coin Stack","Essence","Emerald","Raw Emerald","Pink Diamond","Raw Pink Diamond","Void Shard","Jelly","Magnetite","Raw Magnetite","Adurite","Raw Adurite","Ice Cube","Stone","Iron","Raw Iron","Steel","Hide","Leaves","Log","Wood","Pie","Sand","Glass","Glass Bottle"}
+    CreateDropdown(puCard, 4, "Items to Pickup", "Select items (multi)", puItems, function() return Settings.itemdropdown end, function(v) Settings.itemdropdown = v end, true, true, 4)
+    makeSection(pg4, "Auto Coin Press", 3)
+    local cpCard = makeCard(pg4, 4)
+    CreateToggle(cpCard, 1, "Auto Coin Press", "Feed coin press", function() return Settings.autocoinpresstoggle end, function(v) Settings.autocoinpresstoggle = v end, false, 4)
+    CreateSlider(cpCard, 2, "Coin Press Delay (s)", "Delay between actions", 0.01, 1.01, function() return Settings.coinpressspeed end, function(v) Settings.coinpressspeed = v end, false, false, 4)
+    CreateSlider(cpCard, 3, "Max Coin Press Distance", "Max search range", 1, 10000, function() return Settings.coinpressmaxdistance end, function(v) Settings.coinpressmaxdistance = v end, true, true, 4)
+    makeSection(pg4, "Auto Campfire", 5)
+    local cfCard = makeCard(pg4, 6)
+    CreateToggle(cfCard, 1, "Auto Feed Campfire", "Feed campfire with fuel", function() return Settings.autocampfiresettoggle end, function(v) Settings.autocampfiresettoggle = v end, false, 4)
+    CreateSlider(cfCard, 2, "Campfire Delay (s)", "Delay between feeds", 0.01, 1.01, function() return Settings.campfirespeed end, function(v) Settings.campfirespeed = v end, false, false, 4)
+    CreateSlider(cfCard, 3, "Max Campfire Distance", "Max search range", 1, 10000, function() return Settings.campfiredistance end, function(v) Settings.campfiredistance = v end, true, false, 4)
+    CreateDropdown(cfCard, 4, "Fuel Item", "Item to burn", {"Log","Leaves","Wood"}, function() return Settings.campfireitemdropdown end, function(v) Settings.campfireitemdropdown = v end, false, true, 4)
+    makeSection(pg4, "Auto Drop", 7)
+    local dropCard = makeCard(pg4, 8)
+    CreateToggle(dropCard, 1, "Auto Drop Selected Item", "Drop item continuously", function() return Settings.droptoggle end, function(v) Settings.droptoggle = v end, false, 4)
+    CreateDropdown(dropCard, 2, "Select Item to Drop", "Item", {"Bloodfruit","Berry","Bluefruit","Lemon","Iron","Steel","Adurite","Wood","Log","Leaves","Stone","Coal","Gold","Pink Diamond","Void Shard","Jelly","Strawberry","Pumpkin","Banana","Orange","Oddberry","Strangefruit","Sunfruit","Apple","Barley","Cloudberry","Carrot","Mango","Prickly Pear","Corn","Frostfruit","Watermelon","Blossom"}, function() return Settings.dropdropdown end, function(v) Settings.dropdropdown = v end, false, false, 4)
+    makeSection(pg4, "Manual Auto Drop", 9)
+    local mDropCard = makeCard(pg4, 10)
+    CreateToggle(mDropCard, 1, "Auto Drop Custom", "Drop custom named item", function() return Settings.droptogglemanual end, function(v) Settings.droptogglemanual = v end, false, 4)
+    CreateInput(mDropCard, 2, "Custom Item Name", Settings.droptextbox, "e.g. Bloodfruit", function(v) Settings.droptextbox = v end, true, 4)
+
+    -- Farming Tab
+    local pg5 = pages[5]
+    makeSection(pg5, "Auto Plant & Harvest", 1)
+    local fCard = makeCard(pg5, 2)
+    local fruitList = {"Bloodfruit","Bluefruit","Lemon","Coconut","Jelly","Banana","Orange","Oddberry","Berry","Strangefruit","Strawberry","Sunfruit","Pumpkin","Apple","Barley","Cloudberry","Carrot","Mango","Prickly Pear","Corn","Frostfruit","Watermelon","Blossom"}
+    CreateDropdown(fCard, 1, "Select Fruit", "Fruits to plant", fruitList, function() return Settings.fruitdropdown end, function(v) Settings.fruitdropdown = v end, true, false, 5)
+    CreateToggle(fCard, 2, "Auto Plant", "Plant seeds", function() return Settings.planttoggle end, function(v) Settings.planttoggle = v end, false, 5)
+    CreateSlider(fCard, 3, "Plant Range", "Search radius", 1, 30, function() return Settings.plantrange end, function(v) Settings.plantrange = v end, true, false, 5)
+    CreateSlider(fCard, 4, "Plant Interval (s)", "Delay between planting", 0.01, 1, function() return Settings.plantdelay end, function(v) Settings.plantdelay = v end, false, false, 5)
+    CreateToggle(fCard, 5, "Auto Harvest", "Harvest crops", function() return Settings.harvesttoggle end, function(v) Settings.harvesttoggle = v end, false, 5)
+    CreateSlider(fCard, 6, "Harvest Range", "Search radius", 1, 30, function() return Settings.harvestrange end, function(v) Settings.harvestrange = v end, true, true, 5)
+    makeSection(pg5, "Tween Assistance", 3)
+    local twCard = makeCard(pg5, 4)
+    CreateToggle(twCard, 1, "Tween to Empty Plant Box", "Move to empty box", function() return Settings.tweentoplantbox end, function(v) Settings.tweentoplantbox = v end, false, 5)
+    CreateToggle(twCard, 2, "Tween to Bush + Empty Plant Box", "Move to bush then box", function() return Settings.tweentobush end, function(v) Settings.tweentobush = v end, false, 5)
+    CreateToggle(twCard, 3, "Tween to Bush Only", "Move to bush only", function() return Settings.tweenbushonly end, function(v) Settings.tweenbushonly = v end, false, 5)
+    CreateSlider(twCard, 4, "Search Range", "Max tween distance", 1, 750, function() return Settings.tweenrange end, function(v) Settings.tweenrange = v end, true, false, 5)
+    CreateSlider(twCard, 5, "Tween Speed", "Movement speed", 10, 19, function() return Settings.tweenspeed end, function(v) Settings.tweenspeed = v end, true, false, 5)
+    CreateToggle(twCard, 6, "Noclip Old Boards Only", "Ignore old boards collision", function() return Settings.oldboardsnoclip end, function(v) Settings.oldboardsnoclip = v end, true, 5)
+    makeSection(pg5, "Quick Place Plantboxes", 5)
+    local qpCard = makeCard(pg5, 6)
+    local function placeplants(size)
+        local startPos = HumanoidRootPart.Position - Vector3.new(0, 3, 0)
+        local spacing = 6.04
+        local count = 0
+        local ry = math.rad(45)
+        for x = 0, size-1 do
+            for z = 0, size-1 do
+                local pos = startPos + Vector3.new(x*spacing, 0, z*spacing)
+                local g = groundAt(pos)
+                sendPacket(placeencode("Plant Box", g.X, g.Y, g.Z, 0, ry, 0))
+                count = count + 1
+                task.wait(0.3)
+            end
+        end
+        Notify("Plantboxes", "Placed "..count.." boxes ("..size.."x"..size..")")
+    end
+    CreateButton(qpCard, 1, "Place 16x16 Plantboxes (256)", "Place a 16×16 grid", function() placeplants(16) end, false, 5)
+    CreateButton(qpCard, 2, "Place 15x15 (225)", "", function() placeplants(15) end, false, 5)
+    CreateButton(qpCard, 3, "Place 10x10 (100)", "", function() placeplants(10) end, false, 5)
+    CreateButton(qpCard, 4, "Place 5x5 (25)", "", function() placeplants(5) end, true, 5)
+    makeSection(pg5, "Plant Planner v3.3 (Diamond Grid)", 7)
+    local ppCard = makeCard(pg5, 8)
+    CreateDropdown(ppCard, 1, "Movement Method", "How to move to target", {"tween","walk","velocity"}, function() return Settings.pp_method end, function(v) Settings.pp_method = v; if _G.PlantPlanner then _G.PlantPlanner.setState({method=v}) end end, false, false, 5)
+    CreateSlider(ppCard, 2, "Rows", "Number of rows", 1, 100, function() return Settings.pp_rows end, function(v) Settings.pp_rows = v; if _G.PlantPlanner then _G.PlantPlanner.setState({rows=v}) end end, true, false, 5)
+    CreateSlider(ppCard, 3, "Columns", "Number of columns", 1, 100, function() return Settings.pp_cols end, function(v) Settings.pp_cols = v; if _G.PlantPlanner then _G.PlantPlanner.setState({cols=v}) end end, true, false, 5)
+    CreateSlider(ppCard, 4, "Speed", "Movement speed", 10, 200, function() return Settings.pp_speed end, function(v) Settings.pp_speed = v; if _G.PlantPlanner then _G.PlantPlanner.setState({speed=v}) end end, true, false, 5)
+    CreateSlider(ppCard, 5, "Placement Delay (s)", "Delay between placements", 0.0, 1.0, function() return Settings.pp_delay end, function(v) Settings.pp_delay = v; if _G.PlantPlanner then _G.PlantPlanner.setState({delay=v}) end end, false, false, 5)
+    CreateToggle(ppCard, 6, "Serpentine Path", "Zigzag pattern", function() return Settings.pp_serpentine end, function(v) Settings.pp_serpentine = v; if _G.PlantPlanner then _G.PlantPlanner.setState({serpentine=v}) end end, false, 5)
+    CreateToggle(ppCard, 7, "Anti-Overlap Check", "Skip occupied spots", function() return Settings.pp_antiOverlap end, function(v) Settings.pp_antiOverlap = v; if _G.PlantPlanner then _G.PlantPlanner.setState({antiOverlap=v}) end end, true, 5)
+    makeSection(pg5, "Plant Planner Actions", 9)
+    local ppActCard = makeCard(pg5, 10)
+    CreateButton(ppActCard, 1, "Preview Grid at Current Position", "Show planned boxes", function() if HumanoidRootPart and _G.PlantPlanner then _G.PlantPlanner.previewAt(HumanoidRootPart.Position) end end, false, 5)
+    CreateButton(ppActCard, 2, "Start Placement", "Place boxes according to grid", function() if HumanoidRootPart and _G.PlantPlanner then _G.PlantPlanner.runAt(HumanoidRootPart.Position) end end, false, 5)
+    CreateButton(ppActCard, 3, "Cancel / Clear Preview", "Stop and remove preview", function() if _G.PlantPlanner then _G.PlantPlanner.cancel(); _G.PlantPlanner.clearPreview() end end, true, 5)
+
+    -- Potions Tab
+    local pg6 = pages[6]
+    makeSection(pg6, "Auto Potion (Beta)", 1)
+    local potCard = makeCard(pg6, 2)
+    CreateToggle(potCard, 1, "Enable Auto Potion Cycle", "Start infinite potion making", function() return Settings.pot_autoPotionToggle end, function(v) Settings.pot_autoPotionToggle = v end, false, 6)
+    CreateDropdown(potCard, 2, "Potion Type", "Select potion", {"Haste","Poison","Swift","Ice","Healing","InstaDMG","FireResistant","Strength","Weakness"}, function() return Settings.pot_potionType end, function(v) Settings.pot_potionType = v end, false, false, 6)
+    CreateSlider(potCard, 3, "Pickup times per cauldron", "How many times to pick up", 1, 5, function() return Settings.pot_pickupCount end, function(v) Settings.pot_pickupCount = v end, true, false, 6)
+    CreateSlider(potCard, 4, "Cauldron Search Range (studs)", "Max distance to cauldrons", 10, 100, function() return Settings.pot_cauldronRange end, function(v) Settings.pot_cauldronRange = v end, true, true, 6)
+
+    -- ESP Tab
+    local pg7 = pages[7]
+    makeSection(pg7, "Players ESP", 1)
+    local espCard = makeCard(pg7, 2)
+    CreateToggle(espCard, 1, "Enable Player ESP", "Show players", function() return Settings.esp_enabled end, function(v) Settings.esp_enabled = v end, false, 7)
+    CreateDropdown(espCard, 2, "Display Mode", "Who to show", {"All","God only","Wandering Trader"}, function() return Settings.esp_mode end, function(v) Settings.esp_mode = v end, false, false, 7)
+    CreateToggle(espCard, 3, "Team Check (hide allies)", "Only enemies", function() return Settings.esp_teamcheck end, function(v) Settings.esp_teamcheck = v end, false, 7)
+    CreateToggle(espCard, 4, "Character Highlight", "Glow", function() return Settings.esp_highlight end, function(v) Settings.esp_highlight = v end, false, 7)
+    CreateToggle(espCard, 5, "Show Distance", "", function() return Settings.esp_distance end, function(v) Settings.esp_distance = v end, false, 7)
+    CreateToggle(espCard, 6, "Show Health", "", function() return Settings.esp_health end, function(v) Settings.esp_health = v end, false, 7)
+    CreateToggle(espCard, 7, "Show Team / Tribe", "", function() return Settings.esp_tribe end, function(v) Settings.esp_tribe = v end, false, 7)
+    CreateToggle(espCard, 8, "Tracers (Lines)", "", function() return Settings.esp_tracers end, function(v) Settings.esp_tracers = v end, false, 7)
+    CreateToggle(espCard, 9, "2D Box", "", function() return Settings.esp_box end, function(v) Settings.esp_box = v end, false, 7)
+    CreateSlider(espCard, 10, "Max Distance", "ESP visibility range", 50, 3000, function() return Settings.esp_range end, function(v) Settings.esp_range = v end, true, false, 7)
+    CreateSlider(espCard, 11, "Text Size", "Scale of text", 0.5, 2.5, function() return Settings.esp_textscale end, function(v) Settings.esp_textscale = v end, false, true, 7)
+    makeSection(pg7, "Tribe Totems ESP", 3)
+    local tribeCard = makeCard(pg7, 4)
+    CreateToggle(tribeCard, 1, "Show Tribe Totems", "", function() return Settings.tribe_enabled end, function(v) Settings.tribe_enabled = v end, false, 7)
+    CreateSlider(tribeCard, 2, "Totem Max Distance", "", 50, 1000, function() return Settings.tribe_range end, function(v) Settings.tribe_range = v end, true, false, 7)
+    CreateSlider(tribeCard, 3, "Totem Text Size", "", 0.5, 2.5, function() return Settings.tribe_textscale end, function(v) Settings.tribe_textscale = v end, false, true, 7)
+    makeSection(pg7, "Lock Chest ESP", 5)
+    local lockCard = makeCard(pg7, 6)
+    CreateToggle(lockCard, 1, "Highlight TP Target Chest", "", function() return Settings.lock_chest_esp end, function(v) Settings.lock_chest_esp = v end, true, 7)
+    makeSection(pg7, "Event Hearts ESP", 7)
+    local heartCard = makeCard(pg7, 8)
+    CreateToggle(heartCard, 1, "Enable Hearts ESP", "Show event hearts", function() return Settings.heart_enabled end, function(v) Settings.heart_enabled = v end, false, 7)
+    CreateSlider(heartCard, 2, "Max Distance", "", 50, 3000, function() return Settings.heart_range end, function(v) Settings.heart_range = v end, true, false, 7)
+    CreateSlider(heartCard, 3, "Text Size", "", 0.5, 2.5, function() return Settings.heart_textscale end, function(v) Settings.heart_textscale = v end, false, true, 7)
+
+    -- Extra Tab
+    local pg8 = pages[8]
+    makeSection(pg8, "Auto Equip Turbo (Hoe / Pick)", 1)
+    local aeCard = makeCard(pg8, 2)
+    CreateSlider(aeCard, 1, "Plant Box Switch Distance (studs)", "Distance to switch tool", 5, 50, function() return Settings.ae_plantboxDist end, function(v) Settings.ae_plantboxDist = v end, true, false, 8)
+    CreateToggle(aeCard, 2, "Enable Auto Equip Turbo", "Auto switch tools", function() return Settings.ae_turboToggle end, function(v) Settings.ae_turboToggle = v end, false, 8)
+    CreateButton(aeCard, 3, "Force Stop Auto Equip", "Stop the system", function() if _G.AutoEquipTurbo then _G.AutoEquipTurbo.stop() end; Settings.ae_turboToggle = false end, true, 8)
+    makeSection(pg8, "Anti-Lag", 3)
+    local alCard = makeCard(pg8, 4)
+    CreateToggle(alCard, 1, "Enable Anti-Lag", "Auto‑delete junk items", function() return Settings.antilag_toggle end, function(v) Settings.antilag_toggle = v end, false, 8)
+    CreateButton(alCard, 2, "Clear Items NOW (One-shot)", "Delete all tracked items", function()
+        local itemsList = _G.AntiLagItemsList; if not itemsList then Notify("Anti-Lag","Enable toggle first."); return end
+        local count = 0
+        for _, v in ipairs(workspace.Items:GetDescendants()) do
+            if (v:IsA("Tool") or v:IsA("Model") or v:IsA("BasePart") or v:IsA("MeshPart")) and table.find(itemsList, v.Name) then
+                pcall(function() v:Destroy() end); count = count + 1
+            end
+        end
+        Notify("Anti-Lag","Deleted "..count.." items")
+    end, true, 8)
+    makeSection(pg8, "Script Utilities", 5)
+    local utilCard = makeCard(pg8, 6)
+    CreateButton(utilCard, 1, "Infinite Yield", "Loads IY admin", function() loadstring(game:HttpGet("https://raw.githubusercontent.com/decryp1/herklesiy/refs/heads/main/hiy"))() end, false, 8)
+    CreateButton(utilCard, 2, "Teleport to Random Server", "Rejoin same game", function() game:GetService("TeleportService"):Teleport(11879754496, LocalPlayer) end, true, 8)
+    makeSection(pg8, "Visual Tools", 7)
+    local visCard = makeCard(pg8, 8)
+    CreateToggle(visCard, 1, "Enable Visual Tools", "Item ESP", function() return Settings.visualToggle end, function(v) Settings.visualToggle = v end, false, 8)
+    CreateDropdown(visCard, 2, "Visual Action", "Activate/Deactivate ESP", {"Activate Item ESP","Deactivate Item ESP"}, function() return Settings.visualtooldropdown end, function(v) Settings.visualtooldropdown = v end, false, false, 8)
+    makeSection(pg8, "Bed Spawn", 9)
+    local bedCard = makeCard(pg8, 10)
+    CreateToggle(bedCard, 1, "Auto Bed Spawn", "Spawn at bed on death", function() return Settings.extra_bedSpawnToggle end, function(v) Settings.extra_bedSpawnToggle = v end, false, 8)
+    CreateButton(bedCard, 2, "Spawn Manual", "Force bed spawn now", function() if forceBedSpawn then forceBedSpawn() end end, true, 8)
+    makeSection(pg8, "Item Orbit System", 11)
+    local orbitCard = makeCard(pg8, 12)
+    CreateToggle(orbitCard, 1, "Enable Item Orbit", "Items circle around you", function() return Settings.orbittoggle end, function(v) Settings.orbittoggle = v end, false, 8)
+    CreateSlider(orbitCard, 2, "Grab Range", "Max distance to attract", 1, 50, function() return Settings.orbitrange end, function(v) Settings.orbitrange = v end, true, false, 8)
+    CreateSlider(orbitCard, 3, "Orbit Radius", "How far away", 0, 30, function() return Settings.orbitradius end, function(v) Settings.orbitradius = v end, true, false, 8)
+    CreateSlider(orbitCard, 4, "Orbit Speed", "Rotation speed", 0, 10, function() return Settings.orbitspeed end, function(v) Settings.orbitspeed = v end, true, false, 8)
+    CreateSlider(orbitCard, 5, "Item Height", "Vertical offset", -3, 10, function() return Settings.itemheight end, function(v) Settings.itemheight = v end, true, true, 8)
+    makeSection(pg8, "Auto Waste", 13)
+    local wasteCard = makeCard(pg8, 14)
+    CreateToggle(wasteCard, 1, "Enable Auto Waste", "Destroy excess items", function() return Settings.extra_autoWasteToggle end, function(v) Settings.extra_autoWasteToggle = v end, false, 8)
+    CreateDropdown(wasteCard, 2, "Item", "Item to waste", {"Bloodfruit","Berry","Bluefruit","Lemon"}, function() return Settings.extra_autoWasteItemDropdown end, function(v) Settings.extra_autoWasteItemDropdown = v end, false, false, 8)
+    CreateSlider(wasteCard, 3, "Min Amount", "Keep at least this many", 1, 10000, function() return Settings.extra_autoWasteThreshold end, function(v) Settings.extra_autoWasteThreshold = v end, true, false, 8)
+    CreateSlider(wasteCard, 4, "CPS", "Destruction rate", 1, 20000, function() return Settings.extra_autoWasteCPS end, function(v) Settings.extra_autoWasteCPS = v end, true, true, 8)
+    makeSection(pg8, "Auto Waste Leaves", 15)
+    local leafCard = makeCard(pg8, 16)
+    CreateToggle(leafCard, 1, "Auto Waste Leaves", "Delete leaves on pickup", function() return Settings.extra_autoWasteLeavesToggle end, function(v) Settings.extra_autoWasteLeavesToggle = v end, true, 8)
+    makeSection(pg8, "Performance", 17)
+    local perfCard = makeCard(pg8, 18)
+    CreateToggle(perfCard, 1, "Ultra FPS Boost", "Extreme performance mode", function() return Settings.extra_ultrafps_toggle end, function(v) Settings.extra_ultrafps_toggle = v end, true, 8)
+    makeSection(pg8, "Auto Rebirth", 19)
+    local rebCard = makeCard(pg8, 20)
+    CreateToggle(rebCard, 1, "Auto Rebirth", "Automatically rebirth", function() return Settings.extra_autoRebirthToggle end, function(v) Settings.extra_autoRebirthToggle = v end, false, 8)
+    CreateSlider(rebCard, 2, "Interval (seconds)", "Delay between rebirths", 0.1, 10, function() return Settings.extra_autoRebirthInterval end, function(v) Settings.extra_autoRebirthInterval = v end, false, true, 8)
+    makeSection(pg8, "Item Cleaner", 21)
+    local cleanCard = makeCard(pg8, 22)
+    local clearItems = {"All Items","Iron","Raw Iron","Magnetite","Raw Magnetite","Adurite","Raw Adurite","Stone","Coal","Leaves","Log","Wood","Crystal Chunk","Gold","Raw Gold","Berry","Bloodfruit","Bluefruit","Lemon","Ice Cube","Hide","Jelly","Steel","Pink Diamond","Void Shard"}
+    CreateDropdown(cleanCard, 1, "Items to Clear", "Select items", clearItems, function() return Settings.clearLagDropdown end, function(v) Settings.clearLagDropdown = v end, true, false, 8)
+    CreateInput(cleanCard, 2, "Custom Item Name", Settings.customClearInput, "e.g. Magnetite", function(v) Settings.customClearInput = v end, false, 8)
+    CreateButton(cleanCard, 3, "Clear Selected Items NOW", "Delete all selected", function()
+        local selected = {}
+        for item, enabled in pairs(Settings.clearLagDropdown) do if enabled then table.insert(selected, item) end end
+        local custom = Settings.customClearInput:match("^%s*(.-)%s*$"); if custom and custom ~= "" then table.insert(selected, custom) end
+        if #selected == 0 then Notify("Clear Lag","Select an item first!"); return end
+        local count = 0
+        for _, item in ipairs(workspace.Items:GetChildren()) do
+            if table.find(selected,"All Items") or table.find(selected, item.Name) then item:Destroy(); count = count + 1 end
+        end
+        Notify("Clear Lag","Deleted "..count.." items")
+    end, false, 8)
+    CreateToggle(cleanCard, 4, "Auto Clear Selected Items (Real-time)", "Real‑time deletion", function() return Settings.autoClearToggle end, function(v) Settings.autoClearToggle = v end, true, 8)
+
+    -- Twins Tab
+    local pg9 = pages[9]
+    makeSection(pg9, "Twins Teleport System", 1)
+    local twinCard = makeCard(pg9, 2)
+    CreateInput(twinCard, 1, "Base Position Name", Settings.twinName, "Pos", function(v) Settings.twinName = v end, false, 9)
+    CreateSlider(twinCard, 2, "Delay at Position (s)", "Wait after arriving", 0, 10, function() return Settings.twinDelay end, function(v) Settings.twinDelay = v end, false, false, 9)
+    local twinListDropdown = CreateDropdown(twinCard, 3, "Saved Positions", "Select position", {}, function() return Settings.twinList end, function(v) Settings.twinList = v end, false, false, 9)
+    CreateInput(twinCard, 4, "TXT File Name", Settings.twinFileName, "positions", function(v) Settings.twinFileName = v end, false, 9)
+    local twinFileDropdown = CreateDropdown(twinCard, 5, "Available TXT Files", "Load a file", {}, function() return "" end, function(v) end, false, false, 9)
+    CreateButton(twinCard, 6, "Refresh Lists", "Update dropdowns", function() local names, files = _G.Twins.refreshLists(); twinListDropdown.refresh(names); twinFileDropdown.refresh(files) end, false, 9)
+    CreateButton(twinCard, 7, "Add Current Position", "Save your location", function()
+        local name = _G.Twins.addCurrent(Settings.twinName, Settings.twinDelay)
+        if name then local names = _G.Twins.refreshLists(); twinListDropdown.refresh(names); Settings.twinList = name end
+    end, false, 9)
+    CreateButton(twinCard, 8, "Save Positions to TXT", "Write to file", function() _G.Twins.saveTxt(Settings.twinFileName); local _, files = _G.Twins.refreshLists(); twinFileDropdown.refresh(files) end, false, 9)
+    CreateButton(twinCard, 9, "Load Positions from TXT", "Load from file", function()
+        if Settings.twinFileList ~= "" then _G.Twins.loadTxt(Settings.twinFileList); local names = _G.Twins.refreshLists(); twinListDropdown.refresh(names) end
+    end, false, 9)
+    CreateSlider(twinCard, 10, "New Delay (s)", "Delay to apply", 0, 10, function() return Settings.twinEditDelay end, function(v) Settings.twinEditDelay = v end, false, false, 9)
+    CreateButton(twinCard, 11, "Apply Delay to Selected", "Set delay for position", function() if Settings.twinList ~= "" then _G.Twins.setDelay(Settings.twinList, Settings.twinEditDelay) end end, false, 9)
+    CreateButton(twinCard, 12, "Replace Selected with Current Position", "Update position", function() if Settings.twinList ~= "" then _G.Twins.replacePosition(Settings.twinList) end end, false, 9)
+    CreateDropdown(twinCard, 13, "Movement Method", "How to travel", {"Tween","CFrame","TP","Velocity"}, function() return Settings.twinMoveMethod end, function(v) Settings.twinMoveMethod = v end, false, false, 9)
+    CreateSlider(twinCard, 14, "Movement Speed", "Travel speed", 10, 500, function() return Settings.twinSpeed end, function(v) Settings.twinSpeed = v end, true, false, 9)
+    CreateToggle(twinCard, 15, "Loop Through Positions", "Continuously visit all", function() return Settings.twinLoopToggle end, function(v) Settings.twinLoopToggle = v; if v then _G.Twins.startLoop(function() return Settings.twinMoveMethod end, function() return Settings.twinSpeed end, function() return v end) end end, false, 9)
+    local showMarkers = true
+    CreateButton(twinCard, 16, "Toggle Position Markers", "Show/hide markers", function() showMarkers = not showMarkers; _G.Twins.toggleMarkers(showMarkers) end, true, 9)
+    makeSection(pg9, "Auto Record Path", 3)
+    local recCard = makeCard(pg9, 4)
+    CreateSlider(recCard, 1, "Record Interval (s)", "Distance between points", 1, 10, function() return Settings.recordInterval end, function(v) Settings.recordInterval = v end, true, false, 9)
+    CreateToggle(recCard, 2, "Record While Moving", "Start/stop recording", function() return Settings.recordToggle end, function(v) Settings.recordToggle = v; if v then _G.Twins.startRecording(Settings.recordInterval) else _G.Twins.stopRecording() end end, true, 9)
+
+    -- Settings Tab
+    local pg10 = pages[10]
+    makeSection(pg10, "Config", 1)
+    local cfgCard = makeCard(pg10, 2)
+    CreateButton(cfgCard, 1, "Save Settings", "Save to file", function() SaveSettings(); Notify("Config", "Saved") end, false, 10)
+    CreateButton(cfgCard, 2, "Load Settings", "Load from file", function() LoadSettings(); Notify("Config", "Loaded – restart some features") end, false, 10)
+    CreateButton(cfgCard, 3, "Reset to Default", "Reset all settings", function()
+        Settings = {
+            wstoggle = false, wsslider = 16, jptoggle = false, jpslider = 50, hheighttoggle = false, hheightslider = 2, msatoggle = false,
+            autoeattoggle = false, fooditemdropdown = "Berry", foodthresholdslider = 50, foodcpsslider = 100,
+            ow_toggle = false, ow_threshold = 95, void_toggle = false, void_item = "Bloodfruit", void_threshold = 95, void_cps = 95,
+            ka_toggle = false, ka_range = 8, ka_targets = "1", ka_cooldown = 0.01, ka_animToggle = true, ka_teamCheck = true,
+            resourceauratoggle = false, resourceaurarange = 20, resourcetargetdropdown = "1", resourcecooldownslider = 0.1,
+            critterauratoggle = false, critterrangeslider = 20, crittertargetdropdown = "1", crittercooldownslider = 0.1,
+            servantauratoggle = false, servantrangeslider = 20, servanttargetdropdown = "1", servantcooldownslider = 0.1,
+            autopickuptoggle = false, chestpickuptoggle = false, pickuprange = 20, itemdropdown = {["Leaves"] = true, ["Log"] = true},
+            autocoinpresstoggle = false, coinpressspeed = 0.1, coinpressmaxdistance = 1000,
+            autocampfiresettoggle = false, campfirespeed = 0.1, campfiredistance = 1000, campfireitemdropdown = "Log",
+            droptoggle = false, dropdropdown = "Bloodfruit", droptogglemanual = false, droptextbox = "Bloodfruit",
+            planttoggle = false, plantrange = 30, plantdelay = 0.05, harvesttoggle = false, harvestrange = 30, fruitdropdown = {["Bloodfruit"] = true},
+            tweentoplantbox = false, tweentobush = false, tweenbushonly = false, tweenrange = 250, tweenspeed = 18, oldboardsnoclip = false,
+            pp_method = "tween", pp_rows = 10, pp_cols = 10, pp_speed = 80, pp_delay = 0.25, pp_serpentine = true, pp_antiOverlap = true,
+            pot_dropToggle = false, pot_dropDropdown = "Haste Potion", pot_potionType = "Haste", pot_pickupCount = 2, pot_cauldronRange = 50, pot_autoPotionToggle = false,
+            pot_campfireToggle = false, pot_campfireFuel = "Log", pot_feedAmount = 10, pot_campfireDistance = 1000, pot_campfireSpeed = 1,
+            esp_enabled = false, esp_mode = "All", esp_teamcheck = true, esp_highlight = true, esp_distance = true, esp_health = true,
+            esp_tribe = true, esp_tracers = true, esp_box = true, esp_range = 500, esp_textscale = 1,
+            tribe_enabled = false, tribe_range = 200, tribe_textscale = 1, lock_chest_esp = false, heart_enabled = false, heart_range = 500, heart_textscale = 1,
+            ae_turboToggle = false, ae_plantboxDist = 18, antilag_toggle = false, visualToggle = false, visualtooldropdown = "Activate Item ESP",
+            extra_bedSpawnToggle = false, orbittoggle = false, orbitrange = 20, orbitradius = 10, orbitspeed = 5, itemheight = 3,
+            extra_autoWasteToggle = false, extra_autoWasteItemDropdown = "Bloodfruit", extra_autoWasteThreshold = 1000, extra_autoWasteCPS = 100,
+            extra_autoWasteLeavesToggle = false, extra_ultrafps_toggle = false, extra_autoRebirthToggle = false, extra_autoRebirthInterval = 1,
+            clearLagDropdown = {}, customClearInput = "", autoClearToggle = false,
+            twinName = "Pos", twinDelay = 0, twinList = "", twinFileName = "positions", twinEditDelay = 1, twinMoveMethod = "Tween", twinSpeed = 100, twinLoopToggle = false,
+            recordInterval = 2, recordToggle = false,
+        }
+        SaveSettings(); Notify("Reset", "Defaults applied – rejoin to fully apply")
+    end, true, 10)
+end
+BuildTabs()
+
+-- ====================== MOVEMENT & AFK ======================
+RunService.Heartbeat:Connect(function()
+    if Settings.wstoggle and Humanoid then Humanoid.WalkSpeed = Settings.wsslider end
+    if Settings.jptoggle and Humanoid then Humanoid.JumpPower = Settings.jpslider end
+    if Settings.hheighttoggle and Humanoid then Humanoid.HipHeight = Settings.hheightslider end
+    if Settings.msatoggle and Humanoid then Humanoid.MaxSlopeAngle = 90 end
+end)
+LocalPlayer.CharacterAdded:Connect(function(char)
+    Character = char
+    HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
+    Humanoid = char:WaitForChild("Humanoid")
+end)
+task.spawn(function()
+    local VirtualUser = game:GetService("VirtualUser")
+    while true do
+        task.wait(math.random(30, 90))
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new(math.random(1, 100), math.random(1, 100)))
+    end
+end)
+
+-- Toggle GUI keybind
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.G then gui.Enabled = not gui.Enabled end
+end)
+
+-- Open animation
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, WIN_W, 0, WIN_H),
+    BackgroundTransparency = 0
+}):Play()
+
+Notify("Feather Hub", "Script loaded! Press G to toggle UI.", "info")
