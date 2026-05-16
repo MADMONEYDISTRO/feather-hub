@@ -6,7 +6,10 @@
 -- FIXED: Larger click targets for all buttons (PC friendly)
 -- FIXED: Smooth dragging + staff dot repositioned
 -- FIXED: Summer tab "Event Part 2 Coming Soon"
--- FIXED: Metal farm stop respawns character
+-- FIXED: Metal farm stop no longer kills/breaks character
+-- FIXED: Auto‑click now stops instantly when farm is stopped
+-- FIXED: World 2 uses all provided dig points
+-- NEW: Auto‑click toggle for metal farm
 
 local TweenService      = game:GetService("TweenService")
 local Players           = game:GetService("Players")
@@ -166,6 +169,46 @@ local metalOriginCF      = nil
 local metalCollected     = 0
 local metalLoopsDone     = 0
 
+-- World configurations for metal farm
+local METAL_WORLDS = {
+    ["World 1"] = {
+        digPoints = {
+            CFrame.new(-319.342, 10.999, -4976.653),
+            CFrame.new(-267.956, 10.999, -4977.302),
+            CFrame.new(-269.421, 10.999, -4925.781),
+            CFrame.new(-316.338, 10.999, -4920.298),
+            CFrame.new(-314.659, 10.999, -4890.267),
+            CFrame.new(-308.613, 11,      -4849.246),
+            CFrame.new(-275.061, 10.999, -4848.422),
+            CFrame.new(-277.15,  11,      -4879.363),
+        },
+        sellCFrame = CFrame.new(-250.65918, 8.07530403, -4887.76904, -1.58548355e-05, 0.946918845, -0.321472645, -1, -1.58548355e-05, 2.62260437e-06, -2.62260437e-06, 0.321472645, 0.946918845),
+        digUUID = "33599dcc-3a2a-45a9-8087-2718adb6bc5b",
+        digArea = "Beach",
+    },
+    ["World 2"] = {
+        -- All distinct dig points provided by user (duplicates removed)
+        digPoints = {
+            CFrame.new(-6425.399, 78.216, -4654.417),
+            CFrame.new(-6418.629, 78.216, -4681.499),
+            CFrame.new(-6412.546, 78.216, -4704.309),
+            CFrame.new(-6407.166, 78.216, -4717.725),
+            CFrame.new(-6391.597, 78.216, -4657.35),
+            CFrame.new(-6362.28,  78.216, -4641.423),
+            CFrame.new(-6365.704, 78.216, -4662.564),
+            CFrame.new(-6353.848, 78.216, -4682.565),
+            CFrame.new(-6346.661, 78.216, -4697.852),
+            CFrame.new(-6363.606, 78.216, -4700.539),
+            CFrame.new(-6378.279, 78.216, -4703.471),
+        },
+        sellCFrame = CFrame.new(-6413.5, 78.216, -4637.26),
+        -- Replace with the correct UUID and area for World 2 metal detector if different
+        digUUID = "33599dcc-3a2a-45a9-8087-2718adb6bc5b",
+        digArea = "Beach",
+    },
+}
+local selectedMetalWorld = "World 1"
+
 local metalSettings = {
     keybind       = "P",
     farmSpeed     = 2.0,
@@ -177,6 +220,7 @@ local metalSettings = {
     orbitRadius   = 2.5,
     orbitSteps    = 8,
     orbitTime     = 0.12,
+    autoClick     = true,
 }
 
 -- Summer event config (kept)
@@ -200,22 +244,21 @@ local WAYPOINTS = {
     CFrame.new(50.69,  13337.43, 3116.74),
 }
 
--- Metal detector config
-local METAL_DIG_UUID = "33599dcc-3a2a-45a9-8087-2718adb6bc5b"
-local METAL_DIG_AREA = "Beach"
-local METAL_DIG_POINTS = {
-    CFrame.new(-319.342, 10.999, -4976.653), CFrame.new(-267.956, 10.999, -4977.302),
-    CFrame.new(-269.421, 10.999, -4925.781), CFrame.new(-316.338, 10.999, -4920.298),
-    CFrame.new(-314.659, 10.999, -4890.267), CFrame.new(-308.613, 11,      -4849.246),
-    CFrame.new(-275.061, 10.999, -4848.422), CFrame.new(-277.15,  11,      -4879.363),
-}
-local METAL_SELL_CFRAME = CFrame.new(-250.65918, 8.07530403, -4887.76904, -1.58548355e-05, 0.946918845, -0.321472645, -1, -1.58548355e-05, 2.62260437e-06, -2.62260437e-06, 0.321472645, 0.946918845)
-
 -- Helpers
 local function getRoot() local char = player.Character return char and char:FindFirstChild("HumanoidRootPart") end
 local function getHumanoid() local char = player.Character return char and char:FindFirstChildOfClass("Humanoid") end
 local function saveOrigin() local root = getRoot() return root and root.CFrame or nil end
 local function teleportTo(cf) local root = getRoot() if root then root.CFrame = cf end end
+
+-- Restore normal walking after stopping
+local function restoreWalking()
+    local hum = getHumanoid()
+    if hum then
+        hum.WalkSpeed = 16
+        hum.AutoRotate = true
+        hum.PlatformStand = false
+    end
+end
 
 local function tweenTo(targetCF, duration)
     local root = getRoot()
@@ -559,7 +602,7 @@ do
         local spacer2 = Instance.new("Frame"); spacer2.Size = UDim2.new(1,0,0,20); spacer2.BackgroundTransparency = 1; spacer2.LayoutOrder = 4; spacer2.Parent = comingSoonCard
     end
 
-    -- METAL TAB (unchanged logic, only UI sizes increased)
+    -- METAL TAB (all points + walking fix + instant click stop)
     do
         local metalPage = tabPages["⛏️ Metal"]
         mkSectionLabel(metalPage, "⛏️ METAL DETECTOR FARM", T.metal, 1)
@@ -567,13 +610,43 @@ do
         local _, metalStatusLbl = mkStatusBar(metalStatusCard, 1, "⏸ Idle — press keybind or button to start", T.muted)
         local _, metalCountLbl  = mkStatusBar(metalStatusCard, 2, "Digs: 0  |  Sells: 0  |  Loops: 0/1", T.metal)
 
-        local metalBtnCard = mkCard(metalPage, 3)
+        -- World selection row
+        local worldSelectCard = mkCard(metalPage, 3)
+        local worldRow = mkRow(worldSelectCard, 1, true, 52)
+        local worldLbl = Instance.new("TextLabel")
+        worldLbl.Size = UDim2.new(0.38, 0, 1, 0); worldLbl.Position = UDim2.new(0, 14, 0, 0)
+        worldLbl.Text = "Farm world:"; worldLbl.Font = Enum.Font.GothamSemibold; worldLbl.TextSize = 11; worldLbl.TextColor3 = T.text
+        worldLbl.TextXAlignment = Enum.TextXAlignment.Left; worldLbl.BackgroundTransparency = 1; worldLbl.ZIndex = 5; worldLbl.Parent = worldRow
+
+        local world1Btn = Instance.new("TextButton")
+        world1Btn.Size = UDim2.new(0, 90, 0, 32); world1Btn.Position = UDim2.new(1, -190, 0.5, -16)
+        world1Btn.Text = "World 1"; world1Btn.Font = Enum.Font.GothamBold; world1Btn.TextSize = 10; world1Btn.TextColor3 = Color3.new(1,1,1)
+        world1Btn.BackgroundColor3 = T.metal; world1Btn.BorderSizePixel = 0; world1Btn.AutoButtonColor = false; world1Btn.ZIndex = 6; world1Btn.Parent = worldRow; mkCorner(world1Btn, 8)
+
+        local world2Btn = Instance.new("TextButton")
+        world2Btn.Size = UDim2.new(0, 90, 0, 32); world2Btn.Position = UDim2.new(1, -94, 0.5, -16)
+        world2Btn.Text = "World 2"; world2Btn.Font = Enum.Font.GothamBold; world2Btn.TextSize = 10; world2Btn.TextColor3 = T.muted
+        world2Btn.BackgroundColor3 = T.dim; world2Btn.BorderSizePixel = 0; world2Btn.AutoButtonColor = false; world2Btn.ZIndex = 6; world2Btn.Parent = worldRow; mkCorner(world2Btn, 8)
+
+        local function updateWorldButtons()
+            if selectedMetalWorld == "World 1" then
+                world1Btn.BackgroundColor3 = T.metal; world1Btn.TextColor3 = Color3.new(1,1,1)
+                world2Btn.BackgroundColor3 = T.dim; world2Btn.TextColor3 = T.muted
+            else
+                world2Btn.BackgroundColor3 = T.metal; world2Btn.TextColor3 = Color3.new(1,1,1)
+                world1Btn.BackgroundColor3 = T.dim; world1Btn.TextColor3 = T.muted
+            end
+        end
+        world1Btn.MouseButton1Click:Connect(function() selectedMetalWorld = "World 1"; updateWorldButtons() end)
+        world2Btn.MouseButton1Click:Connect(function() selectedMetalWorld = "World 2"; updateWorldButtons() end)
+
+        local metalBtnCard = mkCard(metalPage, 4)
         local metalPad = Instance.new("Frame"); metalPad.Size = UDim2.new(1,0,0,8); metalPad.BackgroundTransparency=1; metalPad.LayoutOrder=1; metalPad.Parent=metalBtnCard
         local metalStartBtn = mkButton(metalBtnCard, 2, "▶  START METAL FARM", T.metal, 42)
         local metalPad2 = Instance.new("Frame"); metalPad2.Size = UDim2.new(1,0,0,8); metalPad2.BackgroundTransparency=1; metalPad2.LayoutOrder=3; metalPad2.Parent=metalBtnCard
 
-        mkSectionLabel(metalPage, "KEYBIND", T.metal, 4)
-        local kbCard = mkCard(metalPage, 5)
+        mkSectionLabel(metalPage, "KEYBIND", T.metal, 5)
+        local kbCard = mkCard(metalPage, 6)
         local kbRow = mkRow(kbCard, 1, true, 56)
         local kbLabel = Instance.new("TextLabel"); kbLabel.Size = UDim2.new(0.5,0,1,0); kbLabel.Position = UDim2.new(0,14,0,0); kbLabel.Text = "Toggle Keybind"; kbLabel.Font = Enum.Font.GothamSemibold; kbLabel.TextSize = 11; kbLabel.TextColor3 = T.text; kbLabel.TextXAlignment = Enum.TextXAlignment.Left; kbLabel.BackgroundTransparency = 1; kbLabel.ZIndex = 5; kbLabel.Parent = kbRow
         local kbBtn = Instance.new("TextButton"); kbBtn.Size = UDim2.new(0, 100, 0, 34); kbBtn.Position = UDim2.new(1, -114, 0.5, -17); kbBtn.Text = metalSettings.keybind; kbBtn.Font = Enum.Font.GothamBold; kbBtn.TextSize = 11; kbBtn.TextColor3 = T.text; kbBtn.BackgroundColor3 = T.inputBg; kbBtn.BorderSizePixel = 0; kbBtn.AutoButtonColor = false; kbBtn.ZIndex = 6; kbBtn.Parent = kbRow; mkCorner(kbBtn, 8); mkStroke(kbBtn, T.border, 1)
@@ -581,8 +654,10 @@ do
         local kbWaiting = false
         kbBtn.MouseButton1Click:Connect(function() if kbWaiting then return end; kbWaiting=true; kbBtn.Text="Press key…"; kbBtn.TextColor3=T.accent end)
 
-        mkSectionLabel(metalPage, "FARM SETTINGS", T.metal, 6)
-        local settingsCard = mkCard(metalPage, 7)
+        mkSectionLabel(metalPage, "FARM SETTINGS", T.metal, 7)
+        local settingsCard = mkCard(metalPage, 8)
+
+        -- Method row
         local methodRow = mkRow(settingsCard, 1, false, 56)
         local methodLbl = Instance.new("TextLabel"); methodLbl.Size = UDim2.new(0.42,0,1,0); methodLbl.Position = UDim2.new(0,14,0,0); methodLbl.Text = "Farm Method"; methodLbl.Font = Enum.Font.GothamSemibold; methodLbl.TextSize = 11; methodLbl.TextColor3 = T.text; methodLbl.TextXAlignment = Enum.TextXAlignment.Left; methodLbl.BackgroundTransparency = 1; methodLbl.ZIndex = 5; methodLbl.Parent = methodRow
         local m1Btn = Instance.new("TextButton"); m1Btn.Size = UDim2.new(0, 80, 0, 32); m1Btn.Position = UDim2.new(1, -172, 0.5, -16); m1Btn.Text = "① Direct"; m1Btn.Font = Enum.Font.GothamBold; m1Btn.TextSize = 10; m1Btn.TextColor3 = Color3.new(1,1,1); m1Btn.BackgroundColor3 = T.metal; m1Btn.BorderSizePixel = 0; m1Btn.AutoButtonColor = false; m1Btn.ZIndex = 6; m1Btn.Parent = methodRow; mkCorner(m1Btn, 8)
@@ -591,7 +666,13 @@ do
         m1Btn.MouseButton1Click:Connect(function() metalSettings.farmMethod=1; m1Btn.BackgroundColor3=T.metal; m1Btn.TextColor3=Color3.new(1,1,1); m2Btn.BackgroundColor3=T.dim; m2Btn.TextColor3=T.muted end)
         m2Btn.MouseButton1Click:Connect(function() metalSettings.farmMethod=2; m2Btn.BackgroundColor3=T.metal; m2Btn.TextColor3=Color3.new(1,1,1); m1Btn.BackgroundColor3=T.dim; m1Btn.TextColor3=T.muted end)
 
-        local stepperContainer = Instance.new("Frame"); stepperContainer.Size = UDim2.new(1,0,0,0); stepperContainer.AutomaticSize = Enum.AutomaticSize.Y; stepperContainer.BackgroundTransparency = 1; stepperContainer.LayoutOrder = 3; stepperContainer.ZIndex = 4; stepperContainer.Parent = settingsCard
+        -- Auto Click toggle
+        local autoClickRow = mkRow(settingsCard, 3, false, 52)
+        local autoClickToggle = mkToggleInRow(autoClickRow, "Auto Click Dig", metalSettings.autoClick)
+        autoClickToggle:onChanged(function(state) metalSettings.autoClick = state end)
+
+        -- Steppers
+        local stepperContainer = Instance.new("Frame"); stepperContainer.Size = UDim2.new(1,0,0,0); stepperContainer.AutomaticSize = Enum.AutomaticSize.Y; stepperContainer.BackgroundTransparency = 1; stepperContainer.LayoutOrder = 4; stepperContainer.ZIndex = 4; stepperContainer.Parent = settingsCard
         local stepLayout = Instance.new("UIListLayout", stepperContainer); stepLayout.SortOrder = Enum.SortOrder.LayoutOrder; stepLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; stepLayout.Padding = UDim.new(0, 2)
         local function sepLine(parent, order) local sep = Instance.new("Frame"); sep.Size = UDim2.new(1, -28, 0, 1); sep.BackgroundColor3 = T.sep; sep.BorderSizePixel = 0; sep.LayoutOrder = order; sep.ZIndex = 4; sep.Parent = parent end
         mkStepper(stepperContainer, 1, "Loops before sell", metalSettings.loopsBeforeSell, 1, 20, 1, nil, function(v) metalSettings.loopsBeforeSell = v end); sepLine(stepperContainer,2)
@@ -600,7 +681,8 @@ do
         mkStepper(stepperContainer, 7, "Pause after sell (s)", metalSettings.sellPause, 0.5, 10, 0.5, "%.1f", function(v) metalSettings.sellPause = v end); sepLine(stepperContainer,8)
         mkStepper(stepperContainer, 9, "Clicks per second", metalSettings.CPS, 1, 30, 1, nil, function(v) metalSettings.CPS = v end)
 
-        local orbitCard = mkCard(metalPage, 8)
+        -- Orbit card
+        local orbitCard = mkCard(metalPage, 9)
         local orbitTitleRow = mkRow(orbitCard, 0, false, 40); local orbitTitleLbl = Instance.new("TextLabel"); orbitTitleLbl.Size = UDim2.new(1, -28, 1, 0); orbitTitleLbl.Position = UDim2.new(0, 14, 0, 0); orbitTitleLbl.Text = "② Orbit Settings  (Method 2 only)"; orbitTitleLbl.Font = Enum.Font.GothamBold; orbitTitleLbl.TextSize = 10; orbitTitleLbl.TextColor3 = T.metal; orbitTitleLbl.TextXAlignment = Enum.TextXAlignment.Left; orbitTitleLbl.BackgroundTransparency = 1; orbitTitleLbl.ZIndex = 5; orbitTitleLbl.Parent = orbitTitleRow
         local orbitStepCont = Instance.new("Frame"); orbitStepCont.Size = UDim2.new(1,0,0,0); orbitStepCont.AutomaticSize = Enum.AutomaticSize.Y; orbitStepCont.BackgroundTransparency = 1; orbitStepCont.LayoutOrder = 1; orbitStepCont.ZIndex = 4; orbitStepCont.Parent = orbitCard
         local orbitLL = Instance.new("UIListLayout", orbitStepCont); orbitLL.SortOrder = Enum.SortOrder.LayoutOrder; orbitLL.HorizontalAlignment = Enum.HorizontalAlignment.Center; orbitLL.Padding = UDim.new(0,2)
@@ -609,23 +691,114 @@ do
         mkStepper(orbitStepCont, 5, "Time per step (s)", metalSettings.orbitTime, 0.05, 0.5, 0.05, "%.2f", function(v) metalSettings.orbitTime = v end)
         local orbitPad = Instance.new("Frame"); orbitPad.Size=UDim2.new(1,0,0,6); orbitPad.BackgroundTransparency=1; orbitPad.LayoutOrder=2; orbitPad.Parent=orbitCard
 
-        -- Metal logic (unchanged)
+        -- Metal logic (instant click stop)
         local metalClickThread, metalMoveThread = nil, nil
         local metalDigCount, metalSellCount = 0, 0
-        local function metalClickLoop() while metalEnabled do pcall(function() VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,1); task.wait(0.02); VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,1); RemoteEvent:FireServer("MetalDetectorDig", METAL_DIG_UUID, METAL_DIG_AREA) end); metalDigCount = metalDigCount+1; task.wait(1/metalSettings.CPS) end end
+
+        local function metalClickLoop()
+            while metalEnabled do
+                if metalSettings.autoClick then
+                    -- Removed pcall to prevent catching cancellation errors
+                    VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,1)
+                    task.wait(0.02)
+                    VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,1)
+                    local worldCfg = METAL_WORLDS[selectedMetalWorld]
+                    if worldCfg then
+                        RemoteEvent:FireServer("MetalDetectorDig", worldCfg.digUUID, worldCfg.digArea)
+                    end
+                    metalDigCount = metalDigCount+1
+                end
+                if not metalEnabled then break end  -- exit immediately if farm stopped
+                task.wait(1/metalSettings.CPS)
+            end
+        end
+
         local function metalFarmLoop()
             metalLoopsDone = 0; metalSellCount = 0; metalDigCount = 0; metalOriginCF = saveOrigin()
             while metalEnabled and sg and sg.Parent do
-                for _, point in ipairs(METAL_DIG_POINTS) do if not metalEnabled then break end; lookDown(); tweenTo(point, metalSettings.farmSpeed); if metalSettings.farmMethod == 2 then orbitPoint(point, metalSettings.orbitRadius, metalSettings.orbitSteps, metalSettings.orbitTime); local t0 = tick(); while metalEnabled and (tick()-t0) < 1.0 do task.wait(0.05) end end end
-                if not metalEnabled then break end; metalLoopsDone = metalLoopsDone+1; metalStatusLbl.Text = ("⛏️ Loop %d/%d done"):format(metalLoopsDone, metalSettings.loopsBeforeSell); metalCountLbl.Text = ("Digs: %d  |  Sells: %d  |  Loops: %d/%d"):format(metalDigCount, metalSellCount, metalLoopsDone, metalSettings.loopsBeforeSell)
-                if metalLoopsDone >= metalSettings.loopsBeforeSell then metalLoopsDone = 0; metalStatusLbl.Text = "💰 Travelling to sell point…"; lookDown(); tweenTo(METAL_SELL_CFRAME, metalSettings.sellSpeed); RemoteEvent:FireServer("SellArtifacts"); metalSellCount = metalSellCount+1; notify("Metal Detector", ("Sold! Total sells: %d"):format(metalSellCount), "success"); metalStatusLbl.Text = ("💤 Pausing %.1fs before next run…"):format(metalSettings.sellPause); task.wait(metalSettings.sellPause) end
+                local worldCfg = METAL_WORLDS[selectedMetalWorld]
+                if not worldCfg then break end
+                for _, point in ipairs(worldCfg.digPoints) do
+                    if not metalEnabled then break end
+                    lookDown()
+                    tweenTo(point, metalSettings.farmSpeed)
+                    if metalSettings.farmMethod == 2 then
+                        orbitPoint(point, metalSettings.orbitRadius, metalSettings.orbitSteps, metalSettings.orbitTime)
+                        local t0 = tick()
+                        while metalEnabled and (tick()-t0) < 1.0 do task.wait(0.05) end
+                    end
+                end
+                if not metalEnabled then break end
+                metalLoopsDone = metalLoopsDone+1
+                metalStatusLbl.Text = ("⛏️ Loop %d/%d done  (%s)"):format(metalLoopsDone, metalSettings.loopsBeforeSell, selectedMetalWorld)
+                metalCountLbl.Text = ("Digs: %d  |  Sells: %d  |  Loops: %d/%d"):format(metalDigCount, metalSellCount, metalLoopsDone, metalSettings.loopsBeforeSell)
+                if metalLoopsDone >= metalSettings.loopsBeforeSell then
+                    metalLoopsDone = 0
+                    metalStatusLbl.Text = "💰 Travelling to sell point…"
+                    lookDown()
+                    tweenTo(worldCfg.sellCFrame, metalSettings.sellSpeed)
+                    RemoteEvent:FireServer("SellArtifacts")
+                    metalSellCount = metalSellCount+1
+                    notify("Metal Detector", ("Sold! Total sells: %d"):format(metalSellCount), "success")
+                    metalStatusLbl.Text = ("💤 Pausing %.1fs before next run…"):format(metalSettings.sellPause)
+                    task.wait(metalSettings.sellPause)
+                end
             end
+            restoreWalking()
         end
-        local function startMetal() if metalEnabled then return end; metalEnabled=true; metalStartBtn.Text="⏹  STOP METAL FARM"; metalStartBtn.BackgroundColor3=T.red; metalStatusLbl.Text="▶ Starting dig cycle…"; metalStatusLbl.TextColor3=T.metal; metalClickThread=task.spawn(metalClickLoop); metalMoveThread=task.spawn(metalFarmLoop) end
-        local function stopMetal() metalEnabled=false; if metalClickThread then task.cancel(metalClickThread); metalClickThread=nil end; if metalMoveThread then task.cancel(metalMoveThread); metalMoveThread=nil end; metalStartBtn.Text="▶  START METAL FARM"; metalStartBtn.BackgroundColor3=T.metal; metalStatusLbl.Text="⏸ Stopped, respawning..."; metalStatusLbl.TextColor3=T.muted; local char=player.Character; if char then local hum=char:FindFirstChildOfClass("Humanoid"); if hum then hum.Health=0 else char:BreakJoints() end end; notify("Metal Detector", "Farm stopped – character reset to fix position.", "success") end
-        metalStartBtn.MouseButton1Click:Connect(function() if metalEnabled then stopMetal() else startMetal() end end)
-        task.spawn(function() while sg and sg.Parent do task.wait(0.5); if metalEnabled then metalCountLbl.Text = ("Digs: %d  |  Sells: %d  |  Loops: %d/%d"):format(metalDigCount, metalSellCount, metalLoopsDone, metalSettings.loopsBeforeSell) end end end)
-        UserInputService.InputBegan:Connect(function(input,gpe) if gpe then return end; if input.UserInputType == Enum.UserInputType.Keyboard then if kbWaiting then kbWaiting=false; metalSettings.keybind=input.KeyCode.Name; kbBtn.Text=input.KeyCode.Name; kbBtn.TextColor3=T.text; notify("Metal Detector", "Keybind set to "..input.KeyCode.Name, "success"); return end; if input.KeyCode.Name == metalSettings.keybind then if metalEnabled then stopMetal() else startMetal() end end end end)
+
+        local function startMetal()
+            if metalEnabled then return end
+            metalEnabled = true
+            metalStartBtn.Text="⏹  STOP METAL FARM"
+            metalStartBtn.BackgroundColor3=T.red
+            metalStatusLbl.Text="▶ Starting dig cycle…  ("..selectedMetalWorld..")"
+            metalStatusLbl.TextColor3=T.metal
+            metalClickThread = task.spawn(metalClickLoop)
+            metalMoveThread = task.spawn(metalFarmLoop)
+        end
+
+        local function stopMetal()
+            metalEnabled = false
+            if metalClickThread then task.cancel(metalClickThread); metalClickThread = nil end
+            if metalMoveThread then task.cancel(metalMoveThread); metalMoveThread = nil end
+            restoreWalking()
+            metalStartBtn.Text="▶  START METAL FARM"
+            metalStartBtn.BackgroundColor3=T.metal
+            metalStatusLbl.Text="⏸ Idle — press keybind or button to start"
+            metalStatusLbl.TextColor3=T.muted
+            notify("Metal Detector", "Farm stopped — character unfrozen.", "success")
+        end
+
+        metalStartBtn.MouseButton1Click:Connect(function()
+            if metalEnabled then stopMetal() else startMetal() end
+        end)
+
+        task.spawn(function()
+            while sg and sg.Parent do
+                task.wait(0.5)
+                if metalEnabled then
+                    metalCountLbl.Text = ("Digs: %d  |  Sells: %d  |  Loops: %d/%d  (%s)"):format(metalDigCount, metalSellCount, metalLoopsDone, metalSettings.loopsBeforeSell, selectedMetalWorld)
+                end
+            end
+        end)
+
+        UserInputService.InputBegan:Connect(function(input,gpe)
+            if gpe then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                if kbWaiting then
+                    kbWaiting=false
+                    metalSettings.keybind=input.KeyCode.Name
+                    kbBtn.Text=input.KeyCode.Name
+                    kbBtn.TextColor3=T.text
+                    notify("Metal Detector", "Keybind set to "..input.KeyCode.Name, "success")
+                    return
+                end
+                if input.KeyCode.Name == metalSettings.keybind then
+                    if metalEnabled then stopMetal() else startMetal() end
+                end
+            end
+        end)
     end
 
     -- BUBBLES TAB (same logic, larger UI)
@@ -721,6 +894,7 @@ do
         if metalMoveThread then task.cancel(metalMoveThread); metalMoveThread = nil end
         if staffWatchThread then task.cancel(staffWatchThread); staffWatchThread = nil end
         if rootChangedConn then rootChangedConn:Disconnect(); rootChangedConn = nil end
+        restoreWalking()
         sg:Destroy()
     end)
 
@@ -763,6 +937,6 @@ do
     -- Startup animation
     do local vp = workspace.CurrentCamera.ViewportSize; main.Size = UDim2.new(0,0,0,0); main.Position = UDim2.new(0, vp.X/2, 0, vp.Y/2); main.BackgroundTransparency = 1; TweenService:Create(main, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, guiWidth, 0, guiHeight), Position = UDim2.new(0, vp.X/2 - guiWidth/2, 0, vp.Y/2 - guiHeight/2), BackgroundTransparency = 0}):Play() end
 
-    notify("BGSI Feather Hub", "v3.0.0 - Larger click targets | Summer event coming soon", "success")
+    notify("BGSI Feather Hub", "v3.0.0 - World 2 metal + auto‑click toggle", "success")
     print("[BGSI v3.0.0] Loaded — Metal keybind: " .. metalSettings.keybind)
 end
