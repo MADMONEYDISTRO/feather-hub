@@ -1,0 +1,1073 @@
+-- Feather Hub – Doors (complete, no library, zero ambiguous 'or')
+repeat task.wait() until game:IsLoaded()
+
+getupvalues = getupvalues or debug.getupvalues
+setupvalue = setupvalue or debug.setupvalue
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+
+-- Character (no or fallback)
+local Character
+if LocalPlayer.Character then
+    Character = LocalPlayer.Character
+else
+    Character = LocalPlayer.CharacterAdded:Wait()
+end
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local Humanoid = Character:WaitForChild("Humanoid")
+
+local RemotesFolder = ReplicatedStorage:FindFirstChild("RemotesFolder")
+local LiveModifiers = ReplicatedStorage:FindFirstChild("LiveModifiers")
+local FloorReplicated = ReplicatedStorage:FindFirstChild("FloorReplicated")
+local CurrentRooms = Workspace:FindFirstChild("CurrentRooms")
+local Drops = Workspace:FindFirstChild("Drops")
+local GameData = ReplicatedStorage:WaitForChild("GameData")
+local Floor = GameData:WaitForChild("Floor").Value
+local LatestRoom = GameData:WaitForChild("LatestRoom")
+
+-- ====================== SETTINGS TABLE ======================
+local Settings = {
+    SpeedBoostSlider = 0,
+    SpeedBoostToggle = false,
+    FlyToggle = false,
+    FlySpeed = 20,
+    NoclipToggle = false,
+    RemoveClosetDelay = false,
+    RemoveAcceleration = false,
+    EnableCharacterJump = false,
+    EnableCharacterSlide = false,
+    InfiniteJumps = false,
+    DoorReachToggle = false,
+    DisableIdleKick = false,
+    PromptReachSlider = 1,
+    InstantPrompts = false,
+    PromptClip = false,
+    AutoBreakerBox = false,
+    AutoSolveAnchors = false,
+    AutoUnlockPadlockToggle = false,
+    AutoUnlockPadlockSlider = 10,
+    AutoLibraryGuessCode = false,
+    AutoInteractToggle = false,
+    AutoInteractKeybind = "R",
+    AutoClosetToggle = false,
+    BypassGiggle = false,
+    BypassDupe = false,
+    BypassEyes = false,
+    BypassLookman = false,
+    BypassGloombatEggs = false,
+    BypassSeekObstructions = false,
+    BypassVacuum = false,
+    BypassKillbricks = false,
+    BypassSeekingWall = false,
+    BypassSnare = false,
+    BypassBanana = false,
+    BypassJeff = false,
+    DisableAnticheat = false,
+    VelocityManipulationToggle = false,
+    InfiniteItemsToggle = false,
+    PositionSpoof = false,
+    CrouchSpoof = false,
+    RemoveScreech = false,
+    RemoveHalt = false,
+    RemoveA90 = false,
+    RemoveDread = false,
+    NoScreechDamage = false,
+    NoHaltDamage = false,
+    NoA90Damage = false,
+    NoSurgeDamage = false,
+    RemoveFootstepSounds = false,
+    RemoveJamminMusic = false,
+    RemoveInteractingSounds = false,
+    AmbientToggle = false,
+    AmbientColor = Color3.fromRGB(255,255,255),
+    FieldOfView = 70,
+    RemoveCameraShake = false,
+    RemoveCameraBobbing = false,
+    RemoveCameraFog = false,
+    ThirdPersonToggle = false,
+    ThirdPersonOffsetX = 1.5,
+    ThirdPersonOffsetY = 1,
+    ThirdPersonOffsetZ = 5,
+    TransparentHidingSpotsToggle = false,
+    TransparentHidingSpotsSlider = 0.5,
+    DisableGlitchJumpscare = false,
+    DisableTimothyJumpscare = false,
+    DisableVoidJumpscare = false,
+    DisableHideVignette = false,
+    DisableFiredampEffect = false,
+    DisableEntityJumpscares = false,
+    NotifyEntities = false,
+    NotifyLibraryCode = false,
+    NotifyOxygen = false,
+    NotifyHasteTime = false,
+    EntityChatToggle = false,
+    EntityChatMessage = "spawned!",
+    ObjectiveESPToggle = false,
+    ObjectiveESPColor = Color3.fromRGB(0,255,0),
+    DoorESPToggle = false,
+    DoorESPColor = Color3.fromRGB(0,200,255),
+    HidingSpotESPToggle = false,
+    HidingSpotESPColor = Color3.fromRGB(255,170,0),
+    PlayerESPToggle = false,
+    PlayerESPColor = Color3.fromRGB(255,255,255),
+    ChestESPToggle = false,
+    ChestESPColor = Color3.fromRGB(255,255,0),
+    ItemESPToggle = false,
+    ItemESPColor = Color3.fromRGB(170,0,255),
+    CurrencyESPToggle = false,
+    CurrencyESPColor = Color3.fromRGB(255,255,0),
+    EntityESPToggle = false,
+    EntityESPColor = Color3.fromRGB(255,0,0),
+    LadderESPToggle = false,
+    LadderESPColor = Color3.fromRGB(255,255,255),
+    ESPRainbow = false,
+    ESPShowDistance = true,
+    ESPFillTransparency = 0.75,
+    ESPOutlineTransparency = 0,
+    ESPTextTransparency = 0,
+    ESPTextOutlineTransparency = 0,
+    ESPFadeTime = 0.25,
+    ESPRenderLimit = 240,
+    ESPTextSize = 18,
+    ESPTextFont = "RobotoCondensed",
+    ESPTracersToggle = false,
+    ESPTracersOrigin = "Bottom",
+    ESPTracerThickness = 0.75,
+    ESPArrowsToggle = false,
+    ESPArrowsRadius = 250,
+    AutoSteerMinecart = false,
+    AutoSteerMinecartTurnDistance = 35,
+    AutoSteerMinecartDuckDistance = 35,
+    RoomsAutoWalk = false,
+    RoomsAutoWalkPathfindTimeout = 1,
+    RoomsAutoWalkIgnoreA60 = false,
+    RoomsAutoWalkShowPathToggle = false,
+    RoomsAutoWalkShowPathColor = Color3.fromRGB(0,255,0),
+    ShowSeekPathToggle = false,
+    ShowSeekPathColor = Color3.fromRGB(0,255,0),
+    ShowEyestalkPathToggle = false,
+    ShowEyestalkPathColor = Color3.fromRGB(0,255,0),
+    RemoveSeekTrigger = false,
+    RemoveFigure = false,
+    AutoRevive = false,
+    RemoveBasementGate = false,
+    RemovePaintingsDoor = false,
+    RemoveSkeletonDoor = false,
+}
+
+-- ====================== FEATHERHUB GOLD UI ======================
+local Theme = {
+    bg        = Color3.fromRGB(6, 5, 4),
+    sidebar   = Color3.fromRGB(10, 9, 7),
+    card      = Color3.fromRGB(14, 12, 9),
+    border    = Color3.fromRGB(55, 45, 20),
+    text      = Color3.fromRGB(245, 238, 215),
+    muted     = Color3.fromRGB(130, 110, 65),
+    dim       = Color3.fromRGB(22, 18, 10),
+    sep       = Color3.fromRGB(48, 38, 18),
+    header    = Color3.fromRGB(9, 8, 5),
+    inputBg   = Color3.fromRGB(4, 3, 2),
+    accent    = Color3.fromRGB(195, 160, 60),
+    accentLt  = Color3.fromRGB(225, 190, 90),
+    accentDim = Color3.fromRGB(110, 88, 28),
+    green     = Color3.fromRGB(140, 195, 100),
+    red       = Color3.fromRGB(210, 75, 75),
+    gold      = Color3.fromRGB(195, 160, 60),
+    toggleOn  = Color3.fromRGB(170, 140, 45),
+    toggleOff = Color3.fromRGB(45, 35, 18),
+}
+
+local WIN_W = 630
+local WIN_H = 480
+local SIDEBAR_W = 134
+local HDR_H = 40
+local MARGIN = 8
+local CONTENT_GAP = 8
+
+local function tw(d)
+    local dur = d
+    if dur == nil then
+        dur = 0.2
+    end
+    return TweenInfo.new(dur, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+end
+
+-- Notify (safe if-elseif-else)
+local function Notify(title, msg, level)
+    local col
+    if level == "error" then
+        col = Theme.red
+    elseif level == "warning" then
+        col = Theme.orange
+    else
+        col = Theme.accent
+    end
+    local n = Instance.new("Frame", gui)
+    n.Size = UDim2.new(0, 240, 0, 52)
+    n.Position = UDim2.new(1, -260, 0, 100)
+    n.BackgroundColor3 = Theme.card
+    n.BorderSizePixel = 0
+    n.ZIndex = 50
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 8)
+    local st = Instance.new("UIStroke", n)
+    st.Color = col
+    st.Thickness = 1.5
+    local t = Instance.new("TextLabel", n)
+    t.Size = UDim2.new(1, -16, 0, 22)
+    t.Position = UDim2.new(0, 8, 0, 6)
+    t.Text = title
+    t.Font = Enum.Font.GothamBold
+    t.TextSize = 11
+    t.TextColor3 = col
+    t.BackgroundTransparency = 1
+    local m = Instance.new("TextLabel", n)
+    m.Size = UDim2.new(1, -16, 0, 18)
+    m.Position = UDim2.new(0, 8, 0, 28)
+    m.Text = msg
+    m.Font = Enum.Font.Gotham
+    m.TextSize = 9
+    m.TextColor3 = Theme.text
+    m.BackgroundTransparency = 1
+    task.delay(3, function()
+        if n.Parent then
+            TweenService:Create(n, TweenInfo.new(0.4), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+            task.wait(0.4)
+            n:Destroy()
+        end
+    end)
+end
+
+-- Build UI
+local gui = Instance.new("ScreenGui")
+gui.Name = "FeatherHub_Doors"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+do
+    local success = pcall(function() gui.Parent = CoreGui end)
+    if not success then
+        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+end
+
+local win = Instance.new("Frame")
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = Theme.bg
+win.BackgroundTransparency = 0.05
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 2
+win.Parent = gui
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
+
+local titleBar = Instance.new("Frame", win)
+titleBar.Size = UDim2.new(1, 0, 0, HDR_H)
+titleBar.BackgroundColor3 = Theme.header
+titleBar.BorderSizePixel = 0
+titleBar.ZIndex = 3
+local titleText = Instance.new("TextLabel", titleBar)
+titleText.Size = UDim2.new(1, -130, 1, 0)
+titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.Text = "Feather Hub – Doors"
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 12
+titleText.TextColor3 = Theme.accent
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.BackgroundTransparency = 1
+
+local hdrBadge = Instance.new("Frame", titleBar)
+hdrBadge.Size = UDim2.new(0, 58, 0, 20)
+hdrBadge.Position = UDim2.new(0, 530, 0.5, -10)
+hdrBadge.BackgroundColor3 = Theme.accentDim
+hdrBadge.BorderSizePixel = 0
+hdrBadge.ZIndex = 5
+Instance.new("UICorner", hdrBadge).CornerRadius = UDim.new(0, 6)
+local hdrBadgeLbl = Instance.new("TextLabel", hdrBadge)
+hdrBadgeLbl.Size = UDim2.new(1, 0, 1, 0)
+hdrBadgeLbl.Text = "FREE"
+hdrBadgeLbl.Font = Enum.Font.GothamBold
+hdrBadgeLbl.TextSize = 7
+hdrBadgeLbl.TextColor3 = Theme.gold
+hdrBadgeLbl.BackgroundTransparency = 1
+hdrBadgeLbl.ZIndex = 6
+
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -36, 0.5, -14)
+closeBtn.Text = "×"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 16
+closeBtn.TextColor3 = Theme.muted
+closeBtn.BackgroundColor3 = Theme.dim
+closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 5
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 7)
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- Drag
+local dragToggle, dragStart, winStart = false, nil, nil
+titleBar.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = true
+        dragStart = i.Position
+        winStart = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragToggle and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = i.Position - dragStart
+        win.Position = UDim2.new(winStart.X.Scale, winStart.X.Offset + delta.X, winStart.Y.Scale, winStart.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragToggle = false end
+end)
+
+local SIDEBAR_Y = HDR_H + MARGIN
+local BODY_H = WIN_H - SIDEBAR_Y - MARGIN
+local sidebar = Instance.new("Frame", win)
+sidebar.Size = UDim2.new(0, SIDEBAR_W, 0, BODY_H)
+sidebar.Position = UDim2.new(0, MARGIN, 0, SIDEBAR_Y)
+sidebar.BackgroundColor3 = Theme.sidebar
+sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 3
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+
+local sideScroll = Instance.new("ScrollingFrame", sidebar)
+sideScroll.Size = UDim2.new(1, -8, 1, -8)
+sideScroll.Position = UDim2.new(0, 4, 0, 4)
+sideScroll.BackgroundTransparency = 1
+sideScroll.BorderSizePixel = 0
+sideScroll.ScrollBarThickness = 2
+sideScroll.ScrollBarImageColor3 = Theme.accent
+sideScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+sideScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+sideScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+local tabListLayout = Instance.new("UIListLayout", sideScroll)
+tabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+tabListLayout.Padding = UDim.new(0, 6)
+
+local CONTENT_X = MARGIN + SIDEBAR_W + CONTENT_GAP
+local CONTENT_W = WIN_W - CONTENT_X - MARGIN
+local contentArea = Instance.new("Frame", win)
+contentArea.Size = UDim2.new(0, CONTENT_W, 0, BODY_H)
+contentArea.Position = UDim2.new(0, CONTENT_X, 0, SIDEBAR_Y)
+contentArea.BackgroundTransparency = 1
+contentArea.BorderSizePixel = 0
+contentArea.ZIndex = 2
+
+-- Search
+local FeatureRegistry = {}
+local function registerFeature(label, tabIdx)
+    table.insert(FeatureRegistry, {label = label, tab = tabIdx})
+end
+
+local searchFrame = Instance.new("Frame", contentArea)
+searchFrame.Size = UDim2.new(1, -8, 0, 34)
+searchFrame.Position = UDim2.new(0, 4, 0, 0)
+searchFrame.BackgroundColor3 = Theme.card
+searchFrame.BorderSizePixel = 0
+searchFrame.ZIndex = 5
+Instance.new("UICorner", searchFrame).CornerRadius = UDim.new(0, 9)
+
+local searchBox = Instance.new("TextBox", searchFrame)
+searchBox.Size = UDim2.new(1, -14, 0, 26)
+searchBox.Position = UDim2.new(0, 7, 0.5, -13)
+searchBox.PlaceholderText = "Search features..."
+searchBox.Text = ""
+searchBox.Font = Enum.Font.Gotham
+searchBox.TextSize = 10
+searchBox.TextColor3 = Theme.text
+searchBox.PlaceholderColor3 = Theme.muted
+searchBox.BackgroundColor3 = Theme.inputBg
+searchBox.BorderSizePixel = 0
+searchBox.ZIndex = 6
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
+
+-- Search results panel
+local srPanel = Instance.new("Frame", gui)
+srPanel.BackgroundColor3 = Theme.card
+srPanel.BorderSizePixel = 0
+srPanel.ClipsDescendants = true
+srPanel.Visible = false
+srPanel.ZIndex = 40
+Instance.new("UICorner", srPanel).CornerRadius = UDim.new(0, 9)
+local srScroll = Instance.new("ScrollingFrame", srPanel)
+srScroll.Size = UDim2.new(1, 0, 1, 0)
+srScroll.BackgroundTransparency = 1
+srScroll.BorderSizePixel = 0
+srScroll.ScrollBarThickness = 2
+srScroll.ScrollBarImageColor3 = Theme.accent
+srScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+srScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+srScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+srScroll.ZIndex = 41
+local srLayout = Instance.new("UIListLayout", srScroll)
+srLayout.SortOrder = Enum.SortOrder.LayoutOrder
+srLayout.Padding = UDim.new(0, 2)
+local srPad = Instance.new("UIPadding", srScroll)
+srPad.PaddingTop = UDim.new(0, 4)
+srPad.PaddingBottom = UDim.new(0, 4)
+srPad.PaddingLeft = UDim.new(0, 4)
+srPad.PaddingRight = UDim.new(0, 4)
+
+local TAB_NAMES = {"General", "Exploits", "Visuals", "Floors"}
+local tabBtns = {}
+
+local function updateSearch(query)
+    local children = srScroll:GetChildren()
+    for i = 1, #children do
+        local c = children[i]
+        if c:IsA("Frame") or c:IsA("TextButton") or c:IsA("TextLabel") then
+            c:Destroy()
+        end
+    end
+    query = query:lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if query == "" then
+        srPanel.Visible = false
+        return
+    end
+    local matches = {}
+    for i = 1, #FeatureRegistry do
+        local entry = FeatureRegistry[i]
+        if entry.label:lower():find(query, 1, true) then
+            table.insert(matches, entry)
+        end
+    end
+    if #matches == 0 then
+        local noRes = Instance.new("TextLabel", srScroll)
+        noRes.Size = UDim2.new(1, -8, 0, 32)
+        noRes.Text = 'No results for "' .. query .. '"'
+        noRes.Font = Enum.Font.Gotham
+        noRes.TextSize = 9
+        noRes.TextColor3 = Theme.muted
+        noRes.BackgroundTransparency = 1
+        noRes.ZIndex = 42
+        noRes.LayoutOrder = 1
+    else
+        for idx = 1, #matches do
+            local entry = matches[idx]
+            local tabName = TAB_NAMES[entry.tab]
+            if tabName == nil then tabName = "?" end
+            local row = Instance.new("Frame", srScroll)
+            row.Size = UDim2.new(1, -4, 0, 34)
+            row.BackgroundColor3 = Theme.dim
+            row.BorderSizePixel = 0
+            row.ZIndex = 42
+            row.LayoutOrder = idx
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+            local hitbox = Instance.new("TextButton", row)
+            hitbox.Size = UDim2.new(1, 0, 1, 0)
+            hitbox.BackgroundTransparency = 1
+            hitbox.Text = ""
+            hitbox.ZIndex = 43
+            local nameLbl = Instance.new("TextLabel", row)
+            nameLbl.Size = UDim2.new(0.65, 0, 1, 0)
+            nameLbl.Position = UDim2.new(0, 10, 0, 0)
+            nameLbl.Text = entry.label
+            nameLbl.Font = Enum.Font.GothamSemibold
+            nameLbl.TextSize = 10
+            nameLbl.TextColor3 = Theme.text
+            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+            nameLbl.BackgroundTransparency = 1
+            nameLbl.ZIndex = 43
+            local badge = Instance.new("TextLabel", row)
+            badge.Size = UDim2.new(0, 64, 0, 18)
+            badge.Position = UDim2.new(1, -70, 0.5, -9)
+            badge.Text = tabName
+            badge.Font = Enum.Font.GothamBold
+            badge.TextSize = 8
+            badge.TextColor3 = Theme.accent
+            badge.BackgroundColor3 = Theme.accentDim
+            badge.BackgroundTransparency = 0.5
+            badge.BorderSizePixel = 0
+            badge.ZIndex = 43
+            Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 4)
+            hitbox.MouseEnter:Connect(function()
+                TweenService:Create(row, tw(0.1), {BackgroundColor3 = Theme.accentDim}):Play()
+            end)
+            hitbox.MouseLeave:Connect(function()
+                TweenService:Create(row, tw(0.1), {BackgroundColor3 = Theme.dim}):Play()
+            end)
+            local capturedTab = entry.tab
+            hitbox.MouseButton1Click:Connect(function()
+                searchBox.Text = ""
+                srPanel.Visible = false
+                for i = 1, #tabBtns do
+                    if tabBtns[i].Text == TAB_NAMES[capturedTab] then
+                        tabBtns[i].MouseButton1Click:Fire()
+                        break
+                    end
+                end
+            end)
+        end
+    end
+    local absPos = searchFrame.AbsolutePosition
+    local absSize = searchFrame.AbsoluteSize
+    srPanel.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 4)
+    srPanel.Size = UDim2.new(0, absSize.X, 0, math.min(#matches, 5) * 36 + 8)
+    srPanel.Visible = true
+end
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(function() updateSearch(searchBox.Text) end)
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    if not srPanel.Visible then return end
+    local mp = UserInputService:GetMouseLocation()
+    local sp = srPanel.AbsolutePosition
+    local ss = srPanel.AbsoluteSize
+    local sfp = searchFrame.AbsolutePosition
+    local sfs = searchFrame.AbsoluteSize
+    local inPanel = mp.X >= sp.X and mp.X <= sp.X + ss.X and mp.Y >= sp.Y and mp.Y <= sp.Y + ss.Y
+    local inSearch = mp.X >= sfp.X and mp.X <= sfp.X + sfs.X and mp.Y >= sfp.Y and mp.Y <= sfp.Y + sfs.Y
+    if not inPanel and not inSearch then
+        srPanel.Visible = false
+    end
+end)
+
+local SEARCH_H = 34
+local SEARCH_GAP = 8
+local PAGES_TOP = SEARCH_H + SEARCH_GAP
+local pagesFrame = Instance.new("Frame", contentArea)
+pagesFrame.Size = UDim2.new(1, 0, 1, -PAGES_TOP)
+pagesFrame.Position = UDim2.new(0, 0, 0, PAGES_TOP)
+pagesFrame.BackgroundTransparency = 1
+pagesFrame.BorderSizePixel = 0
+pagesFrame.ZIndex = 2
+
+local pages = {}
+for i = 1, #TAB_NAMES do
+    local page = Instance.new("ScrollingFrame", pagesFrame)
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = Theme.accent
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.ScrollingDirection = Enum.ScrollingDirection.Y
+    page.ZIndex = 2
+    page.Visible = (i == 1)
+    local ll = Instance.new("UIListLayout", page)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    ll.Padding = UDim.new(0, 8)
+    pages[i] = page
+
+    local btn = Instance.new("TextButton", sideScroll)
+    btn.Size = UDim2.new(1, -16, 0, 36)
+    if i == 1 then btn.BackgroundColor3 = Theme.accent else btn.BackgroundColor3 = Theme.dim end
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.Text = TAB_NAMES[i]
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    if i == 1 then btn.TextColor3 = Color3.new(1, 1, 1) else btn.TextColor3 = Theme.text end
+    btn.ZIndex = 4
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+    local idx = i
+    btn.MouseButton1Click:Connect(function()
+        for j = 1, #pages do pages[j].Visible = (j == idx) end
+        for j = 1, #tabBtns do
+            local on = (j == idx)
+            local bg, tc
+            if on then bg = Theme.accent; tc = Color3.new(1, 1, 1) else bg = Theme.dim; tc = Theme.text end
+            TweenService:Create(tabBtns[j], tw(0.15), {BackgroundColor3 = bg, TextColor3 = tc}):Play()
+        end
+    end)
+    tabBtns[i] = btn
+end
+
+-- UI element factories (all or-free)
+local function makeCard(parent, order)
+    local c = Instance.new("Frame", parent)
+    c.Size = UDim2.new(1, 0, 0, 0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = Theme.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.ZIndex = 3
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 11)
+    local s = Instance.new("UIStroke", c)
+    s.Color = Theme.border
+    s.Thickness = 1
+    local ll = Instance.new("UIListLayout", c)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+
+local function makeRow(card, order, isLast, height)
+    local h = height
+    if h == nil then h = 46 end
+    local row = Instance.new("Frame", card)
+    row.Size = UDim2.new(1, 0, 0, h)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.ZIndex = 4
+    if not isLast then
+        local sep = Instance.new("Frame", row)
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = Theme.sep
+        sep.BorderSizePixel = 0
+        sep.ZIndex = 4
+    end
+    return row
+end
+
+local function makeSection(parent, label, order)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1, 0, 0, 22)
+    f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0
+    f.LayoutOrder = order
+    f.ZIndex = 3
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = string.upper(label)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = Theme.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 3
+    local line = Instance.new("Frame", f)
+    line.Size = UDim2.new(0, 28, 0, 2)
+    line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = Theme.accent
+    line.BorderSizePixel = 0
+    line.ZIndex = 3
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return f
+end
+
+local function makeToggleRow(card, order, label, initial, isLast, onToggle, tabIdx)
+    registerFeature(label, tabIdx or 1)
+    local row = makeRow(card, order, isLast, 48)
+    local strip = Instance.new("Frame", row)
+    strip.Size = UDim2.new(0, 3, 0.45, 0)
+    strip.Position = UDim2.new(0, 0, 0.275, 0)
+    if initial then strip.BackgroundColor3 = Theme.accent else strip.BackgroundColor3 = Theme.sep end
+    strip.BorderSizePixel = 0
+    strip.ZIndex = 5
+    Instance.new("UICorner", strip).CornerRadius = UDim.new(1, 0)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.65, -20, 0, 18)
+    titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = label
+    titleLbl.TextColor3 = Theme.text
+    titleLbl.Font = Enum.Font.GothamSemibold
+    titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.ZIndex = 5
+    local toggleBg = Instance.new("Frame", row)
+    toggleBg.Size = UDim2.new(0, 44, 0, 22)
+    toggleBg.Position = UDim2.new(1, -60, 0.5, -11)
+    if initial then toggleBg.BackgroundColor3 = Theme.toggleOn else toggleBg.BackgroundColor3 = Theme.toggleOff end
+    toggleBg.BorderSizePixel = 0
+    toggleBg.ZIndex = 5
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+    local toggleStroke = Instance.new("UIStroke", toggleBg)
+    if initial then toggleStroke.Color = Theme.accent else toggleStroke.Color = Theme.sep end
+    toggleStroke.Thickness = 1
+    local toggleKnob = Instance.new("Frame", toggleBg)
+    toggleKnob.Size = UDim2.new(0, 16, 0, 16)
+    if initial then toggleKnob.Position = UDim2.new(1, -19, 0.5, -8) else toggleKnob.Position = UDim2.new(0, 3, 0.5, -8) end
+    toggleKnob.BackgroundColor3 = Color3.new(1, 1, 1)
+    toggleKnob.BorderSizePixel = 0
+    toggleKnob.ZIndex = 6
+    Instance.new("UICorner", toggleKnob).CornerRadius = UDim.new(1, 0)
+    local hitBtn = Instance.new("TextButton", row)
+    hitBtn.Size = UDim2.new(0, 60, 0, 30)
+    hitBtn.Position = UDim2.new(1, -70, 0.5, -15)
+    hitBtn.BackgroundTransparency = 1
+    hitBtn.Text = ""
+    hitBtn.ZIndex = 7
+    local state = initial
+    hitBtn.MouseButton1Click:Connect(function()
+        state = not state
+        onToggle(state)
+        local newBg, newStroke, newStripBg, newPos
+        if state then
+            newBg = Theme.toggleOn
+            newStroke = Theme.accent
+            newStripBg = Theme.accent
+            newPos = UDim2.new(1, -19, 0.5, -8)
+        else
+            newBg = Theme.toggleOff
+            newStroke = Theme.sep
+            newStripBg = Theme.sep
+            newPos = UDim2.new(0, 3, 0.5, -8)
+        end
+        TweenService:Create(toggleBg, tw(0.2), {BackgroundColor3 = newBg}):Play()
+        TweenService:Create(toggleStroke, tw(0.2), {Color = newStroke}):Play()
+        TweenService:Create(toggleKnob, tw(0.2, Enum.EasingStyle.Back), {Position = newPos}):Play()
+        TweenService:Create(strip, tw(0.2), {BackgroundColor3 = newStripBg}):Play()
+    end)
+    return row
+end
+
+local function makeButtonRow(card, order, label, btnText, isLast, onClick, tabIdx)
+    registerFeature(label, tabIdx or 1)
+    local row = makeRow(card, order, isLast, 50)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.6, -16, 0, 16)
+    titleLbl.Position = UDim2.new(0, 16, 0, 9)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = label
+    titleLbl.TextColor3 = Theme.text
+    titleLbl.Font = Enum.Font.GothamSemibold
+    titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.ZIndex = 5
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 80, 0, 28)
+    btn.Position = UDim2.new(1, -96, 0.5, -14)
+    btn.BackgroundColor3 = Theme.accentDim
+    btn.Text = btnText
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 9
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = Theme.accent}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = Theme.accentDim}):Play() end)
+    btn.MouseButton1Click:Connect(onClick)
+    return row
+end
+
+local function makeSliderRow(card, order, label, min, max, initial, isLast, onChanged, tabIdx)
+    registerFeature(label, tabIdx or 1)
+    local row = makeRow(card, order, isLast, 68)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.65, -16, 0, 16)
+    titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = label
+    titleLbl.TextColor3 = Theme.text
+    titleLbl.Font = Enum.Font.GothamSemibold
+    titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.ZIndex = 5
+    local valueBox = Instance.new("TextBox", row)
+    valueBox.Size = UDim2.new(0, 55, 0, 22)
+    valueBox.Position = UDim2.new(1, -70, 0, 8)
+    valueBox.BackgroundColor3 = Theme.inputBg
+    valueBox.Text = tostring(initial)
+    valueBox.TextColor3 = Theme.gold
+    valueBox.Font = Enum.Font.GothamBold
+    valueBox.TextSize = 10
+    valueBox.BorderSizePixel = 0
+    valueBox.ZIndex = 5
+    Instance.new("UICorner", valueBox).CornerRadius = UDim.new(0, 5)
+    local track = Instance.new("Frame", row)
+    track.Size = UDim2.new(1, -32, 0, 4)
+    track.Position = UDim2.new(0, 16, 0, 50)
+    track.BackgroundColor3 = Theme.dim
+    track.BorderSizePixel = 0
+    track.ZIndex = 5
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new((initial - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = Theme.accent
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 6
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    local knob = Instance.new("TextButton", track)
+    knob.Size = UDim2.new(0, 14, 0, 14)
+    knob.Position = UDim2.new((initial - min) / (max - min), -7, 0.5, -7)
+    knob.BackgroundColor3 = Theme.gold
+    knob.Text = ""
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 7
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    local ds = false
+    knob.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then ds = true end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then ds = false end end)
+    UserInputService.InputChanged:Connect(function(i)
+        if ds and i.UserInputType == Enum.UserInputType.MouseMovement then
+            local ap = track.AbsolutePosition
+            local sz = track.AbsoluteSize
+            local ratio = math.clamp((i.Position.X - ap.X) / sz.X, 0, 1)
+            local val = math.floor(min + ratio * (max - min))
+            valueBox.Text = tostring(val)
+            fill.Size = UDim2.new(ratio, 0, 1, 0)
+            knob.Position = UDim2.new(ratio, -7, 0.5, -7)
+            onChanged(val)
+        end
+    end)
+    return row
+end
+
+local function makeDropdownRow(card, order, label, options, default, isLast, onSelect, tabIdx)
+    registerFeature(label, tabIdx or 1)
+    local row = makeRow(card, order, isLast, 48)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.55, -16, 0, 16)
+    titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = label
+    titleLbl.TextColor3 = Theme.text
+    titleLbl.Font = Enum.Font.GothamSemibold
+    titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.ZIndex = 5
+    local selected = default
+    if selected == nil then
+        if options[1] and options[1].Title then
+            selected = options[1].Title
+        else
+            selected = ""
+        end
+    end
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 140, 0, 28)
+    btn.Position = UDim2.new(1, -156, 0.5, -14)
+    btn.BackgroundColor3 = Theme.inputBg
+    btn.Text = selected
+    btn.TextColor3 = Theme.gold
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 9
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local drop = Instance.new("Frame", gui)
+    drop.Size = UDim2.new(0, 140, 0, #options * 24)
+    drop.Position = UDim2.new(1, -156, 0, 42)
+    drop.BackgroundColor3 = Theme.card
+    drop.BorderSizePixel = 0
+    drop.Visible = false
+    drop.ZIndex = 20
+    Instance.new("UICorner", drop).CornerRadius = UDim.new(0, 6)
+    local scroll = Instance.new("ScrollingFrame", drop)
+    scroll.Size = UDim2.new(1, 0, 1, 0)
+    scroll.BackgroundTransparency = 1
+    scroll.ScrollBarThickness = 3
+    scroll.ScrollBarImageColor3 = Theme.accent
+    scroll.CanvasSize = UDim2.new(0, 0, 0, #options * 24)
+    scroll.ZIndex = 21
+    local listLayout = Instance.new("UIListLayout", scroll)
+    listLayout.Padding = UDim.new(0, 1)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    for i = 1, #options do
+        local opt = options[i]
+        local ob = Instance.new("TextButton", scroll)
+        ob.Size = UDim2.new(1, 0, 0, 23)
+        ob.BackgroundColor3 = Theme.dim
+        ob.BackgroundTransparency = 0.5
+        ob.Text = opt.Title
+        ob.TextColor3 = Theme.text
+        ob.Font = Enum.Font.Gotham
+        ob.TextSize = 9
+        ob.BorderSizePixel = 0
+        ob.ZIndex = 22
+        ob.MouseEnter:Connect(function() TweenService:Create(ob, tw(0.1), {BackgroundTransparency = 0}):Play() end)
+        ob.MouseLeave:Connect(function() TweenService:Create(ob, tw(0.1), {BackgroundTransparency = 0.5}):Play() end)
+        ob.MouseButton1Click:Connect(function()
+            selected = opt.Title
+            btn.Text = opt.Title
+            drop.Visible = false
+            if onSelect then onSelect(opt.Title) end
+        end)
+    end
+    btn.MouseButton1Click:Connect(function() drop.Visible = not drop.Visible end)
+    UserInputService.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 and drop.Visible then
+            local mp = UserInputService:GetMouseLocation()
+            local dp = drop.AbsolutePosition
+            local ds2 = drop.AbsoluteSize
+            if mp.X < dp.X or mp.X > dp.X + ds2.X or mp.Y < dp.Y or mp.Y > dp.Y + ds2.Y then
+                drop.Visible = false
+            end
+        end
+    end)
+    return row
+end
+
+-- ====================== BUILD TABS ======================
+local function BuildTabs()
+    local pg1 = pages[1]
+    makeSection(pg1, "Character", 1)
+    local charCard = makeCard(pg1, 2)
+    makeSliderRow(charCard, 1, "Speed Boost", 0, 85, Settings.SpeedBoostSlider, false, function(v) Settings.SpeedBoostSlider = v end, 1)
+    makeToggleRow(charCard, 2, "Enable Speed Boost", Settings.SpeedBoostToggle, false, function(v) Settings.SpeedBoostToggle = v end, 1)
+    makeToggleRow(charCard, 3, "Fly", Settings.FlyToggle, false, function(v) Settings.FlyToggle = v end, 1)
+    makeSliderRow(charCard, 4, "Fly Speed", 0, 100, Settings.FlySpeed, false, function(v) Settings.FlySpeed = v end, 1)
+    makeToggleRow(charCard, 5, "Noclip", Settings.NoclipToggle, false, function(v) Settings.NoclipToggle = v end, 1)
+    makeToggleRow(charCard, 6, "Remove Closet Delay", Settings.RemoveClosetDelay, false, function(v) Settings.RemoveClosetDelay = v end, 1)
+    makeToggleRow(charCard, 7, "Remove Acceleration", Settings.RemoveAcceleration, false, function(v) Settings.RemoveAcceleration = v end, 1)
+    makeToggleRow(charCard, 8, "Enable Jumping", Settings.EnableCharacterJump, false, function(v) Settings.EnableCharacterJump = v end, 1)
+    makeToggleRow(charCard, 9, "Enable Sliding", Settings.EnableCharacterSlide, false, function(v) Settings.EnableCharacterSlide = v end, 1)
+    makeToggleRow(charCard, 10, "Infinite Jumps", Settings.InfiniteJumps, false, function(v) Settings.InfiniteJumps = v end, 1)
+
+    makeSection(pg1, "Interaction", 3)
+    local selfCard = makeCard(pg1, 4)
+    makeToggleRow(selfCard, 1, "Door Reach", Settings.DoorReachToggle, false, function(v) Settings.DoorReachToggle = v end, 1)
+    makeToggleRow(selfCard, 2, "Disable Idle Kick", Settings.DisableIdleKick, false, function(v) Settings.DisableIdleKick = v end, 1)
+    makeSliderRow(selfCard, 3, "Prompt Reach Multiplier", 1, 10, Settings.PromptReachSlider, false, function(v) Settings.PromptReachSlider = v end, 1)
+    makeToggleRow(selfCard, 4, "Instant Prompts", Settings.InstantPrompts, false, function(v) Settings.InstantPrompts = v end, 1)
+    makeToggleRow(selfCard, 5, "Prompt Clip", Settings.PromptClip, true, function(v) Settings.PromptClip = v end, 1)
+
+    makeSection(pg1, "Automation", 5)
+    local autoCard = makeCard(pg1, 6)
+    makeToggleRow(autoCard, 1, "Auto Breaker Box", Settings.AutoBreakerBox, false, function(v) Settings.AutoBreakerBox = v end, 1)
+    makeToggleRow(autoCard, 2, "Auto Solve Anchors", Settings.AutoSolveAnchors, false, function(v) Settings.AutoSolveAnchors = v end, 1)
+    makeToggleRow(autoCard, 3, "Auto Unlock Padlock", Settings.AutoUnlockPadlockToggle, false, function(v) Settings.AutoUnlockPadlockToggle = v end, 1)
+    makeSliderRow(autoCard, 4, "Unlock Distance", 1, 50, Settings.AutoUnlockPadlockSlider, false, function(v) Settings.AutoUnlockPadlockSlider = v end, 1)
+    makeToggleRow(autoCard, 5, "Guess Library Code", Settings.AutoLibraryGuessCode, false, function(v) Settings.AutoLibraryGuessCode = v end, 1)
+    makeToggleRow(autoCard, 6, "Auto Interact", Settings.AutoInteractToggle, false, function(v) Settings.AutoInteractToggle = v end, 1)
+    makeToggleRow(autoCard, 7, "Auto Closet", Settings.AutoClosetToggle, false, function(v) Settings.AutoClosetToggle = v end, 1)
+
+    makeSection(pg1, "Miscellaneous", 7)
+    local miscCard = makeCard(pg1, 8)
+    makeButtonRow(miscCard, 1, "Play Again", "Play", false, function() RemotesFolder.PlayAgain:FireServer() end, 1)
+    makeButtonRow(miscCard, 2, "Return to Lobby", "Lobby", false, function() RemotesFolder.Lobby:FireServer() end, 1)
+    makeButtonRow(miscCard, 3, "Revive", "Revive", false, function() RemotesFolder.Revive:FireServer() end, 1)
+    makeButtonRow(miscCard, 4, "Reset Character", "Reset", true, function() Humanoid.Health = 0 end, 1)
+
+    local pg2 = pages[2]
+    makeSection(pg2, "Bypass", 1)
+    local bypassCard = makeCard(pg2, 2)
+    makeToggleRow(bypassCard, 1, "Bypass Giggle", Settings.BypassGiggle, false, function(v) Settings.BypassGiggle = v end, 2)
+    makeToggleRow(bypassCard, 2, "Bypass Dupe", Settings.BypassDupe, false, function(v) Settings.BypassDupe = v end, 2)
+    makeToggleRow(bypassCard, 3, "Bypass Eyes", Settings.BypassEyes, false, function(v) Settings.BypassEyes = v end, 2)
+    makeToggleRow(bypassCard, 4, "Bypass Lookman", Settings.BypassLookman, false, function(v) Settings.BypassLookman = v end, 2)
+    makeToggleRow(bypassCard, 5, "Bypass Gloombat Eggs", Settings.BypassGloombatEggs, false, function(v) Settings.BypassGloombatEggs = v end, 2)
+    makeToggleRow(bypassCard, 6, "Bypass Seek Obstructions", Settings.BypassSeekObstructions, false, function(v) Settings.BypassSeekObstructions = v end, 2)
+    makeToggleRow(bypassCard, 7, "Bypass Vacuum", Settings.BypassVacuum, false, function(v) Settings.BypassVacuum = v end, 2)
+    makeToggleRow(bypassCard, 8, "Bypass Killbricks", Settings.BypassKillbricks, false, function(v) Settings.BypassKillbricks = v end, 2)
+    makeToggleRow(bypassCard, 9, "Bypass Seeking Wall", Settings.BypassSeekingWall, false, function(v) Settings.BypassSeekingWall = v end, 2)
+    makeToggleRow(bypassCard, 10, "Bypass Snare", Settings.BypassSnare, false, function(v) Settings.BypassSnare = v end, 2)
+    makeToggleRow(bypassCard, 11, "Bypass Banana", Settings.BypassBanana, false, function(v) Settings.BypassBanana = v end, 2)
+    makeToggleRow(bypassCard, 12, "Bypass Jeff", Settings.BypassJeff, false, function(v) Settings.BypassJeff = v end, 2)
+    makeToggleRow(bypassCard, 13, "Disable Anticheat", Settings.DisableAnticheat, false, function(v) Settings.DisableAnticheat = v end, 2)
+    makeToggleRow(bypassCard, 14, "Velocity Manipulation", Settings.VelocityManipulationToggle, false, function(v) Settings.VelocityManipulationToggle = v end, 2)
+    makeToggleRow(bypassCard, 15, "Infinite Items", Settings.InfiniteItemsToggle, false, function(v) Settings.InfiniteItemsToggle = v end, 2)
+    makeToggleRow(bypassCard, 16, "Position Spoof", Settings.PositionSpoof, false, function(v) Settings.PositionSpoof = v end, 2)
+    makeToggleRow(bypassCard, 17, "Crouch Spoof", Settings.CrouchSpoof, true, function(v) Settings.CrouchSpoof = v end, 2)
+
+    makeSection(pg2, "Remove", 3)
+    local removeCard = makeCard(pg2, 4)
+    makeToggleRow(removeCard, 1, "Remove Screech", Settings.RemoveScreech, false, function(v) Settings.RemoveScreech = v end, 2)
+    makeToggleRow(removeCard, 2, "Remove Halt", Settings.RemoveHalt, false, function(v) Settings.RemoveHalt = v end, 2)
+    makeToggleRow(removeCard, 3, "Remove A-90", Settings.RemoveA90, false, function(v) Settings.RemoveA90 = v end, 2)
+    makeToggleRow(removeCard, 4, "Remove Dread", Settings.RemoveDread, false, function(v) Settings.RemoveDread = v end, 2)
+    makeToggleRow(removeCard, 5, "No Screech Damage", Settings.NoScreechDamage, false, function(v) Settings.NoScreechDamage = v end, 2)
+    makeToggleRow(removeCard, 6, "No Halt Damage", Settings.NoHaltDamage, false, function(v) Settings.NoHaltDamage = v end, 2)
+    makeToggleRow(removeCard, 7, "No A-90 Damage", Settings.NoA90Damage, false, function(v) Settings.NoA90Damage = v end, 2)
+    makeToggleRow(removeCard, 8, "No Surge Damage", Settings.NoSurgeDamage, true, function(v) Settings.NoSurgeDamage = v end, 2)
+
+    local pg3 = pages[3]
+    makeSection(pg3, "Camera / Effects", 1)
+    local camCard = makeCard(pg3, 2)
+    makeToggleRow(camCard, 1, "Ambient", Settings.AmbientToggle, false, function(v) Settings.AmbientToggle = v end, 3)
+    makeSliderRow(camCard, 2, "Field of View", 1, 120, Settings.FieldOfView, false, function(v) Settings.FieldOfView = v end, 3)
+    makeToggleRow(camCard, 3, "Remove Camera Shake", Settings.RemoveCameraShake, false, function(v) Settings.RemoveCameraShake = v end, 3)
+    makeToggleRow(camCard, 4, "Remove Camera Bobbing", Settings.RemoveCameraBobbing, false, function(v) Settings.RemoveCameraBobbing = v end, 3)
+    makeToggleRow(camCard, 5, "Remove Camera Fog", Settings.RemoveCameraFog, false, function(v) Settings.RemoveCameraFog = v end, 3)
+    makeToggleRow(camCard, 6, "Third Person", Settings.ThirdPersonToggle, false, function(v) Settings.ThirdPersonToggle = v end, 3)
+    makeSliderRow(camCard, 7, "Third Person X Offset", -10, 10, Settings.ThirdPersonOffsetX, false, function(v) Settings.ThirdPersonOffsetX = v end, 3)
+    makeSliderRow(camCard, 8, "Third Person Y Offset", -10, 10, Settings.ThirdPersonOffsetY, false, function(v) Settings.ThirdPersonOffsetY = v end, 3)
+    makeSliderRow(camCard, 9, "Third Person Z Offset", -10, 10, Settings.ThirdPersonOffsetZ, false, function(v) Settings.ThirdPersonOffsetZ = v end, 3)
+    makeToggleRow(camCard, 10, "Transparent Hiding Spots", Settings.TransparentHidingSpotsToggle, false, function(v) Settings.TransparentHidingSpotsToggle = v end, 3)
+    makeSliderRow(camCard, 11, "Hiding Spot Transparency", 0, 1, Settings.TransparentHidingSpotsSlider, false, function(v) Settings.TransparentHidingSpotsSlider = v end, 3)
+    makeToggleRow(camCard, 12, "Disable Glitch Jumpscare", Settings.DisableGlitchJumpscare, false, function(v) Settings.DisableGlitchJumpscare = v end, 3)
+    makeToggleRow(camCard, 13, "Disable Timothy Jumpscare", Settings.DisableTimothyJumpscare, false, function(v) Settings.DisableTimothyJumpscare = v end, 3)
+    makeToggleRow(camCard, 14, "Disable Void Jumpscare", Settings.DisableVoidJumpscare, false, function(v) Settings.DisableVoidJumpscare = v end, 3)
+    makeToggleRow(camCard, 15, "Disable Hide Vignette", Settings.DisableHideVignette, false, function(v) Settings.DisableHideVignette = v end, 3)
+    makeToggleRow(camCard, 16, "Disable Firedamp Effect", Settings.DisableFiredampEffect, false, function(v) Settings.DisableFiredampEffect = v end, 3)
+    makeToggleRow(camCard, 17, "Disable Entity Jumpscares", Settings.DisableEntityJumpscares, true, function(v) Settings.DisableEntityJumpscares = v end, 3)
+
+    makeSection(pg3, "Notifications", 3)
+    local notifCard = makeCard(pg3, 4)
+    makeToggleRow(notifCard, 1, "Notify Entities", Settings.NotifyEntities, false, function(v) Settings.NotifyEntities = v end, 3)
+    makeToggleRow(notifCard, 2, "Notify Library Code", Settings.NotifyLibraryCode, false, function(v) Settings.NotifyLibraryCode = v end, 3)
+    makeToggleRow(notifCard, 3, "Notify Oxygen", Settings.NotifyOxygen, false, function(v) Settings.NotifyOxygen = v end, 3)
+    makeToggleRow(notifCard, 4, "Notify Haste Time", Settings.NotifyHasteTime, false, function(v) Settings.NotifyHasteTime = v end, 3)
+    makeToggleRow(notifCard, 5, "Entity Chat Message", Settings.EntityChatToggle, true, function(v) Settings.EntityChatToggle = v end, 3)
+
+    makeSection(pg3, "ESP", 5)
+    local espCard = makeCard(pg3, 6)
+    makeToggleRow(espCard, 1, "Objectives ESP", Settings.ObjectiveESPToggle, false, function(v) Settings.ObjectiveESPToggle = v end, 3)
+    makeToggleRow(espCard, 2, "Doors ESP", Settings.DoorESPToggle, false, function(v) Settings.DoorESPToggle = v end, 3)
+    makeToggleRow(espCard, 3, "Hiding Spots ESP", Settings.HidingSpotESPToggle, false, function(v) Settings.HidingSpotESPToggle = v end, 3)
+    makeToggleRow(espCard, 4, "Players ESP", Settings.PlayerESPToggle, false, function(v) Settings.PlayerESPToggle = v end, 3)
+    makeToggleRow(espCard, 5, "Chests ESP", Settings.ChestESPToggle, false, function(v) Settings.ChestESPToggle = v end, 3)
+    makeToggleRow(espCard, 6, "Items ESP", Settings.ItemESPToggle, false, function(v) Settings.ItemESPToggle = v end, 3)
+    makeToggleRow(espCard, 7, "Currency ESP", Settings.CurrencyESPToggle, false, function(v) Settings.CurrencyESPToggle = v end, 3)
+    makeToggleRow(espCard, 8, "Entities ESP", Settings.EntityESPToggle, false, function(v) Settings.EntityESPToggle = v end, 3)
+    makeToggleRow(espCard, 9, "Ladders ESP", Settings.LadderESPToggle, false, function(v) Settings.LadderESPToggle = v end, 3)
+    makeToggleRow(espCard, 10, "Rainbow Effect", Settings.ESPRainbow, false, function(v) Settings.ESPRainbow = v end, 3)
+    makeToggleRow(espCard, 11, "Show Distance", Settings.ESPShowDistance, false, function(v) Settings.ESPShowDistance = v end, 3)
+    makeSliderRow(espCard, 12, "Fill Transparency", 0, 1, Settings.ESPFillTransparency, false, function(v) Settings.ESPFillTransparency = v end, 3)
+    makeSliderRow(espCard, 13, "Outline Transparency", 0, 1, Settings.ESPOutlineTransparency, false, function(v) Settings.ESPOutlineTransparency = v end, 3)
+    makeSliderRow(espCard, 14, "Text Transparency", 0, 1, Settings.ESPTextTransparency, false, function(v) Settings.ESPTextTransparency = v end, 3)
+    makeSliderRow(espCard, 15, "Text Outline Transp.", 0, 1, Settings.ESPTextOutlineTransparency, false, function(v) Settings.ESPTextOutlineTransparency = v end, 3)
+    makeSliderRow(espCard, 16, "Fade Time", 0, 1, Settings.ESPFadeTime, false, function(v) Settings.ESPFadeTime = v end, 3)
+    makeSliderRow(espCard, 17, "Render Limit", 30, 240, Settings.ESPRenderLimit, false, function(v) Settings.ESPRenderLimit = v end, 3)
+    makeSliderRow(espCard, 18, "Text Size", 12, 24, Settings.ESPTextSize, false, function(v) Settings.ESPTextSize = v end, 3)
+    makeDropdownRow(espCard, 19, "Text Font", {{Title="RobotoCondensed"},{Title="Arial"},{Title="Gotham"},{Title="Code"}}, Settings.ESPTextFont, false, function(v) Settings.ESPTextFont = v end, 3)
+    makeToggleRow(espCard, 20, "Enable Tracers", Settings.ESPTracersToggle, false, function(v) Settings.ESPTracersToggle = v end, 3)
+    makeSliderRow(espCard, 21, "Tracer Thickness", 0, 2, Settings.ESPTracerThickness, false, function(v) Settings.ESPTracerThickness = v end, 3)
+    makeToggleRow(espCard, 22, "Enable Arrows", Settings.ESPArrowsToggle, false, function(v) Settings.ESPArrowsToggle = v end, 3)
+    makeSliderRow(espCard, 23, "Arrow Radius", 100, 500, Settings.ESPArrowsRadius, true, function(v) Settings.ESPArrowsRadius = v end, 3)
+
+    local pg4 = pages[4]
+    makeSection(pg4, "Automation", 1)
+    local flAutoCard = makeCard(pg4, 2)
+    makeToggleRow(flAutoCard, 1, "Auto Steer Minecart", Settings.AutoSteerMinecart, false, function(v) Settings.AutoSteerMinecart = v end, 4)
+    makeSliderRow(flAutoCard, 2, "Turn Distance", 20, 50, Settings.AutoSteerMinecartTurnDistance, false, function(v) Settings.AutoSteerMinecartTurnDistance = v end, 4)
+    makeSliderRow(flAutoCard, 3, "Crouch Distance", 20, 50, Settings.AutoSteerMinecartDuckDistance, false, function(v) Settings.AutoSteerMinecartDuckDistance = v end, 4)
+    makeToggleRow(flAutoCard, 4, "Auto Rooms", Settings.RoomsAutoWalk, false, function(v) Settings.RoomsAutoWalk = v end, 4)
+    makeSliderRow(flAutoCard, 5, "Pathfind Timeout", 0, 5, Settings.RoomsAutoWalkPathfindTimeout, false, function(v) Settings.RoomsAutoWalkPathfindTimeout = v end, 4)
+    makeToggleRow(flAutoCard, 6, "Ignore A-60", Settings.RoomsAutoWalkIgnoreA60, false, function(v) Settings.RoomsAutoWalkIgnoreA60 = v end, 4)
+    makeToggleRow(flAutoCard, 7, "Show Path", Settings.RoomsAutoWalkShowPathToggle, false, function(v) Settings.RoomsAutoWalkShowPathToggle = v end, 4)
+    makeToggleRow(flAutoCard, 8, "Auto Revive", Settings.AutoRevive, true, function(v) Settings.AutoRevive = v end, 4)
+
+    makeSection(pg4, "Visuals", 3)
+    local flVisCard = makeCard(pg4, 4)
+    makeToggleRow(flVisCard, 1, "Show Seek Path", Settings.ShowSeekPathToggle, false, function(v) Settings.ShowSeekPathToggle = v end, 4)
+    makeToggleRow(flVisCard, 2, "Show Eyestalk Path", Settings.ShowEyestalkPathToggle, true, function(v) Settings.ShowEyestalkPathToggle = v end, 4)
+
+    makeSection(pg4, "Bypass", 5)
+    local flBypassCard = makeCard(pg4, 6)
+    makeToggleRow(flBypassCard, 1, "Delete Seek Trigger", Settings.RemoveSeekTrigger, false, function(v) Settings.RemoveSeekTrigger = v end, 4)
+    makeToggleRow(flBypassCard, 2, "Delete Figure", Settings.RemoveFigure, false, function(v) Settings.RemoveFigure = v end, 4)
+    makeToggleRow(flBypassCard, 3, "Remove Basement Gate", Settings.RemoveBasementGate, false, function(v) Settings.RemoveBasementGate = v end, 4)
+    makeToggleRow(flBypassCard, 4, "Remove Paintings Door", Settings.RemovePaintingsDoor, false, function(v) Settings.RemovePaintingsDoor = v end, 4)
+    makeToggleRow(flBypassCard, 5, "Remove Skeleton Door", Settings.RemoveSkeletonDoor, true, function(v) Settings.RemoveSkeletonDoor = v end, 4)
+end
+
+BuildTabs()
+
+-- ====================== KEYBIND & FINISH ======================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.G then
+        gui.Enabled = not gui.Enabled
+    end
+end)
+
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, WIN_W, 0, WIN_H),
+    BackgroundTransparency = 0
+}):Play()
+
+Notify("Feather Hub", "Doors script loaded! Press G to toggle UI.", "info")
