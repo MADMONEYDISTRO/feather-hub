@@ -1,0 +1,1042 @@
+-- Feather Hub – Aura Ascension (complete, no library)
+repeat task.wait() until game:IsLoaded()
+
+getupvalues = getupvalues or debug.getupvalues
+setupvalue = setupvalue or debug.setupvalue
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+
+-- Safe Character assignment
+local Character
+if LocalPlayer.Character then
+    Character = LocalPlayer.Character
+else
+    Character = LocalPlayer.CharacterAdded:Wait()
+end
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local Humanoid = Character:WaitForChild("Humanoid")
+
+local Comm = ReplicatedStorage:WaitForChild("Communication")
+local RebirthRemote  = Comm:WaitForChild("RequestRebirth")
+local PingRemote     = Comm:WaitForChild("ActivePing")
+local InactiveRemote = Comm:WaitForChild("Inactivity")
+local AFKTpRemote    = Comm:WaitForChild("RequestAFKReturnTeleport")
+local ChestRemote    = Comm:WaitForChild("ChestCommunication")
+local TickRemote     = Comm:WaitForChild("Tick")
+local FXRemote       = Comm:WaitForChild("FX")
+
+-- ====================== SETTINGS TABLE ======================
+local Settings = {
+    farming = false,
+    rebirthing = false,
+    antiAfk = true,
+    autoChest = false,
+    speedOn = false,
+    dismiss = false,
+    curZone = "None",
+    tickAmt = 0,
+    sessAura = 0,
+    sessRebirths = 0,
+    sessStart = os.clock(),
+    rebirthDelay = 1,
+    speedVal = 50,
+    manualZone = "Auto",
+    rebLoop = false,
+    farmLoop = false,
+    chestLoop = false,
+    afkStarted = false
+}
+
+-- ====================== GAME DATA ======================
+local ZoneReqs = {
+    {name="Fire Bath",     req=1e8},
+    {name="Dark Lava",     req=1e15},
+    {name="Ancient Ruins", req=1e20},
+    {name="Electra Field", req=1e26},
+    {name="Divine Realm",  req=1e30},
+    {name="Frost Heaven",  req=1e35},
+    {name="Fallen Star",   req=1e40}
+}
+
+local Ranks = {
+    {n="Noob",m=2,r=0},{n="No Aura",m=8,r=10},{n="Sigma",m=28,r=100},
+    {n="Aura Farmer",m=95,r=1e3},{n="Mogger",m=320,r=1e4},
+    {n="Aura Maestro",m=1050,r=1.5e5},{n="Chad",m=3400,r=2e6},
+    {n="Main Character",m=16000,r=2.5e7},{n="Shadow",m=24000,r=8e7},
+    {n="Ascendant",m=40000,r=1e8},{n="Conqueror",m=95000,r=1e9},
+    {n="Vanguard",m=220000,r=1e10},{n="Chromatic",m=520000,r=1e11},
+    {n="Sentinel",m=1250000,r=1e12},{n="Overlord",m=3e6,r=1e13},
+    {n="Dominator",m=5.5e6,r=5e13},{n="Final Boss",m=1.762e7,r=1e14},
+    {n="Paragon",m=3.876e7,r=1e15},{n="Imperator",m=8.528e7,r=1e16},
+    {n="Supreme",m=1.876e8,r=1e17},{n="Archeox",m=3.2e8,r=8e17},
+    {n="Emperor",m=7.8e8,r=5e18},{n="Celestial",m=9e8,r=2e19},
+    {n="Superior",m=1.2e9,r=4e19},{n="Menace",m=1.45e9,r=6.5e19},
+    {n="Grim Reaper",m=1.75e9,r=1e20},{n="The Honored One",m=2.15e9,r=1.4e20},
+    {n="Antagonist",m=2.6e9,r=1.85e20},{n="Deltaversal",m=3.1e9,r=2.2e20},
+    {n="Chronomancer",m=4.2e9,r=2.6e20},{n="ArchWarrior",m=4.393e9,r=3e20},
+    {n="Divine",m=7e9,r=8e20},{n="Cosmic",m=1.2e10,r=3e21},
+    {n="APEX",m=2.1e10,r=1e22},{n="Heptagon",m=3.8e10,r=4e22},
+    {n="Transcendent",m=6.5e10,r=1.5e23},{n="God of Aura",m=1.1e11,r=6e23},
+    {n="Anti-Hero",m=1.9e11,r=2e24},{n="Nemesis",m=3.2e11,r=6e24},
+    {n="Malevolent",m=5.5e11,r=1.8e25},{n="The Cursed One",m=9e11,r=5e25},
+    {n="Eradicator",m=1.4e12,r=1.4e26},{n="Abyss Lord",m=1.7e12,r=3.6e26},
+    {n="Hyperion",m=2.1e12,r=9e26},{n="Redacted",m=2.5e12,r=2.2e27},
+    {n="E N T I T Y",m=3e12,r=5.2e27},{n="Superhuman",m=3.6e12,r=1.2e28},
+    {n="Sendevian",m=4.2e12,r=2.8e28},{n="Awakening",m=5e12,r=6.4e28},
+    {n="Prodigy",m=5.8e12,r=1.5e29},{n="Mastermind",m=8e12,r=3.2e29},
+    {n="Too Much Aura",m=1.1e13,r=7e29},{n="Omniscient",m=1.5e13,r=1.3e30},
+    {n="Absolute",m=2.2e13,r=3e30},{n="Almighty",m=2.7e13,r=7e30},
+    {n="Metaversal",m=3.2e13,r=1.6e31},{n="Ultrapotent",m=3.9e13,r=3.8e31},
+    {n="Powerious",m=4.6e13,r=9e31},{n="Anthropeak",m=5.5e13,r=2.1e32},
+    {n="I N F I N I T E",m=6.5e13,r=5e32},{n="S I N G U L A R I T Y",m=9e13,r=1.2e33},
+    {n="L I M I T L E S S",m=1.3e14,r=3e33},{n="B O U N D L E S S",m=1.8e14,r=7e33},
+    {n="F A L L E N   A N G E L",m=2.5e14,r=1.7e34},{n="The Ultimate",m=3.5e14,r=4e34},
+    {n="Simply Better",m=5e14,r=9.5e34},{n="Deity",m=7e14,r=2.3e35},
+    {n="The Ascension",m=1e15,r=8e35},{n="Nightmare",m=1.4e15,r=4e38},
+    {n="True Genesis",m=2e15,r=7e39},{n="Abomination",m=2.8e15,r=5e41}
+}
+
+-- Helpers
+local function fmt(n)
+    if not n or n == 0 then return "0" end
+    local sf = {"","K","M","B","T","Qa","Qi","Sx","Sp","Oc","No","Dc","Ud","Dd","Txd","Exd","VgD"}
+    if n < 1000 then return tostring(math.floor(n)) end
+    local e = math.clamp(math.floor(math.log10(math.max(n,1))/3), 1, #sf-1)
+    local v = n / (10^(e*3))
+    local d = v < 10 and 2 or (v < 100 and 1 or 0)
+    return string.format("%."..d.."f%s", v, sf[e+1])
+end
+
+local function getRoot()
+    local c = LocalPlayer.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function getHum()
+    local c = LocalPlayer.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+local function getAura()    return LocalPlayer:GetAttribute("Aura") or 0 end
+local function getRebirths() return LocalPlayer:GetAttribute("Rebirths") or 0 end
+
+local function getRank(a)
+    local out = Ranks[1]
+    for i = 1, #Ranks do
+        if a >= Ranks[i].r then out = Ranks[i] else break end
+    end
+    return out
+end
+local function getRankIdx(a)
+    local idx = 1
+    for i = 1, #Ranks do
+        if a >= Ranks[i].r then idx = i else break end
+    end
+    return idx
+end
+local function getProgress(a)
+    local i = getRankIdx(a)
+    if i >= #Ranks then return 1 end
+    return math.clamp((a - Ranks[i].r) / (Ranks[i+1].r - Ranks[i].r), 0, 1)
+end
+
+local cachedZones = nil
+local function loadZones()
+    if cachedZones then return cachedZones end
+    local ta = workspace:FindFirstChild("Training Areas")
+    if not ta then return {} end
+    local out = {}
+    for _, z in ipairs(ta:GetChildren()) do
+        local hb = z:FindFirstChild("AreaHitbox")
+        if hb then
+            local req = 0
+            for _, zr in ipairs(ZoneReqs) do
+                if zr.name == z.Name then req = zr.req break end
+            end
+            table.insert(out, {name=z.Name, req=req, pos=hb.Position})
+        end
+    end
+    table.sort(out, function(a,b) return a.req < b.req end)
+    cachedZones = out
+    return out
+end
+
+local function getPadCF()
+    local pad = workspace:FindFirstChild("RebirthPad")
+    if pad then
+        local tp = pad:FindFirstChild("TouchPart")
+        if tp then return tp.CFrame + Vector3.new(0,3,0) end
+    end
+    return CFrame.new(0,50,0)
+end
+local function bestZone(a, zones)
+    for i = #zones, 1, -1 do
+        if a >= zones[i].req then return zones[i] end
+    end
+    return zones[1]
+end
+local function nextUnlock(a, zones)
+    for _, z in ipairs(zones) do
+        if a < z.req then return z end
+    end
+    return nil
+end
+local function tp(cf)
+    local r = getRoot()
+    if r then r.CFrame = cf end
+end
+local function tpZone(z)
+    if z and z.pos then
+        tp(CFrame.new(z.pos + Vector3.new(0,5,0)))
+        Settings.curZone = z.name
+    end
+end
+local function fireRebirth()
+    local ok, res = pcall(function() return RebirthRemote:InvokeServer() end)
+    if not ok then
+        ok = pcall(function() RebirthRemote:FireServer() end)
+        return ok
+    end
+    return ok and res
+end
+local function doManualRebirth()
+    local root = getRoot()
+    if not root then return end
+    local savedCF = root.CFrame
+    tp(getPadCF())
+    task.wait(0.35)
+    local ok = fireRebirth()
+    task.wait(0.25)
+    if ok then Settings.sessRebirths = Settings.sessRebirths + 1 end
+    if Settings.farming then
+        local bz = bestZone(getAura(), loadZones())
+        if bz then tpZone(bz) else tp(savedCF) end
+    else
+        tp(savedCF)
+    end
+end
+
+-- Loops
+local function startFarmLoop()
+    if Settings.farmLoop then return end
+    Settings.farmLoop = true
+    task.spawn(function()
+        local zones = loadZones()
+        while Settings.farming do
+            local a = getAura()
+            local target = nil
+            if Settings.manualZone ~= "Auto" then
+                for _, z in ipairs(zones) do
+                    if z.name == Settings.manualZone then target = z break end
+                end
+            end
+            if not target then target = bestZone(a, zones) end
+            if target then
+                local root = getRoot()
+                if root and (root.Position - target.pos).Magnitude > 30 then
+                    tpZone(target)
+                elseif target then
+                    Settings.curZone = target.name
+                end
+            end
+            task.wait(2)
+        end
+        Settings.farmLoop = false
+    end)
+end
+
+local function startRebirthLoop()
+    if Settings.rebLoop then return end
+    Settings.rebLoop = true
+    task.spawn(function()
+        while Settings.rebirthing do
+            local a = getAura()
+            if a >= 1000 then
+                local go = true
+                if Settings.tickAmt > 0 and a < 5000 then
+                    if (1000 / Settings.tickAmt) > 30 then go = false end
+                end
+                if go then
+                    tp(getPadCF())
+                    task.wait(0.35)
+                    local ok = fireRebirth()
+                    if ok then Settings.sessRebirths = Settings.sessRebirths + 1 end
+                    task.wait(Settings.rebirthDelay)
+                    if Settings.farming then
+                        local bz = bestZone(getAura(), loadZones())
+                        if bz then tpZone(bz) end
+                    end
+                    task.wait(0.3)
+                end
+            end
+            task.wait(0.8)
+        end
+        Settings.rebLoop = false
+    end)
+end
+
+local function startAntiAfk()
+    if Settings.afkStarted then return end
+    Settings.afkStarted = true
+    task.spawn(function()
+        while Settings.antiAfk do
+            pcall(function() PingRemote:FireServer(false) end)
+            local root = getRoot()
+            if root and root.Anchored then root.Anchored = false end
+            pcall(function()
+                game:GetService("VirtualInputManager"):SendMouseMoveEvent(5,5,game)
+            end)
+            task.wait(12)
+        end
+        Settings.afkStarted = false
+    end)
+    pcall(function()
+        local old = hookfunction(AFKTpRemote.FireServer, newcclosure(function(self,...)
+            if self == AFKTpRemote then return end
+            return old(self,...)
+        end))
+    end)
+    pcall(function()
+        local old2 = hookfunction(InactiveRemote.FireServer, newcclosure(function(self,...)
+            if self == InactiveRemote then return end
+            return old2(self,...)
+        end))
+    end)
+end
+
+local function startChestLoop()
+    if Settings.chestLoop then return end
+    Settings.chestLoop = true
+    task.spawn(function()
+        while Settings.autoChest do
+            pcall(function() ChestRemote:FireServer("Claim") end)
+            task.wait(305)
+        end
+        Settings.chestLoop = false
+    end)
+end
+
+local function startDismissLoop()
+    task.spawn(function()
+        while Settings.dismiss do
+            pcall(function()
+                local pg = LocalPlayer:FindFirstChild("PlayerGui")
+                if not pg then return end
+                local tut = pg:FindFirstChild("Tutorial")
+                if tut then tut.Enabled = false end
+                for _, gui in ipairs(pg:GetChildren()) do
+                    if gui:IsA("ScreenGui") and gui.Name ~= "WindUI" then
+                        for _, fr in ipairs(gui:GetDescendants()) do
+                            if fr:IsA("TextButton") then
+                                local txt = fr.Text:lower()
+                                if txt=="x" or txt=="close" or txt=="dismiss" or txt=="ok" then
+                                    pcall(function() fr.Visible = false end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(3)
+        end
+    end)
+end
+
+-- TickRemote
+TickRemote.OnClientEvent:Connect(function(amt)
+    if type(amt) == "number" then
+        Settings.tickAmt = amt
+        Settings.sessAura = Settings.sessAura + amt
+    end
+end)
+
+-- CharacterAdded
+LocalPlayer.CharacterAdded:Connect(function(c)
+    task.wait(1)
+    if Settings.antiAfk then
+        local r = c:WaitForChild("HumanoidRootPart", 5)
+        if r and r.Anchored then r.Anchored = false end
+    end
+    if Settings.farming then
+        task.wait(0.5)
+        local bz = bestZone(getAura(), loadZones())
+        if bz then tpZone(bz) end
+    end
+    if Settings.speedOn then
+        local h = c:WaitForChild("Humanoid", 5)
+        if h then h.WalkSpeed = Settings.speedVal end
+    end
+end)
+
+-- R key = manual rebirth
+UserInputService.InputBegan:Connect(function(inp, gpe)
+    if gpe then return end
+    if inp.KeyCode == Enum.KeyCode.R then
+        task.spawn(doManualRebirth)
+    end
+end)
+
+-- ====================== FEATHERHUB GOLD UI ======================
+local Theme = {
+    bg        = Color3.fromRGB(6, 5, 4),
+    sidebar   = Color3.fromRGB(10, 9, 7),
+    card      = Color3.fromRGB(14, 12, 9),
+    border    = Color3.fromRGB(55, 45, 20),
+    text      = Color3.fromRGB(245, 238, 215),
+    muted     = Color3.fromRGB(130, 110, 65),
+    dim       = Color3.fromRGB(22, 18, 10),
+    sep       = Color3.fromRGB(48, 38, 18),
+    header    = Color3.fromRGB(9, 8, 5),
+    inputBg   = Color3.fromRGB(4, 3, 2),
+    accent    = Color3.fromRGB(195, 160, 60),
+    accentLt  = Color3.fromRGB(225, 190, 90),
+    accentDim = Color3.fromRGB(110, 88, 28),
+    green     = Color3.fromRGB(140, 195, 100),
+    red       = Color3.fromRGB(210, 75, 75),
+    gold      = Color3.fromRGB(195, 160, 60),
+    toggleOn  = Color3.fromRGB(170, 140, 45),
+    toggleOff = Color3.fromRGB(45, 35, 18),
+}
+local WIN_W, WIN_H, SIDEBAR_W, HDR_H, MARGIN, CONTENT_GAP = 630, 480, 134, 40, 8, 8
+
+local function tw(t, s, d)
+    local dur = t; if dur == nil then dur = 0.22 end
+    local style = s; if style == nil then style = Enum.EasingStyle.Quart end
+    local dir = d; if dir == nil then dir = Enum.EasingDirection.Out end
+    return TweenInfo.new(dur, style, dir)
+end
+
+local function Notify(title, msg, level)
+    local col
+    if level == "error" then col = Theme.red
+    elseif level == "warning" then col = Theme.orange
+    else col = Theme.accent end
+    local n = Instance.new("Frame", gui)
+    n.Size = UDim2.new(0, 240, 0, 52); n.Position = UDim2.new(1, -260, 0, 100)
+    n.BackgroundColor3 = Theme.card; n.BorderSizePixel = 0; n.ZIndex = 50
+    Instance.new("UICorner", n).CornerRadius = UDim.new(0, 8)
+    local st = Instance.new("UIStroke", n); st.Color = col; st.Thickness = 1.5
+    local t = Instance.new("TextLabel", n); t.Size = UDim2.new(1, -16, 0, 22); t.Position = UDim2.new(0, 8, 0, 6)
+    t.Text = title; t.Font = Enum.Font.GothamBold; t.TextSize = 11; t.TextColor3 = col; t.BackgroundTransparency = 1
+    local m = Instance.new("TextLabel", n); m.Size = UDim2.new(1, -16, 0, 18); m.Position = UDim2.new(0, 8, 0, 28)
+    m.Text = msg; m.Font = Enum.Font.Gotham; m.TextSize = 9; m.TextColor3 = Theme.text; m.BackgroundTransparency = 1
+    task.delay(3, function()
+        if n.Parent then
+            TweenService:Create(n, TweenInfo.new(0.4), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+            task.wait(0.4); n:Destroy()
+        end
+    end)
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "FeatherHub"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+do
+    local success = pcall(function() gui.Parent = CoreGui end)
+    if not success then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+end
+
+local win = Instance.new("Frame", gui)
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = Theme.bg
+win.BackgroundTransparency = 0.05
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 2
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
+
+local titleBar = Instance.new("Frame", win)
+titleBar.Size = UDim2.new(1, 0, 0, HDR_H)
+titleBar.BackgroundColor3 = Theme.header
+titleBar.BorderSizePixel = 0
+titleBar.ZIndex = 3
+local titleText = Instance.new("TextLabel", titleBar)
+titleText.Size = UDim2.new(1, -160, 1, 0); titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.Text = "Feather Hub - Aura"
+titleText.Font = Enum.Font.GothamBold; titleText.TextSize = 12
+titleText.TextColor3 = Theme.accent; titleText.TextXAlignment = Enum.TextXAlignment.Left; titleText.BackgroundTransparency = 1
+
+local freeBadge = Instance.new("Frame", titleBar)
+freeBadge.Size = UDim2.new(0, 44, 0, 18); freeBadge.Position = UDim2.new(1, -120, 0.5, -9)
+freeBadge.BackgroundColor3 = Theme.accentDim; freeBadge.BorderSizePixel = 0; freeBadge.ZIndex = 5
+Instance.new("UICorner", freeBadge).CornerRadius = UDim.new(0, 5)
+local freeLbl = Instance.new("TextLabel", freeBadge)
+freeLbl.Size = UDim2.new(1, 0, 1, 0); freeLbl.Text = "FREE"
+freeLbl.Font = Enum.Font.GothamBold; freeLbl.TextSize = 7; freeLbl.TextColor3 = Theme.gold; freeLbl.BackgroundTransparency = 1
+
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.new(0, 26, 0, 26); closeBtn.Position = UDim2.new(1, -66, 0.5, -13)
+closeBtn.Text = "×"; closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16
+closeBtn.TextColor3 = Theme.muted; closeBtn.BackgroundColor3 = Theme.dim
+closeBtn.BorderSizePixel = 0; closeBtn.AutoButtonColor = false; closeBtn.ZIndex = 5
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 7)
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- Drag
+local dragToggle, dragStart, winStart = false
+titleBar.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = true; dragStart = i.Position; winStart = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragToggle and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = i.Position - dragStart
+        win.Position = UDim2.new(winStart.X.Scale, winStart.X.Offset + delta.X, winStart.Y.Scale, winStart.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragToggle = false end
+end)
+
+local sidebarY = HDR_H + MARGIN; local bodyH = WIN_H - sidebarY - MARGIN
+local sidebar = Instance.new("Frame", win)
+sidebar.Size = UDim2.new(0, SIDEBAR_W, 0, bodyH); sidebar.Position = UDim2.new(0, MARGIN, 0, sidebarY)
+sidebar.BackgroundColor3 = Theme.sidebar; sidebar.BorderSizePixel = 0; sidebar.ZIndex = 3
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+
+local sideScroll = Instance.new("ScrollingFrame", sidebar)
+sideScroll.Size = UDim2.new(1, -8, 1, -8); sideScroll.Position = UDim2.new(0, 4, 0, 4)
+sideScroll.BackgroundTransparency = 1; sideScroll.BorderSizePixel = 0
+sideScroll.ScrollBarThickness = 2; sideScroll.ScrollBarImageColor3 = Theme.accent
+sideScroll.CanvasSize = UDim2.new(0, 0, 0, 0); sideScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; sideScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+local tabListLayout = Instance.new("UIListLayout", sideScroll)
+tabListLayout.SortOrder = Enum.SortOrder.LayoutOrder; tabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; tabListLayout.Padding = UDim.new(0, 6)
+
+local contentX = MARGIN + SIDEBAR_W + CONTENT_GAP; local contentW = WIN_W - contentX - MARGIN
+local contentArea = Instance.new("Frame", win)
+contentArea.Size = UDim2.new(0, contentW, 0, bodyH); contentArea.Position = UDim2.new(0, contentX, 0, sidebarY)
+contentArea.BackgroundTransparency = 1; contentArea.BorderSizePixel = 0; contentArea.ZIndex = 2
+
+-- Search
+local FeatureRegistry = {}
+local function registerFeature(label, tabIdx) table.insert(FeatureRegistry, {label = label, tab = tabIdx}) end
+local searchFrame = Instance.new("Frame", contentArea)
+searchFrame.Size = UDim2.new(1, -8, 0, 34); searchFrame.Position = UDim2.new(0, 4, 0, 0)
+searchFrame.BackgroundColor3 = Theme.card; searchFrame.BorderSizePixel = 0; searchFrame.ZIndex = 5
+Instance.new("UICorner", searchFrame).CornerRadius = UDim.new(0, 9)
+local searchBox = Instance.new("TextBox", searchFrame)
+searchBox.Size = UDim2.new(1, -14, 0, 26); searchBox.Position = UDim2.new(0, 7, 0.5, -13)
+searchBox.PlaceholderText = "Search features..."; searchBox.Text = ""
+searchBox.Font = Enum.Font.Gotham; searchBox.TextSize = 10; searchBox.TextColor3 = Theme.text; searchBox.PlaceholderColor3 = Theme.muted
+searchBox.BackgroundColor3 = Theme.inputBg; searchBox.BorderSizePixel = 0; searchBox.ZIndex = 6
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
+
+local srPanel = Instance.new("Frame", gui)
+srPanel.BackgroundColor3 = Theme.card; srPanel.BorderSizePixel = 0; srPanel.ClipsDescendants = true; srPanel.Visible = false; srPanel.ZIndex = 40
+Instance.new("UICorner", srPanel).CornerRadius = UDim.new(0, 9)
+local srScroll = Instance.new("ScrollingFrame", srPanel)
+srScroll.Size = UDim2.new(1, 0, 1, 0); srScroll.BackgroundTransparency = 1; srScroll.BorderSizePixel = 0
+srScroll.ScrollBarThickness = 2; srScroll.ScrollBarImageColor3 = Theme.accent
+srScroll.CanvasSize = UDim2.new(0, 0, 0, 0); srScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; srScroll.ScrollingDirection = Enum.ScrollingDirection.Y; srScroll.ZIndex = 41
+local srLayout = Instance.new("UIListLayout", srScroll); srLayout.SortOrder = Enum.SortOrder.LayoutOrder; srLayout.Padding = UDim.new(0, 2)
+local srPad = Instance.new("UIPadding", srScroll)
+srPad.PaddingTop = UDim.new(0, 4); srPad.PaddingBottom = UDim.new(0, 4); srPad.PaddingLeft = UDim.new(0, 4); srPad.PaddingRight = UDim.new(0, 4)
+
+local TAB_NAMES = {"Farm", "Rebirth", "Stats", "Teleport", "Misc"}
+local tabBtns = {}
+
+local function updateSearch(query)
+    local children = srScroll:GetChildren()
+    for i = 1, #children do
+        local c = children[i]
+        if c:IsA("Frame") or c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
+    end
+    query = query:lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if query == "" then srPanel.Visible = false; return end
+    local matches = {}
+    for i = 1, #FeatureRegistry do
+        local e = FeatureRegistry[i]
+        if e.label:lower():find(query, 1, true) then table.insert(matches, e) end
+    end
+    if #matches == 0 then
+        local noRes = Instance.new("TextLabel", srScroll)
+        noRes.Size = UDim2.new(1, -8, 0, 32); noRes.Text = 'No results for "' .. query .. '"'
+        noRes.Font = Enum.Font.Gotham; noRes.TextSize = 9; noRes.TextColor3 = Theme.muted
+        noRes.BackgroundTransparency = 1; noRes.ZIndex = 42; noRes.LayoutOrder = 1
+    else
+        for idx = 1, #matches do
+            local e = matches[idx]; local tabName = TAB_NAMES[e.tab]; if tabName == nil then tabName = "?" end
+            local row = Instance.new("Frame", srScroll)
+            row.Size = UDim2.new(1, -4, 0, 34); row.BackgroundColor3 = Theme.dim; row.BorderSizePixel = 0; row.ZIndex = 42; row.LayoutOrder = idx
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+            local hitbox = Instance.new("TextButton", row)
+            hitbox.Size = UDim2.new(1, 0, 1, 0); hitbox.BackgroundTransparency = 1; hitbox.Text = ""; hitbox.ZIndex = 43
+            local nameLbl = Instance.new("TextLabel", row)
+            nameLbl.Size = UDim2.new(0.65, 0, 1, 0); nameLbl.Position = UDim2.new(0, 10, 0, 0)
+            nameLbl.Text = e.label; nameLbl.Font = Enum.Font.GothamSemibold; nameLbl.TextSize = 10
+            nameLbl.TextColor3 = Theme.text; nameLbl.TextXAlignment = Enum.TextXAlignment.Left; nameLbl.BackgroundTransparency = 1; nameLbl.ZIndex = 43
+            local badge = Instance.new("TextLabel", row)
+            badge.Size = UDim2.new(0, 64, 0, 18); badge.Position = UDim2.new(1, -70, 0.5, -9)
+            badge.Text = tabName; badge.Font = Enum.Font.GothamBold; badge.TextSize = 8
+            badge.TextColor3 = Theme.accent; badge.BackgroundColor3 = Theme.accentDim; badge.BackgroundTransparency = 0.5; badge.BorderSizePixel = 0; badge.ZIndex = 43
+            Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 4)
+            hitbox.MouseEnter:Connect(function() TweenService:Create(row, tw(0.1), {BackgroundColor3 = Theme.accentDim}):Play() end)
+            hitbox.MouseLeave:Connect(function() TweenService:Create(row, tw(0.1), {BackgroundColor3 = Theme.dim}):Play() end)
+            local capturedTab = e.tab
+            hitbox.MouseButton1Click:Connect(function()
+                searchBox.Text = ""; srPanel.Visible = false
+                for i = 1, #tabBtns do
+                    if tabBtns[i].Text == TAB_NAMES[capturedTab] then tabBtns[i].MouseButton1Click:Fire(); break end
+                end
+            end)
+        end
+    end
+    local absPos = searchFrame.AbsolutePosition; local absSize = searchFrame.AbsoluteSize
+    srPanel.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 4)
+    srPanel.Size = UDim2.new(0, absSize.X, 0, math.min(#matches, 5) * 36 + 8)
+    srPanel.Visible = true
+end
+searchBox:GetPropertyChangedSignal("Text"):Connect(function() updateSearch(searchBox.Text) end)
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    if not srPanel.Visible then return end
+    local mp = UserInputService:GetMouseLocation()
+    local sp = srPanel.AbsolutePosition; local ss = srPanel.AbsoluteSize
+    local sfp = searchFrame.AbsolutePosition; local sfs = searchFrame.AbsoluteSize
+    local inPanel = mp.X >= sp.X and mp.X <= sp.X + ss.X and mp.Y >= sp.Y and mp.Y <= sp.Y + ss.Y
+    local inSearch = mp.X >= sfp.X and mp.X <= sfp.X + sfs.X and mp.Y >= sfp.Y and mp.Y <= sfp.Y + sfs.Y
+    if not inPanel and not inSearch then srPanel.Visible = false end
+end)
+
+local SEARCH_H = 34; local SEARCH_GAP = 8; local PAGES_TOP = SEARCH_H + SEARCH_GAP
+local pagesFrame = Instance.new("Frame", contentArea)
+pagesFrame.Size = UDim2.new(1, 0, 1, -PAGES_TOP); pagesFrame.Position = UDim2.new(0, 0, 0, PAGES_TOP)
+pagesFrame.BackgroundTransparency = 1; pagesFrame.BorderSizePixel = 0; pagesFrame.ZIndex = 2
+
+local pages = {}
+for i = 1, #TAB_NAMES do
+    local page = Instance.new("ScrollingFrame", pagesFrame)
+    page.Size = UDim2.new(1, 0, 1, 0); page.BackgroundTransparency = 1; page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3; page.ScrollBarImageColor3 = Theme.accent
+    page.CanvasSize = UDim2.new(0, 0, 0, 0); page.AutomaticCanvasSize = Enum.AutomaticSize.Y; page.ScrollingDirection = Enum.ScrollingDirection.Y
+    page.ZIndex = 2; page.Visible = (i == 1)
+    local ll = Instance.new("UIListLayout", page)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.Padding = UDim.new(0, 8)
+    pages[i] = page
+
+    local btn = Instance.new("TextButton", sideScroll)
+    btn.Size = UDim2.new(1, -16, 0, 36)
+    if i == 1 then btn.BackgroundColor3 = Theme.accent else btn.BackgroundColor3 = Theme.dim end
+    btn.BorderSizePixel = 0; btn.AutoButtonColor = false
+    btn.Text = TAB_NAMES[i]; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10
+    if i == 1 then btn.TextColor3 = Color3.new(1, 1, 1) else btn.TextColor3 = Theme.text end
+    btn.ZIndex = 4; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+    local idx = i
+    btn.MouseButton1Click:Connect(function()
+        for j = 1, #pages do pages[j].Visible = (j == idx) end
+        for j = 1, #tabBtns do
+            local on = (j == idx)
+            local bg, tc
+            if on then bg = Theme.accent; tc = Color3.new(1, 1, 1) else bg = Theme.dim; tc = Theme.text end
+            TweenService:Create(tabBtns[j], tw(0.15), {BackgroundColor3 = bg, TextColor3 = tc}):Play()
+        end
+    end)
+    tabBtns[i] = btn
+end
+
+-- UI Element Factories
+local function makeCard(parent, order)
+    local c = Instance.new("Frame", parent)
+    c.Size = UDim2.new(1, 0, 0, 0); c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = Theme.card; c.BorderSizePixel = 0; c.LayoutOrder = order; c.ZIndex = 3
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 10)
+    local s = Instance.new("UIStroke", c); s.Color = Theme.border; s.Thickness = 1
+    local ll = Instance.new("UIListLayout", c); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+local function makeRow(card, order, isLast, height)
+    local h = height; if h == nil then h = 46 end
+    local row = Instance.new("Frame", card)
+    row.Size = UDim2.new(1, 0, 0, h); row.BackgroundTransparency = 1; row.BorderSizePixel = 0; row.LayoutOrder = order; row.ZIndex = 4
+    if not isLast then
+        local sep = Instance.new("Frame", row)
+        sep.Size = UDim2.new(1, -28, 0, 1); sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = Theme.sep; sep.BorderSizePixel = 0; sep.ZIndex = 4
+    end
+    return row
+end
+local function makeSection(parent, label, order)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1, 0, 0, 22); f.BackgroundTransparency = 1; f.BorderSizePixel = 0; f.LayoutOrder = order; f.ZIndex = 3
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1, 0, 1, 0); lbl.Text = string.upper(label); lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 8
+    lbl.TextColor3 = Theme.accent; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.BackgroundTransparency = 1; lbl.ZIndex = 3
+    local line = Instance.new("Frame", f)
+    line.Size = UDim2.new(0, 28, 0, 2); line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = Theme.accent; line.BorderSizePixel = 0; line.ZIndex = 3
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return f
+end
+local function CreateToggle(parent, order, title, desc, getter, setter, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 48)
+    local strip = Instance.new("Frame", row)
+    strip.Size = UDim2.new(0, 3, 0.45, 0); strip.Position = UDim2.new(0, 0, 0.275, 0)
+    local init = getter(); strip.BackgroundColor3 = init and Theme.accent or Theme.sep; strip.BorderSizePixel = 0; strip.ZIndex = 5
+    Instance.new("UICorner", strip).CornerRadius = UDim.new(1, 0)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.65, -20, 0, 18); titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1; titleLbl.Text = title; titleLbl.TextColor3 = Theme.text; titleLbl.Font = Enum.Font.GothamSemibold; titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5
+    local toggleBg = Instance.new("Frame", row)
+    toggleBg.Size = UDim2.new(0, 44, 0, 22); toggleBg.Position = UDim2.new(1, -60, 0.5, -11)
+    toggleBg.BackgroundColor3 = init and Theme.toggleOn or Theme.toggleOff; toggleBg.BorderSizePixel = 0; toggleBg.ZIndex = 5
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+    local toggleStroke = Instance.new("UIStroke", toggleBg)
+    toggleStroke.Color = init and Theme.accent or Theme.sep; toggleStroke.Thickness = 1
+    local toggleKnob = Instance.new("Frame", toggleBg)
+    toggleKnob.Size = UDim2.new(0, 16, 0, 16); toggleKnob.Position = init and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+    toggleKnob.BackgroundColor3 = Color3.new(1, 1, 1); toggleKnob.BorderSizePixel = 0; toggleKnob.ZIndex = 6
+    Instance.new("UICorner", toggleKnob).CornerRadius = UDim.new(1, 0)
+    local hitBtn = Instance.new("TextButton", row)
+    hitBtn.Size = UDim2.new(0, 60, 0, 30); hitBtn.Position = UDim2.new(1, -70, 0.5, -15)
+    hitBtn.BackgroundTransparency = 1; hitBtn.Text = ""; hitBtn.ZIndex = 7
+    local state = init
+    hitBtn.MouseButton1Click:Connect(function()
+        state = not state; setter(state)
+        local on = getter()
+        local newBg, newStroke, newStripBg, newPos
+        if on then newBg = Theme.toggleOn; newStroke = Theme.accent; newStripBg = Theme.accent; newPos = UDim2.new(1, -19, 0.5, -8)
+        else newBg = Theme.toggleOff; newStroke = Theme.sep; newStripBg = Theme.sep; newPos = UDim2.new(0, 3, 0.5, -8) end
+        TweenService:Create(toggleBg, tw(0.2), {BackgroundColor3 = newBg}):Play()
+        TweenService:Create(toggleStroke, tw(0.2), {Color = newStroke}):Play()
+        TweenService:Create(toggleKnob, tw(0.2, Enum.EasingStyle.Back), {Position = newPos}):Play()
+        TweenService:Create(strip, tw(0.2), {BackgroundColor3 = newStripBg}):Play()
+    end)
+    return row
+end
+local function CreateButton(parent, order, title, desc, callback, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 50)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.6, -16, 0, 16); titleLbl.Position = UDim2.new(0, 16, 0, 9)
+    titleLbl.BackgroundTransparency = 1; titleLbl.Text = title; titleLbl.TextColor3 = Theme.text; titleLbl.Font = Enum.Font.GothamSemibold; titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 80, 0, 28); btn.Position = UDim2.new(1, -96, 0.5, -14)
+    btn.BackgroundColor3 = Theme.accentDim; btn.Text = "EXECUTE"; btn.TextColor3 = Color3.new(1, 1, 1); btn.Font = Enum.Font.GothamBold; btn.TextSize = 9
+    btn.BorderSizePixel = 0; btn.AutoButtonColor = false; btn.ZIndex = 5; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.MouseEnter:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = Theme.accent}):Play() end)
+    btn.MouseLeave:Connect(function() TweenService:Create(btn, tw(), {BackgroundColor3 = Theme.accentDim}):Play() end)
+    btn.MouseButton1Click:Connect(callback)
+    return row
+end
+local function CreateSlider(parent, order, title, desc, min, max, getter, setter, isInt, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 68)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.65, -16, 0, 16); titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1; titleLbl.Text = title; titleLbl.TextColor3 = Theme.text; titleLbl.Font = Enum.Font.GothamSemibold; titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5
+    local val = getter()
+    local valueBox = Instance.new("TextBox", row)
+    valueBox.Size = UDim2.new(0, 55, 0, 22); valueBox.Position = UDim2.new(1, -70, 0, 8)
+    valueBox.BackgroundColor3 = Theme.inputBg; valueBox.Text = tostring(val); valueBox.TextColor3 = Theme.gold; valueBox.Font = Enum.Font.GothamBold; valueBox.TextSize = 10
+    valueBox.BorderSizePixel = 0; valueBox.ZIndex = 5; Instance.new("UICorner", valueBox).CornerRadius = UDim.new(0, 5)
+    local track = Instance.new("Frame", row)
+    track.Size = UDim2.new(1, -32, 0, 4); track.Position = UDim2.new(0, 16, 0, 50)
+    track.BackgroundColor3 = Theme.dim; track.BorderSizePixel = 0; track.ZIndex = 5; Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    local fill = Instance.new("Frame", track)
+    fill.Size = UDim2.new((val - min) / (max - min), 0, 1, 0); fill.BackgroundColor3 = Theme.accent; fill.BorderSizePixel = 0; fill.ZIndex = 6
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    local knob = Instance.new("TextButton", track)
+    knob.Size = UDim2.new(0, 14, 0, 14); knob.Position = UDim2.new((val - min) / (max - min), -7, 0.5, -7)
+    knob.BackgroundColor3 = Theme.gold; knob.Text = ""; knob.BorderSizePixel = 0; knob.ZIndex = 7; Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    local ds = false
+    knob.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then ds = true end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then ds = false end end)
+    UserInputService.InputChanged:Connect(function(i)
+        if ds and i.UserInputType == Enum.UserInputType.MouseMovement then
+            local ap = track.AbsolutePosition; local sz = track.AbsoluteSize
+            local ratio = math.clamp((i.Position.X - ap.X) / sz.X, 0, 1)
+            local newVal = isInt and math.floor(min + ratio*(max - min)) or min + ratio*(max - min)
+            setter(newVal)
+            valueBox.Text = tostring(newVal); fill.Size = UDim2.new(ratio, 0, 1, 0); knob.Position = UDim2.new(ratio, -7, 0.5, -7)
+        end
+    end)
+    valueBox.FocusLost:Connect(function()
+        local num = tonumber(valueBox.Text)
+        if num then
+            num = math.clamp(num, min, max); if isInt then num = math.floor(num) end
+            setter(num)
+            local pct = (num - min) / (max - min)
+            fill.Size = UDim2.new(pct, 0, 1, 0); knob.Position = UDim2.new(pct, -7, 0.5, -7); valueBox.Text = tostring(num)
+        else valueBox.Text = tostring(getter()) end
+    end)
+    return row
+end
+local function CreateDropdown(parent, order, title, desc, options, getter, setter, isMulti, isLast, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, isLast, 48)
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.55, -16, 0, 16); titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1; titleLbl.Text = title; titleLbl.TextColor3 = Theme.text; titleLbl.Font = Enum.Font.GothamSemibold; titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.ZIndex = 5
+    local selected = getter()
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 140, 0, 28); btn.Position = UDim2.new(1, -156, 0.5, -14)
+    btn.BackgroundColor3 = Theme.inputBg
+    local displayText
+    if isMulti then
+        displayText = "Select..."
+    else
+        if selected == "" or selected == nil then
+            if #options > 0 then
+                selected = options[1]
+                if type(selected) == "table" and selected.Title then selected = selected.Title end
+                setter(selected)
+            else
+                selected = ""
+            end
+        end
+        displayText = selected
+    end
+    btn.Text = displayText; btn.TextColor3 = Theme.gold; btn.Font = Enum.Font.GothamSemibold; btn.TextSize = 9; btn.BorderSizePixel = 0; btn.AutoButtonColor = false; btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    local drop = Instance.new("Frame", gui)
+    drop.Size = UDim2.new(0, 140, 0, #options * 24); drop.Position = UDim2.new(1, -156, 0, 42)
+    drop.BackgroundColor3 = Theme.card; drop.BorderSizePixel = 0; drop.Visible = false; drop.ZIndex = 20; Instance.new("UICorner", drop).CornerRadius = UDim.new(0, 6)
+    local scroll = Instance.new("ScrollingFrame", drop)
+    scroll.Size = UDim2.new(1, 0, 1, 0); scroll.BackgroundTransparency = 1; scroll.ScrollBarThickness = 3; scroll.ScrollBarImageColor3 = Theme.accent
+    scroll.CanvasSize = UDim2.new(0, 0, 0, #options * 24); scroll.ZIndex = 21
+    local listLayout = Instance.new("UIListLayout", scroll); listLayout.Padding = UDim.new(0, 1); listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    local function refresh(newOptions)
+        options = newOptions; scroll:ClearAllChildren()
+        for _, opt in ipairs(options) do
+            local optTitle = type(opt) == "table" and opt.Title or opt
+            local ob = Instance.new("TextButton", scroll)
+            ob.Size = UDim2.new(1, 0, 0, 23); ob.BackgroundColor3 = Theme.dim; ob.BackgroundTransparency = 0.5
+            ob.Text = optTitle; ob.TextColor3 = Theme.text; ob.Font = Enum.Font.Gotham; ob.TextSize = 9; ob.BorderSizePixel = 0; ob.ZIndex = 22
+            ob.MouseEnter:Connect(function() TweenService:Create(ob, tw(0.1), {BackgroundTransparency = 0}):Play() end)
+            ob.MouseLeave:Connect(function() TweenService:Create(ob, tw(0.1), {BackgroundTransparency = 0.5}):Play() end)
+            ob.MouseButton1Click:Connect(function()
+                if isMulti then
+                    local current = getter(); if not current then current = {} end; current[optTitle] = not current[optTitle]; setter(current)
+                else
+                    setter(optTitle)
+                    btn.Text = optTitle
+                end
+                drop.Visible = false
+            end)
+        end
+    end; refresh(options)
+    btn.MouseButton1Click:Connect(function() drop.Visible = not drop.Visible end)
+    UserInputService.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 and drop.Visible then
+            local mp = UserInputService:GetMouseLocation(); local dp = drop.AbsolutePosition; local ds2 = drop.AbsoluteSize
+            if mp.X < dp.X or mp.X > dp.X + ds2.X or mp.Y < dp.Y or mp.Y > dp.Y + ds2.Y then drop.Visible = false end
+        end
+    end)
+    return {button = btn, refresh = refresh, getSelected = function() return btn.Text end}
+end
+local function CreateParagraph(parent, order, title, defaultText, tabIdx)
+    registerFeature(title, tabIdx)
+    local row = makeRow(parent, order, true, 36)
+    local l = Instance.new("TextLabel", row)
+    l.Size = UDim2.new(0.35, 0, 1, 0); l.Position = UDim2.new(0, 16, 0, 0)
+    l.Text = title; l.Font = Enum.Font.GothamSemibold; l.TextSize = 10; l.TextColor3 = Theme.muted; l.TextXAlignment = Enum.TextXAlignment.Left; l.BackgroundTransparency = 1; l.ZIndex = 5
+    local v = Instance.new("TextLabel", row)
+    v.Size = UDim2.new(0.65, -16, 1, 0); v.Position = UDim2.new(0.35, 0, 0, 0)
+    v.Text = defaultText; v.Font = Enum.Font.GothamBold; v.TextSize = 10; v.TextColor3 = Theme.gold; v.TextXAlignment = Enum.TextXAlignment.Right; v.BackgroundTransparency = 1; v.ZIndex = 5
+    return v
+end
+
+-- ====================== BUILD TABS ======================
+local function BuildTabs()
+    -- Farm Tab
+    local pg1 = pages[1]
+    makeSection(pg1, "Zone Farming", 1)
+    local farmCard = makeCard(pg1, 2)
+    CreateToggle(farmCard, 1, "Smart Auto-Farm", "Teleports to the best zone automatically", function() return Settings.farming end, function(v) Settings.farming = v; if v then startFarmLoop() end end, false, 1)
+    local zNames = {"Auto"}
+    for _, z in ipairs(ZoneReqs) do table.insert(zNames, z.name) end
+    CreateDropdown(farmCard, 2, "Zone Override", "Force a specific zone", zNames, function() return Settings.manualZone end, function(v) Settings.manualZone = v end, false, true, 1)
+    makeSection(pg1, "Movement", 3)
+    local moveCard = makeCard(pg1, 4)
+    CreateToggle(moveCard, 1, "Speed Boost", "Increases walk speed", function() return Settings.speedOn end, function(v) Settings.speedOn = v; local h = getHum(); if h then h.WalkSpeed = v and Settings.speedVal or 16 end end, false, 1)
+    CreateSlider(moveCard, 2, "Walk Speed", "Walk speed value", 16, 200, function() return Settings.speedVal end, function(v) Settings.speedVal = v; if Settings.speedOn then local h = getHum(); if h then h.WalkSpeed = v end end end, true, true, 1)
+
+    -- Rebirth Tab
+    local pg2 = pages[2]
+    makeSection(pg2, "Auto Rebirth", 1)
+    local rebCard = makeCard(pg2, 2)
+    CreateToggle(rebCard, 1, "Aggressive Auto-Rebirth", "Rebirths automatically when 1000 aura reached", function() return Settings.rebirthing end, function(v) Settings.rebirthing = v; if v then startRebirthLoop() end end, false, 2)
+    CreateSlider(rebCard, 2, "Cycle Delay (s)", "Wait time between rebirths", 0.5, 5, function() return Settings.rebirthDelay end, function(v) Settings.rebirthDelay = v end, false, true, 2)
+    makeSection(pg2, "Manual", 3)
+    local manRebCard = makeCard(pg2, 4)
+    CreateButton(manRebCard, 1, "Rebirth Now [R Key]", "Teleport to pad -> rebirth -> return", function() task.spawn(doManualRebirth) end, false, 2)
+    CreateButton(manRebCard, 2, "Fire Remote Only (No TP)", "Fire the remote without teleporting", function()
+        task.spawn(function()
+            local ok = fireRebirth()
+            if ok then
+                Settings.sessRebirths = Settings.sessRebirths + 1
+                Notify("Rebirth", "Successful!", "success")
+            else
+                Notify("Rebirth", "Failed", "error")
+            end
+        end)
+    end, true, 2)
+
+    -- Stats Tab
+    local pg3 = pages[3]
+    makeSection(pg3, "Live Dashboard", 1)
+    local stCard = makeCard(pg3, 2)
+    local stAura  = CreateParagraph(stCard, 1, "Aura", "0", 3)
+    local stRank  = CreateParagraph(stCard, 2, "Rank", "Noob", 3)
+    local stProg  = CreateParagraph(stCard, 3, "Progress", "0%", 3)
+    local stReb   = CreateParagraph(stCard, 4, "Rebirths", "0", 3)
+    local stZone  = CreateParagraph(stCard, 5, "Current Zone", "None", 3)
+    local stTick  = CreateParagraph(stCard, 6, "Aura/Tick", "+0", 3)
+    local stEtaZ  = CreateParagraph(stCard, 7, "Next Zone", "N/A", 3)
+    local stEtaR  = CreateParagraph(stCard, 8, "ETA Rebirth", "N/A", 3)
+    makeSection(pg3, "Session", 3)
+    local sessCard = makeCard(pg3, 4)
+    local stSessA = CreateParagraph(sessCard, 1, "Aura Gained", "0", 3)
+    local stSessR = CreateParagraph(sessCard, 2, "Rebirths", "0", 3)
+    local stRPH   = CreateParagraph(sessCard, 3, "Rebirths/h", "0", 3)
+    local stUp    = CreateParagraph(sessCard, 4, "Uptime", "00:00:00", 3)
+
+    -- We'll store the labels for updating in the stats loop
+    _G.StatLabels = {stAura, stRank, stProg, stReb, stZone, stTick, stEtaZ, stEtaR, stSessA, stSessR, stRPH, stUp}
+
+    -- Teleport Tab
+    local pg4 = pages[4]
+    makeSection(pg4, "Training Areas", 1)
+    local tpCard = makeCard(pg4, 2)
+    local zones = loadZones()
+    for _, z in ipairs(zones) do
+        CreateButton(tpCard, _, z.name, "Req: " .. fmt(z.req) .. " Aura", function() tpZone(z) end, false, 4)
+    end
+    makeSection(pg4, "Landmarks", 2)
+    local lmCard = makeCard(pg4, 3)
+    CreateButton(lmCard, 1, "Rebirth Pad", "", function() tp(getPadCF()) end, false, 4)
+    CreateButton(lmCard, 2, "Chest", "", function()
+        pcall(function()
+            local hb = workspace.Map.Chest.Hitbox
+            tp(CFrame.new(hb.Position + Vector3.new(0,5,0)))
+        end)
+    end, true, 4)
+
+    -- Misc Tab
+    local pg5 = pages[5]
+    makeSection(pg5, "Anti-Cheat", 1)
+    local miscCard = makeCard(pg5, 2)
+    CreateToggle(miscCard, 1, "Anti-AFK", "Prevents being kicked for inactivity", function() return Settings.antiAfk end, function(v) Settings.antiAfk = v; if v then startAntiAfk() end end, false, 5)
+    makeSection(pg5, "Automation", 3)
+    local autoCard = makeCard(pg5, 4)
+    CreateToggle(autoCard, 1, "Auto Chest Claim", "Claims the chest every 5 minutes", function() return Settings.autoChest end, function(v) Settings.autoChest = v; if v then startChestLoop() end end, false, 5)
+    CreateToggle(autoCard, 2, "Auto-Dismiss Popups", "Closes popups automatically", function() return Settings.dismiss end, function(v) Settings.dismiss = v; if v then startDismissLoop() end end, true, 5)
+    makeSection(pg5, "Flex", 5)
+    local flexCard = makeCard(pg5, 6)
+    CreateButton(flexCard, 1, "Flash My Aura", "Activates aura FX effect", function() pcall(function() FXRemote:FireServer(LocalPlayer.UserId) end) end, false, 5)
+    makeSection(pg5, "Server", 7)
+    local srvCard = makeCard(pg5, 8)
+    CreateButton(srvCard, 1, "Server Hop", "", function() pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer) end) end, false, 5)
+    CreateButton(srvCard, 2, "Rejoin", "", function() pcall(function() game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end) end, true, 5)
+end
+BuildTabs()
+
+-- ====================== BACKGROUND LOOPS ======================
+startAntiAfk()
+
+-- Stats update loop (every 2 seconds)
+task.spawn(function()
+    while task.wait(2) do
+        pcall(function()
+            local a = getAura()
+            local rb = getRebirths()
+            local rank = getRank(a)
+            local prog = getProgress(a)
+            local idx = getRankIdx(a)
+            local zones = loadZones()
+            local nz = nextUnlock(a, zones)
+            local up = os.clock() - Settings.sessStart
+            local ut = string.format("%02d:%02d:%02d", math.floor(up/3600), math.floor(up%3600/60), math.floor(up%60))
+
+            local labels = _G.StatLabels
+            if labels then
+                labels[1].Text = fmt(a)
+                labels[2].Text = rank.n .. "  (x" .. fmt(rank.m) .. ")"
+                if idx < #Ranks then
+                    labels[3].Text = Ranks[idx+1].n .. "  [" .. math.floor(prog*100) .. "%]"
+                else
+                    labels[3].Text = "MAX RANK"
+                end
+                labels[4].Text = fmt(rb)
+                labels[5].Text = Settings.curZone
+                labels[6].Text = "+" .. fmt(Settings.tickAmt)
+
+                if nz then
+                    if Settings.tickAmt > 0 then
+                        local need = nz.req - a
+                        if need > 0 then
+                            local sec = need / Settings.tickAmt
+                            local eta
+                            if sec > 86400 then eta = string.format("%.1fd", sec/86400)
+                            elseif sec > 3600 then eta = string.format("%.1fh", sec/3600)
+                            else eta = string.format("%.0fm", sec/60) end
+                            labels[7].Text = nz.name .. " in " .. eta
+                        else
+                            labels[7].Text = nz.name .. " - READY!"
+                        end
+                    else
+                        labels[7].Text = nz.name .. " [" .. fmt(nz.req) .. "]"
+                    end
+                else
+                    labels[7].Text = "All unlocked!"
+                end
+
+                if a >= 1000 then
+                    labels[8].Text = "READY NOW"
+                elseif Settings.tickAmt > 0 then
+                    labels[8].Text = string.format("%.0fs", (1000-a)/Settings.tickAmt)
+                else
+                    labels[8].Text = "Waiting ticks..."
+                end
+
+                labels[9].Text = fmt(Settings.sessAura)
+                labels[10].Text = tostring(Settings.sessRebirths)
+                labels[11].Text = (up > 60) and tostring(math.floor(Settings.sessRebirths / (up/3600))) or "0"
+                labels[12].Text = ut
+            end
+        end)
+    end
+end)
+
+-- Speed & anti-afk maintenance
+task.spawn(function()
+    while task.wait(1) do
+        if Settings.speedOn then
+            local h = getHum()
+            if h and h.WalkSpeed ~= Settings.speedVal then h.WalkSpeed = Settings.speedVal end
+        end
+        if Settings.antiAfk then
+            local r = getRoot()
+            if r and r.Anchored then r.Anchored = false end
+        end
+    end
+end)
+
+-- Toggle GUI keybind
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.G then gui.Enabled = not gui.Enabled end
+end)
+
+-- Open animation
+TweenService:Create(win, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, WIN_W, 0, WIN_H),
+    BackgroundTransparency = 0
+}):Play()
+
+Notify("Feather Hub", "Aura Ascension script loaded! Press G to toggle UI.", "info")
