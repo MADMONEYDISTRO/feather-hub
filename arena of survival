@@ -1,0 +1,442 @@
+--loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()
+-- Infinite Yield + Feather ESP for Loot
+loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()
+
+repeat task.wait() until game:IsLoaded()
+
+-- Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+
+local plr = Players.LocalPlayer
+local PlayerGui = plr:WaitForChild("PlayerGui")
+
+-- ESP Categories
+local healthItems = {"Medkit"}
+local weaponItems = {"Hammer", "Knife", "Mace", "Torch", "Spear", "Kunai", "Bow", "Bottle", "ArrowsDrop"}
+local foodItems = {"Darkberry", "Raw Meat", "Bread", "Firewood"}
+
+local espStates = {
+    Health = false,
+    Weapons = false,
+    Food = false,
+}
+
+-- Helper to find Loot folder and ignore Cornocopia
+local function getLootFolder()
+    return Workspace:FindFirstChild("Loot")
+end
+
+local function shouldIgnore(item)
+    return item.Name == "Cornocopia"
+end
+
+local function createESP(item, category)
+    if shouldIgnore(item) then return end
+    local folder = item:FindFirstChild("ESP_"..category)
+    if not folder then
+        folder = Instance.new("Folder")
+        folder.Name = "ESP_"..category
+        folder.Parent = item
+
+        local bgui = Instance.new("BillboardGui")
+        bgui.Name = "NameTag"
+        bgui.Size = UDim2.new(0, 200, 0, 50)
+        bgui.StudsOffset = Vector3.new(0, 2, 0)
+        bgui.AlwaysOnTop = true
+        bgui.Enabled = true
+        bgui.Parent = folder
+        bgui.Adornee = item
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.TextColor3 = Color3.fromRGB(195, 160, 60)  -- Gold, matches UI accent
+        textLabel.TextStrokeTransparency = 0
+        textLabel.Text = item.Name
+        textLabel.Font = Enum.Font.GothamBold
+        textLabel.TextSize = 12
+        textLabel.Parent = bgui
+    end
+end
+
+local function removeESP(item, category)
+    local folder = item:FindFirstChild("ESP_"..category)
+    if folder then
+        folder:Destroy()
+    end
+end
+
+local function clearCategory(category)
+    local loot = getLootFolder()
+    if not loot then return end
+    for _, item in pairs(loot:GetChildren()) do
+        if item:IsA("BasePart") or item:IsA("Model") then
+            removeESP(item, category)
+        end
+    end
+end
+
+local function refreshCategory(category)
+    local loot = getLootFolder()
+    if not loot then return end
+    local itemsList
+    if category == "Health" then
+        itemsList = healthItems
+    elseif category == "Weapons" then
+        itemsList = weaponItems
+    elseif category == "Food" then
+        itemsList = foodItems
+    else
+        return
+    end
+
+    for _, item in pairs(loot:GetChildren()) do
+        if (item:IsA("BasePart") or item:IsA("Model")) and not shouldIgnore(item) then
+            local match = false
+            for _, name in ipairs(itemsList) do
+                if item.Name == name then
+                    match = true
+                    break
+                end
+            end
+            if match then
+                if espStates[category] then
+                    createESP(item, category)
+                else
+                    removeESP(item, category)
+                end
+            end
+        end
+    end
+end
+
+-- Watch for new items
+local lootFolder = getLootFolder()
+if lootFolder then
+    lootFolder.ChildAdded:Connect(function(child)
+        if espStates.Health then
+            for _, name in ipairs(healthItems) do
+                if child.Name == name then
+                    createESP(child, "Health")
+                    break
+                end
+            end
+        end
+        if espStates.Weapons then
+            for _, name in ipairs(weaponItems) do
+                if child.Name == name then
+                    createESP(child, "Weapons")
+                    break
+                end
+            end
+        end
+        if espStates.Food then
+            for _, name in ipairs(foodItems) do
+                if child.Name == name then
+                    createESP(child, "Food")
+                    break
+                end
+            end
+        end
+    end)
+end
+
+-- ====================== FEATHER UI (One Tab: Visuals) ======================
+local Theme = {
+    bg        = Color3.fromRGB(6, 5, 4),
+    sidebar   = Color3.fromRGB(10, 9, 7),
+    card      = Color3.fromRGB(14, 12, 9),
+    border    = Color3.fromRGB(55, 45, 20),
+    text      = Color3.fromRGB(245, 238, 215),
+    muted     = Color3.fromRGB(130, 110, 65),
+    dim       = Color3.fromRGB(22, 18, 10),
+    sep       = Color3.fromRGB(48, 38, 18),
+    header    = Color3.fromRGB(9, 8, 5),
+    inputBg   = Color3.fromRGB(4, 3, 2),
+    accent    = Color3.fromRGB(195, 160, 60),
+    accentLt  = Color3.fromRGB(225, 190, 90),
+    accentDim = Color3.fromRGB(110, 88, 28),
+    toggleOn  = Color3.fromRGB(170, 140, 45),
+    toggleOff = Color3.fromRGB(45, 35, 18),
+}
+local WIN_W, WIN_H, SIDEBAR_W, HDR_H, MARGIN, CONTENT_GAP = 320, 260, 0, 40, 8, 8  -- No sidebar, one tab
+
+local function tw(t, s, d)
+    local dur = t or 0.22
+    local style = s or Enum.EasingStyle.Quart
+    local dir = d or Enum.EasingDirection.Out
+    return TweenInfo.new(dur, style, dir)
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "LootESP"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function() gui.Parent = CoreGui end)
+if not gui.Parent then gui.Parent = PlayerGui end
+
+local win = Instance.new("Frame", gui)
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = Theme.bg
+win.BackgroundTransparency = 0.05
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 2
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
+
+-- Title bar
+local titleBar = Instance.new("Frame", win)
+titleBar.Size = UDim2.new(1, 0, 0, HDR_H)
+titleBar.BackgroundColor3 = Theme.header
+titleBar.BorderSizePixel = 0
+titleBar.ZIndex = 3
+local titleText = Instance.new("TextLabel", titleBar)
+titleText.Size = UDim2.new(1, -60, 1, 0)
+titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.Text = "Loot ESP"
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 12
+titleText.TextColor3 = Theme.accent
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.BackgroundTransparency = 1
+
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.new(0, 26, 0, 26)
+closeBtn.Position = UDim2.new(1, -38, 0.5, -13)
+closeBtn.Text = "×"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 16
+closeBtn.TextColor3 = Theme.muted
+closeBtn.BackgroundColor3 = Theme.dim
+closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 5
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 7)
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- Drag
+local dragToggle, dragStart, winStart = false
+titleBar.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = true
+        dragStart = i.Position
+        winStart = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragToggle and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = i.Position - dragStart
+        win.Position = UDim2.new(winStart.X.Scale, winStart.X.Offset + delta.X, winStart.Y.Scale, winStart.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragToggle = false end
+end)
+
+-- Content area (no sidebar, just full width)
+local contentY = HDR_H + MARGIN
+local contentH = WIN_H - contentY - MARGIN
+local contentArea = Instance.new("Frame", win)
+contentArea.Size = UDim2.new(1, -MARGIN*2, 0, contentH)
+contentArea.Position = UDim2.new(0, MARGIN, 0, contentY)
+contentArea.BackgroundTransparency = 1
+contentArea.BorderSizePixel = 0
+contentArea.ZIndex = 2
+
+-- Single scrolling page
+local page = Instance.new("ScrollingFrame", contentArea)
+page.Size = UDim2.new(1, 0, 1, 0)
+page.BackgroundTransparency = 1
+page.BorderSizePixel = 0
+page.ScrollBarThickness = 3
+page.ScrollBarImageColor3 = Theme.accent
+page.CanvasSize = UDim2.new(0, 0, 0, 0)
+page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+page.ScrollingDirection = Enum.ScrollingDirection.Y
+page.ZIndex = 2
+local pageLayout = Instance.new("UIListLayout", page)
+pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+pageLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+pageLayout.Padding = UDim.new(0, 8)
+
+-- Card factory
+local function makeCard(parent, order)
+    local c = Instance.new("Frame", parent)
+    c.Size = UDim2.new(1, -8, 0, 0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = Theme.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.ZIndex = 3
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 10)
+    local s = Instance.new("UIStroke", c)
+    s.Color = Theme.border
+    s.Thickness = 1
+    local ll = Instance.new("UIListLayout", c)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    return c
+end
+
+local function makeRow(card, order, isLast, height)
+    local h = height or 46
+    local row = Instance.new("Frame", card)
+    row.Size = UDim2.new(1, 0, 0, h)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.ZIndex = 4
+    if not isLast then
+        local sep = Instance.new("Frame", row)
+        sep.Size = UDim2.new(1, -28, 0, 1)
+        sep.Position = UDim2.new(0, 14, 1, -1)
+        sep.BackgroundColor3 = Theme.sep
+        sep.BorderSizePixel = 0
+        sep.ZIndex = 4
+    end
+    return row
+end
+
+local function makeSection(parent, label, order)
+    local f = Instance.new("Frame", parent)
+    f.Size = UDim2.new(1, -8, 0, 22)
+    f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0
+    f.LayoutOrder = order
+    f.ZIndex = 3
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.Text = string.upper(label)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 8
+    lbl.TextColor3 = Theme.accent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 3
+    local line = Instance.new("Frame", f)
+    line.Size = UDim2.new(0, 28, 0, 2)
+    line.Position = UDim2.new(0, 0, 1, -2)
+    line.BackgroundColor3 = Theme.accent
+    line.BorderSizePixel = 0
+    line.ZIndex = 3
+    Instance.new("UICorner", line).CornerRadius = UDim.new(1, 0)
+    return f
+end
+
+local function CreateToggle(parent, order, title, desc, getter, setter, isLast)
+    local row = makeRow(parent, order, isLast, 48)
+    local strip = Instance.new("Frame", row)
+    strip.Size = UDim2.new(0, 3, 0.45, 0)
+    strip.Position = UDim2.new(0, 0, 0.275, 0)
+    local init = getter()
+    strip.BackgroundColor3 = init and Theme.accent or Theme.sep
+    strip.BorderSizePixel = 0
+    strip.ZIndex = 5
+    Instance.new("UICorner", strip).CornerRadius = UDim.new(1, 0)
+
+    local titleLbl = Instance.new("TextLabel", row)
+    titleLbl.Size = UDim2.new(0.65, -20, 0, 18)
+    titleLbl.Position = UDim2.new(0, 16, 0, 8)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = title
+    titleLbl.TextColor3 = Theme.text
+    titleLbl.Font = Enum.Font.GothamSemibold
+    titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.ZIndex = 5
+
+    local toggleBg = Instance.new("Frame", row)
+    toggleBg.Size = UDim2.new(0, 44, 0, 22)
+    toggleBg.Position = UDim2.new(1, -60, 0.5, -11)
+    toggleBg.BackgroundColor3 = init and Theme.toggleOn or Theme.toggleOff
+    toggleBg.BorderSizePixel = 0
+    toggleBg.ZIndex = 5
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+    local toggleStroke = Instance.new("UIStroke", toggleBg)
+    toggleStroke.Color = init and Theme.accent or Theme.sep
+    toggleStroke.Thickness = 1
+
+    local toggleKnob = Instance.new("Frame", toggleBg)
+    toggleKnob.Size = UDim2.new(0, 16, 0, 16)
+    toggleKnob.Position = init and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+    toggleKnob.BackgroundColor3 = Color3.new(1, 1, 1)
+    toggleKnob.BorderSizePixel = 0
+    toggleKnob.ZIndex = 6
+    Instance.new("UICorner", toggleKnob).CornerRadius = UDim.new(1, 0)
+
+    local hitBtn = Instance.new("TextButton", row)
+    hitBtn.Size = UDim2.new(0, 60, 0, 30)
+    hitBtn.Position = UDim2.new(1, -70, 0.5, -15)
+    hitBtn.BackgroundTransparency = 1
+    hitBtn.Text = ""
+    hitBtn.ZIndex = 7
+
+    hitBtn.MouseButton1Click:Connect(function()
+        local newState = not getter()
+        setter(newState)
+        local on = getter()
+        local newBg, newStroke, newStripBg, newPos
+        if on then
+            newBg = Theme.toggleOn
+            newStroke = Theme.accent
+            newStripBg = Theme.accent
+            newPos = UDim2.new(1, -19, 0.5, -8)
+        else
+            newBg = Theme.toggleOff
+            newStroke = Theme.sep
+            newStripBg = Theme.sep
+            newPos = UDim2.new(0, 3, 0.5, -8)
+        end
+        TweenService:Create(toggleBg, tw(0.2), {BackgroundColor3 = newBg}):Play()
+        TweenService:Create(toggleStroke, tw(0.2), {Color = newStroke}):Play()
+        TweenService:Create(toggleKnob, tw(0.2, Enum.EasingStyle.Back), {Position = newPos}):Play()
+        TweenService:Create(strip, tw(0.2), {BackgroundColor3 = newStripBg}):Play()
+    end)
+    return row
+end
+
+-- Build the single Visuals tab
+makeSection(page, "Loot ESP", 1)
+local espCard = makeCard(page, 2)
+
+CreateToggle(espCard, 1, "Health ESP", "Show Medkit tags", function() return espStates.Health end, function(v)
+    espStates.Health = v
+    if v then refreshCategory("Health") else clearCategory("Health") end
+end, false)
+
+CreateToggle(espCard, 2, "Weapons ESP", "Show weapons & arrows", function() return espStates.Weapons end, function(v)
+    espStates.Weapons = v
+    if v then refreshCategory("Weapons") else clearCategory("Weapons") end
+end, false)
+
+CreateToggle(espCard, 3, "Food ESP", "Show food & resources", function() return espStates.Food end, function(v)
+    espStates.Food = v
+    if v then refreshCategory("Food") else clearCategory("Food") end
+end, true)
+
+-- Open animation
+TweenService:Create(win, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, WIN_W, 0, WIN_H),
+    BackgroundTransparency = 0
+}):Play()
+
+-- Clean up on close
+gui.Destroying:Connect(function()
+    clearCategory("Health")
+    clearCategory("Weapons")
+    clearCategory("Food")
+end)
+
+-- Toggle UI with V key
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.V then
+        gui.Enabled = not gui.Enabled
+    end
+end)
