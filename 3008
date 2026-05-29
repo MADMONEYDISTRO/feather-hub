@@ -1,5 +1,3 @@
-
-
 if _G.abyssal_loaded then
     game:GetService("StarterGui"):SetCore("SendNotification",{
         Title="3008 Abyssal", Text="Already running!", Duration=4
@@ -13,12 +11,15 @@ local UserInputService  = game:GetService("UserInputService")
 local RunService        = game:GetService("RunService")
 local Players           = game:GetService("Players")
 local CoreGui           = game:GetService("CoreGui")
+local Lighting          = game:GetService("Lighting")
+local TeleportService   = game:GetService("TeleportService")
+local HttpService       = game:GetService("HttpService")
 
 local Player   = Players.LocalPlayer
 local Camera   = workspace.CurrentCamera
 
 -- ============================================================
--- THEME  (matches Feather Hub free-scripts purple)
+-- THEME  (Feather Hub purple)
 -- ============================================================
 local T = {
     bg       = Color3.fromRGB(13,13,18),
@@ -44,7 +45,7 @@ local function tw(t,s,d)
 end
 
 -- ============================================================
--- ESP STATE
+-- ESP STATE (Employee / Player / Items)
 -- ============================================================
 local espState = {
     employee = {
@@ -87,35 +88,257 @@ local espState = {
 }
 
 -- ============================================================
--- ESP DRAWING POOLS
+-- UTILITY FEATURES (from old script)
 -- ============================================================
-local employeeDrawings = {}   -- [model] = {box, tracer, nameLbl, distLbl, hpLbl}
-local playerDrawings   = {}   -- [player] = {box, tracer, nameLbl, distLbl, hpLbl}
-local itemDrawings     = {}   -- [item]   = {nameLbl}
+local noclipEnabled = false
+local noclipConn = nil
+local fullbrightEnabled = false
+local fullbrightConn = nil
+local savedLighting = {}
+local coordDisplayEnabled = false
+local coordGui = nil
+local coordConn = nil
+local thirdPersonEnabled = false
+local thirdPersonConn = nil
+local noFallDamageEnabled = false
+local infJumpEnabled = false
+local infJumpConn = nil
+local walkSpeedVal = 16
+local jumpPowerVal = 50
+
+-- Noclip
+local function toggleNoclip(state)
+    noclipEnabled = state
+    if noclipConn then noclipConn:Disconnect() end
+    if noclipEnabled then
+        noclipConn = RunService.Stepped:Connect(function()
+            local char = Player.Character
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+            end
+        end)
+    else
+        local char = Player.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = true end
+            end
+        end
+    end
+end
+
+-- Fullbright
+local function toggleFullbright(state)
+    fullbrightEnabled = state
+    if fullbrightConn then fullbrightConn:Disconnect() end
+    if fullbrightEnabled then
+        savedLighting = {
+            Brightness = Lighting.Brightness,
+            ClockTime = Lighting.ClockTime,
+            FogEnd = Lighting.FogEnd,
+            Ambient = Lighting.Ambient,
+            OutdoorAmbient = Lighting.OutdoorAmbient,
+        }
+        fullbrightConn = RunService.RenderStepped:Connect(function()
+            Lighting.Brightness = 2
+            Lighting.ClockTime = 12
+            Lighting.FogEnd = 1e9
+            Lighting.Ambient = Color3.new(1,1,1)
+            Lighting.OutdoorAmbient = Color3.new(1,1,1)
+        end)
+    else
+        for k,v in pairs(savedLighting) do Lighting[k] = v end
+    end
+end
+
+-- Coordinate display
+local function toggleCoordDisplay(state)
+    coordDisplayEnabled = state
+    if coordGui then coordGui:Destroy() end
+    if coordConn then coordConn:Disconnect() end
+    if coordDisplayEnabled then
+        coordGui = Instance.new("ScreenGui")
+        coordGui.Name = "CoordDisplay"
+        coordGui.ResetOnSpawn = false
+        coordGui.Parent = Player:WaitForChild("PlayerGui")
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0,300,0,30)
+        lbl.Position = UDim2.new(0,10,0.85,0)
+        lbl.BackgroundTransparency = 1
+        lbl.TextColor3 = T.text
+        lbl.TextStrokeTransparency = 0.5
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 20
+        lbl.Text = "Coordinates: N/A"
+        lbl.Parent = coordGui
+        coordConn = RunService.RenderStepped:Connect(function()
+            local char = Player.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local pos = root.Position
+                lbl.Text = string.format("X: %.1f  Y: %.1f  Z: %.1f", pos.X, pos.Y, pos.Z)
+            end
+        end)
+    end
+end
+
+-- Third person unlock
+local function toggleThirdPerson(state)
+    thirdPersonEnabled = state
+    if thirdPersonConn then thirdPersonConn:Disconnect() end
+    if thirdPersonEnabled then
+        thirdPersonConn = RunService.RenderStepped:Connect(function()
+            Player.CameraMode = Enum.CameraMode.Classic
+            Player.CameraMinZoomDistance = 5
+            Player.CameraMaxZoomDistance = 20
+        end)
+    else
+        Player.CameraMode = Enum.CameraMode.LockFirstPerson
+        Player.CameraMinZoomDistance = 0.5
+        Player.CameraMaxZoomDistance = 0.5
+    end
+end
+
+-- No fall damage (hook namecall)
+local oldNamecall
+local function toggleNoFallDamage(state)
+    noFallDamageEnabled = state
+    if not oldNamecall then
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        oldNamecall = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if method == "FireServer" and select(1, ...) == "FallDamage" and noFallDamageEnabled then
+                return nil
+            end
+            return oldNamecall(self, ...)
+        end)
+        setreadonly(mt, true)
+    end
+end
+
+-- Infinite jump
+local function toggleInfJump(state)
+    infJumpEnabled = state
+    if infJumpConn then infJumpConn:Disconnect() end
+    if infJumpEnabled then
+        infJumpConn = UserInputService.JumpRequest:Connect(function()
+            local char = Player.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum and hum:GetState() ~= Enum.HumanoidStateType.Dead then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    end
+end
+
+-- Walk speed & jump power
+local function applyWalkSpeed(speed)
+    walkSpeedVal = speed
+    local char = Player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = speed end
+end
+local function applyJumpPower(power)
+    jumpPowerVal = power
+    local char = Player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.JumpPower = power end
+end
+Player.CharacterAdded:Connect(function(char)
+    task.wait(0.2)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.WalkSpeed = walkSpeedVal
+        hum.JumpPower = jumpPowerVal
+    end
+end)
+
+-- Teleport to closest item of chosen type
+local itemNamesList = {
+    "2 Litre Dr. Bob", "Apple", "Banana", "Bloxy Soda", "Beans", "Burger",
+    "Chips", "Cookie", "Dr. Bob Soda", "Hotdog", "Ice Cream", "Lemon",
+    "Lemon Slice", "Meatballs", "Medkit", "Pizza", "Scrubber Duds",
+    "Striped Donut", "Water"
+}
+local selectedItem = itemNamesList[1]
+
+local function getClosestItem(itemName)
+    local char = Player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local itemsFolder = workspace:FindFirstChild("GameObjects")
+    if not itemsFolder then return nil end
+    local physical = itemsFolder:FindFirstChild("Physical")
+    if not physical then return nil end
+    local items = physical:FindFirstChild("Items")
+    if not items then return nil end
+    local closest, bestDist = nil, math.huge
+    for _, model in ipairs(items:GetChildren()) do
+        if model:IsA("Model") and model.Name == itemName then
+            local part = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart") or model:GetPivot()
+            local dist = (root.Position - part.Position).Magnitude
+            if dist < bestDist then
+                bestDist = dist
+                closest = model
+            end
+        end
+    end
+    return closest, bestDist
+end
+
+local function teleportToItem()
+    local item, dist = getClosestItem(selectedItem)
+    if item then
+        local char = Player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local pos = (item.PrimaryPart and item.PrimaryPart.CFrame or item:GetPivot()) + Vector3.new(0,3,0)
+            root.CFrame = pos
+            notify("Teleport", "Teleported to "..selectedItem, "success")
+        end
+    else
+        notify("Teleport", "No "..selectedItem.." found nearby", "error")
+    end
+end
+
+-- Rejoin & server hop
+local function rejoin()
+    TeleportService:Teleport(game.PlaceId, Player)
+end
+local function serverHop()
+    local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+    for _, server in ipairs(servers.data) do
+        if server.id ~= game.JobId and server.playing < server.maxPlayers then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, Player)
+            break
+        end
+    end
+end
+
+-- ============================================================
+-- DRAWING HELPERS (ESP)
+-- ============================================================
+local employeeDrawings = {}
+local playerDrawings   = {}
+local itemDrawings     = {}
 
 local function newDrawBox(color, thickness)
     local d = Drawing.new("Square")
-    d.Visible   = false
-    d.Color     = color
-    d.Thickness = thickness or 1
-    d.Filled    = false
+    d.Visible, d.Color, d.Thickness, d.Filled = false, color, thickness or 1, false
     return d
 end
 local function newDrawLine(color, thickness)
     local d = Drawing.new("Line")
-    d.Visible   = false
-    d.Color     = color
-    d.Thickness = thickness or 1
+    d.Visible, d.Color, d.Thickness = false, color, thickness or 1
     return d
 end
 local function newDrawText(text, color, size, outline)
     local d = Drawing.new("Text")
-    d.Visible = false
-    d.Text    = text
-    d.Color   = color
-    d.Size    = size or 14
-    d.Center  = true
-    d.Outline = outline ~= false
+    d.Visible, d.Text, d.Color, d.Size, d.Center, d.Outline = false, text, color, size or 14, true, outline ~= false
     return d
 end
 
@@ -129,31 +352,7 @@ local function clearAllDrawings(tbl)
     for k in pairs(tbl) do removeDrawings(tbl, k) end
 end
 
--- ============================================================
--- WORLD → SCREEN HELPERS
--- ============================================================
-local function worldToScreen(pos)
-    local sp, onScreen = Camera:WorldToViewportPoint(pos)
-    return Vector2.new(sp.X, sp.Y), onScreen, sp.Z
-end
-
-local function getBoundingBox(model)
-    local ok, cf, size = pcall(function()
-        return model:GetBoundingBox()
-    end)
-    if not ok then return nil, nil end
-    return cf, size
-end
-
-local function getHealthFraction(model)
-    local hum = model:FindFirstChildOfClass("Humanoid")
-    if hum then return hum.Health / math.max(hum.MaxHealth, 1) end
-    return 1
-end
-
--- ============================================================
--- EMPLOYEE ESP LOGIC
--- ============================================================
+-- Employee helpers
 local function getEmployeeFolder()
     local go = workspace:FindFirstChild("GameObjects")
     if not go then return nil end
@@ -166,46 +365,34 @@ local function buildEmployeeDrawing(emp)
     if employeeDrawings[emp] then return end
     local s = espState.employee
     employeeDrawings[emp] = {
-        box    = newDrawBox(s.boxColor, 1),
+        box = newDrawBox(s.boxColor, 1),
         tracer = newDrawLine(s.tracerColor, 1),
         nameLbl = newDrawText("Employee", s.nameColor, s.textSize),
-        distLbl = newDrawText("",          Color3.new(1,1,1), s.textSize - 2),
-        hpLbl   = newDrawText("",          Color3.fromRGB(50,255,80), s.textSize - 2),
+        distLbl = newDrawText("", Color3.new(1,1,1), s.textSize-2),
+        hpLbl = newDrawText("", Color3.fromRGB(50,255,80), s.textSize-2),
     }
-end
-
-local function removeEmployeeDrawing(emp)
-    removeDrawings(employeeDrawings, emp)
 end
 
 local function refreshEmployees()
     clearAllDrawings(employeeDrawings)
     if not espState.employee.enabled then return end
     local folder = getEmployeeFolder()
-    if not folder then return end
-    for _, emp in ipairs(folder:GetChildren()) do
-        buildEmployeeDrawing(emp)
+    if folder then
+        for _, emp in ipairs(folder:GetChildren()) do buildEmployeeDrawing(emp) end
     end
 end
 
--- ============================================================
--- PLAYER ESP LOGIC
--- ============================================================
+-- Player helpers
 local function buildPlayerDrawing(plr)
-    if playerDrawings[plr] then return end
-    if plr == Player then return end
+    if playerDrawings[plr] or plr == Player then return end
     local s = espState.player
     playerDrawings[plr] = {
-        box     = newDrawBox(s.boxColor, s.boxThick),
-        tracer  = newDrawLine(s.tracerColor, 1),
-        nameLbl = newDrawText(plr.Name,      s.nameColor, s.textSize, s.textOutline),
-        distLbl = newDrawText("",            s.distColor, s.textSize - 2, false),
-        hpLbl   = newDrawText("",            s.healthColor, s.textSize - 2, false),
+        box = newDrawBox(s.boxColor, s.boxThick),
+        tracer = newDrawLine(s.tracerColor, 1),
+        nameLbl = newDrawText(plr.Name, s.nameColor, s.textSize, s.textOutline),
+        distLbl = newDrawText("", s.distColor, s.textSize-2, false),
+        hpLbl = newDrawText("", s.healthColor, s.textSize-2, false),
     }
-end
-
-local function removePlayerDrawing(plr)
-    removeDrawings(playerDrawings, plr)
 end
 
 local function refreshPlayers()
@@ -216,19 +403,16 @@ local function refreshPlayers()
     end
 end
 
--- ============================================================
--- ITEM ESP LOGIC
--- ============================================================
+-- Item helpers
 local ITEM_FOLDERS = {"Items", "Droppable", "GroundItems"}
-
 local function getItems()
     local found = {}
     local go = workspace:FindFirstChild("GameObjects")
     if not go then return found end
     local ph = go:FindFirstChild("Physical")
     if not ph then return found end
-    for _, folderName in ipairs(ITEM_FOLDERS) do
-        local folder = ph:FindFirstChild(folderName)
+    for _, fn in ipairs(ITEM_FOLDERS) do
+        local folder = ph:FindFirstChild(fn)
         if folder then
             for _, item in ipairs(folder:GetDescendants()) do
                 if item:IsA("BasePart") or item:IsA("Model") then
@@ -242,212 +426,188 @@ end
 
 local function buildItemDrawing(item)
     if itemDrawings[item] then return end
-    local name = item.Name or "Item"
     itemDrawings[item] = {
-        nameLbl = newDrawText(name, Color3.fromRGB(255,220,80), espState.item.textSize),
+        nameLbl = newDrawText(item.Name, Color3.fromRGB(255,220,80), espState.item.textSize),
     }
 end
 
 local function refreshItems()
     clearAllDrawings(itemDrawings)
     if not espState.item.enabled then return end
-    for _, item in ipairs(getItems()) do
-        buildItemDrawing(item)
-    end
+    for _, item in ipairs(getItems()) do buildItemDrawing(item) end
 end
 
 -- ============================================================
--- RENDER LOOP
+-- RENDER LOOP (ESP update)
 -- ============================================================
+local function worldToScreen(pos)
+    local sp, onScreen = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(sp.X, sp.Y), onScreen, sp.Z
+end
+
+local function getBoundingBox(model)
+    local ok, cf, size = pcall(function() return model:GetBoundingBox() end)
+    if not ok then return nil, nil end
+    return cf, size
+end
+
+local function getHealthFraction(model)
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if hum then return hum.Health / math.max(hum.MaxHealth, 1) end
+    return 1
+end
+
 local function getTracerOrigin()
     local vp = Camera.ViewportSize
-    local s  = espState.player
-    if s.tracerOrigin == "Top"    then return Vector2.new(vp.X/2, 0) end
-    if s.tracerOrigin == "Mouse"  then return UserInputService:GetMouseLocation() end
-    return Vector2.new(vp.X/2, vp.Y)  -- Bottom
+    local s = espState.player
+    if s.tracerOrigin == "Top" then return Vector2.new(vp.X/2, 0)
+    elseif s.tracerOrigin == "Mouse" then return UserInputService:GetMouseLocation()
+    else return Vector2.new(vp.X/2, vp.Y) end
 end
 
 local renderConn
 local function startRenderLoop()
     if renderConn then renderConn:Disconnect() end
     renderConn = RunService.RenderStepped:Connect(function()
-
-        -- ── EMPLOYEE ESP ──────────────────────────────────────
+        -- Employee ESP
         for emp, drw in pairs(employeeDrawings) do
-            local alive = emp and emp.Parent
-            if not alive or not espState.employee.enabled then
+            if not emp.Parent or not espState.employee.enabled then
                 for _, d in pairs(drw) do d.Visible = false end
             else
                 local cf, size = getBoundingBox(emp)
                 if cf and size then
                     local rootPos = cf.Position
-                    local camDist = (rootPos - Camera.CFrame.Position).Magnitude
-                    if camDist <= espState.employee.maxDist then
-                        local topPos = rootPos + Vector3.new(0, size.Y/2, 0)
-                        local botPos = rootPos - Vector3.new(0, size.Y/2, 0)
-                        local top2D, onTop = worldToScreen(topPos)
-                        local bot2D, onBot = worldToScreen(botPos)
-                        if onTop or onBot then
+                    local dist = (rootPos - Camera.CFrame.Position).Magnitude
+                    if dist <= espState.employee.maxDist then
+                        local top = rootPos + Vector3.new(0, size.Y/2, 0)
+                        local bot = rootPos - Vector3.new(0, size.Y/2, 0)
+                        local top2D, topOn = worldToScreen(top)
+                        local bot2D, botOn = worldToScreen(bot)
+                        if topOn or botOn then
                             local h = math.abs(bot2D.Y - top2D.Y)
                             local w = h * 0.45
-                            -- box
                             if espState.employee.box then
-                                drw.box.Visible  = true
-                                drw.box.Color    = espState.employee.boxColor
+                                drw.box.Visible = true
+                                drw.box.Color = espState.employee.boxColor
                                 drw.box.Position = Vector2.new(top2D.X - w/2, top2D.Y)
-                                drw.box.Size     = Vector2.new(w, h)
+                                drw.box.Size = Vector2.new(w, h)
                             else drw.box.Visible = false end
-                            -- tracer
                             if espState.employee.tracer then
-                                local vp = Camera.ViewportSize
                                 drw.tracer.Visible = true
-                                drw.tracer.Color   = espState.employee.tracerColor
-                                drw.tracer.From    = Vector2.new(vp.X/2, vp.Y)
-                                drw.tracer.To      = bot2D
+                                drw.tracer.Color = espState.employee.tracerColor
+                                drw.tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                                drw.tracer.To = bot2D
                             else drw.tracer.Visible = false end
-                            -- name
                             if espState.employee.name then
-                                drw.nameLbl.Visible   = true
-                                drw.nameLbl.Color     = espState.employee.nameColor
-                                drw.nameLbl.Size      = espState.employee.textSize
-                                drw.nameLbl.Position  = Vector2.new(top2D.X, top2D.Y - 16)
-                                drw.nameLbl.Text      = "Employee"
+                                drw.nameLbl.Visible = true
+                                drw.nameLbl.Color = espState.employee.nameColor
+                                drw.nameLbl.Size = espState.employee.textSize
+                                drw.nameLbl.Position = Vector2.new(top2D.X, top2D.Y - 16)
+                                drw.nameLbl.Text = "Employee"
                             else drw.nameLbl.Visible = false end
-                            -- distance
                             if espState.employee.distance then
-                                drw.distLbl.Visible  = true
+                                drw.distLbl.Visible = true
                                 drw.distLbl.Position = Vector2.new(top2D.X, top2D.Y - 4)
-                                drw.distLbl.Text     = string.format("%.0f st", camDist)
+                                drw.distLbl.Text = string.format("%.0f st", dist)
                             else drw.distLbl.Visible = false end
-                            -- health
                             if espState.employee.health then
-                                local hp = math.floor(getHealthFraction(emp) * 100)
-                                drw.hpLbl.Visible  = true
+                                drw.hpLbl.Visible = true
                                 drw.hpLbl.Position = Vector2.new(top2D.X, bot2D.Y + 2)
-                                drw.hpLbl.Text     = "HP: "..hp.."%"
+                                drw.hpLbl.Text = "HP: "..math.floor(getHealthFraction(emp)*100).."%"
                             else drw.hpLbl.Visible = false end
-                        else
-                            for _, d in pairs(drw) do d.Visible = false end
-                        end
-                    else
-                        for _, d in pairs(drw) do d.Visible = false end
-                    end
+                        else for _, d in pairs(drw) do d.Visible = false end end
+                    else for _, d in pairs(drw) do d.Visible = false end end
                 end
             end
         end
-
-        -- ── PLAYER ESP ────────────────────────────────────────
+        -- Player ESP
         local tracerOrigin = getTracerOrigin()
         for plr, drw in pairs(playerDrawings) do
-            local char = plr and plr.Character
+            local char = plr.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             if not root or not espState.player.enabled then
                 for _, d in pairs(drw) do d.Visible = false end
             else
                 local rootPos = root.Position
-                local camDist = (rootPos - Camera.CFrame.Position).Magnitude
-                if camDist <= espState.player.maxDist then
-                    local hum   = char:FindFirstChildOfClass("Humanoid")
-                    local headY = hum and hum.RootPart and (hum.RootPart.Size.Y * 3) or 5
-                    local topPos = rootPos + Vector3.new(0, headY/2, 0)
-                    local botPos = rootPos - Vector3.new(0, headY/2, 0)
-                    local top2D, onTop = worldToScreen(topPos)
-                    local bot2D, onBot = worldToScreen(botPos)
-                    if onTop or onBot then
+                local dist = (rootPos - Camera.CFrame.Position).Magnitude
+                if dist <= espState.player.maxDist then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    local headY = hum and (hum.RootPart and hum.RootPart.Size.Y * 3) or 5
+                    local top = rootPos + Vector3.new(0, headY/2, 0)
+                    local bot = rootPos - Vector3.new(0, headY/2, 0)
+                    local top2D, topOn = worldToScreen(top)
+                    local bot2D, botOn = worldToScreen(bot)
+                    if topOn or botOn then
                         local h = math.abs(bot2D.Y - top2D.Y)
                         local w = h * 0.45
-                        -- box
                         if espState.player.box then
-                            drw.box.Visible   = true
-                            drw.box.Color     = espState.player.boxColor
+                            drw.box.Visible = true
+                            drw.box.Color = espState.player.boxColor
                             drw.box.Thickness = espState.player.boxThick
-                            drw.box.Position  = Vector2.new(top2D.X - w/2, top2D.Y)
-                            drw.box.Size      = Vector2.new(w, h)
+                            drw.box.Position = Vector2.new(top2D.X - w/2, top2D.Y)
+                            drw.box.Size = Vector2.new(w, h)
                         else drw.box.Visible = false end
-                        -- tracer
                         if espState.player.tracer then
                             drw.tracer.Visible = true
-                            drw.tracer.Color   = espState.player.tracerColor
-                            drw.tracer.From    = tracerOrigin
-                            drw.tracer.To      = bot2D
+                            drw.tracer.Color = espState.player.tracerColor
+                            drw.tracer.From = tracerOrigin
+                            drw.tracer.To = bot2D
                         else drw.tracer.Visible = false end
-                        -- name
                         if espState.player.name then
-                            drw.nameLbl.Visible  = true
-                            drw.nameLbl.Color    = espState.player.nameColor
-                            drw.nameLbl.Size     = espState.player.textSize
-                            drw.nameLbl.Outline  = espState.player.textOutline
+                            drw.nameLbl.Visible = true
+                            drw.nameLbl.Color = espState.player.nameColor
+                            drw.nameLbl.Size = espState.player.textSize
+                            drw.nameLbl.Outline = espState.player.textOutline
                             drw.nameLbl.Position = Vector2.new(top2D.X, top2D.Y - 16)
-                            drw.nameLbl.Text     = plr.Name
+                            drw.nameLbl.Text = plr.Name
                         else drw.nameLbl.Visible = false end
-                        -- distance
                         if espState.player.distance then
-                            drw.distLbl.Visible  = true
-                            drw.distLbl.Color    = espState.player.distColor
+                            drw.distLbl.Visible = true
+                            drw.distLbl.Color = espState.player.distColor
                             drw.distLbl.Position = Vector2.new(top2D.X, top2D.Y - 4)
-                            drw.distLbl.Text     = string.format("%.0f st", camDist)
+                            drw.distLbl.Text = string.format("%.0f st", dist)
                         else drw.distLbl.Visible = false end
-                        -- health
                         if espState.player.health and hum then
-                            local hp = math.floor((hum.Health / math.max(hum.MaxHealth,1)) * 100)
-                            drw.hpLbl.Visible  = true
-                            drw.hpLbl.Color    = espState.player.healthColor
+                            drw.hpLbl.Visible = true
+                            drw.hpLbl.Color = espState.player.healthColor
                             drw.hpLbl.Position = Vector2.new(top2D.X, bot2D.Y + 2)
-                            drw.hpLbl.Text     = "HP: "..hp.."%"
+                            drw.hpLbl.Text = "HP: "..math.floor((hum.Health/hum.MaxHealth)*100).."%"
                         else drw.hpLbl.Visible = false end
-                    else
-                        for _, d in pairs(drw) do d.Visible = false end
-                    end
-                else
-                    for _, d in pairs(drw) do d.Visible = false end
-                end
+                    else for _, d in pairs(drw) do d.Visible = false end end
+                else for _, d in pairs(drw) do d.Visible = false end end
             end
         end
-
-        -- ── ITEM ESP ──────────────────────────────────────────
+        -- Item ESP
         for item, drw in pairs(itemDrawings) do
             local part = item:IsA("BasePart") and item or (item:IsA("Model") and item.PrimaryPart)
             if not part or not part.Parent or not espState.item.enabled then
                 drw.nameLbl.Visible = false
             else
                 local pos2D, onScreen = worldToScreen(part.Position)
-                local camDist = (part.Position - Camera.CFrame.Position).Magnitude
-                if onScreen and camDist <= espState.item.maxDist then
-                    drw.nameLbl.Visible  = true
-                    drw.nameLbl.Size     = espState.item.textSize
+                local dist = (part.Position - Camera.CFrame.Position).Magnitude
+                if onScreen and dist <= espState.item.maxDist then
+                    drw.nameLbl.Visible = true
+                    drw.nameLbl.Size = espState.item.textSize
                     drw.nameLbl.Position = pos2D
-                    drw.nameLbl.Text     = item.Name
-                else
-                    drw.nameLbl.Visible = false
-                end
+                    drw.nameLbl.Text = item.Name
+                else drw.nameLbl.Visible = false end
             end
         end
     end)
 end
-
 startRenderLoop()
 
--- Hot-connect new employees / players
+-- Auto-refresh connections
 local function connectFolderListeners()
     local folder = getEmployeeFolder()
     if folder then
-        folder.ChildAdded:Connect(function(child)
-            task.wait(0.3)
-            if espState.employee.enabled then buildEmployeeDrawing(child) end
-        end)
-        folder.ChildRemoved:Connect(function(child)
-            removeEmployeeDrawing(child)
-        end)
+        folder.ChildAdded:Connect(function() task.wait(0.3); if espState.employee.enabled then refreshEmployees() end end)
+        folder.ChildRemoved:Connect(function() if espState.employee.enabled then refreshEmployees() end end)
     end
 end
 task.spawn(connectFolderListeners)
-
-Players.PlayerAdded:Connect(function(plr)
-    if espState.player.enabled then buildPlayerDrawing(plr) end
-end)
-Players.PlayerRemoving:Connect(function(plr)
-    removePlayerDrawing(plr)
-end)
+Players.PlayerAdded:Connect(function(plr) if espState.player.enabled then buildPlayerDrawing(plr) end end)
+Players.PlayerRemoving:Connect(function(plr) removeDrawings(playerDrawings, plr) end)
 
 -- ============================================================
 -- NOTIFICATION SYSTEM
@@ -490,17 +650,10 @@ end
 -- ============================================================
 -- GUI BUILDER HELPERS
 -- ============================================================
-local WIN_W, WIN_H, SIDE_W, HDR_H = 520, 460, 112, 46
-
-local function makeCorner(parent, r)
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = parent; return c
-end
-local function makeStroke(parent, color, thick)
-    local s = Instance.new("UIStroke"); s.Color = color or T.border; s.Thickness = thick or 1; s.Parent = parent; return s
-end
-local function makePad(parent, t, b, l, r)
-    local p = Instance.new("UIPadding"); p.PaddingTop = UDim.new(0,t or 0); p.PaddingBottom = UDim.new(0,b or 0); p.PaddingLeft = UDim.new(0,l or 0); p.PaddingRight = UDim.new(0,r or 0); p.Parent = parent; return p
-end
+local WIN_W, WIN_H, SIDE_W, HDR_H = 520, 520, 112, 46
+local function makeCorner(parent, r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = parent; return c end
+local function makeStroke(parent, color, thick) local s = Instance.new("UIStroke"); s.Color = color or T.border; s.Thickness = thick or 1; s.Parent = parent; return s end
+local function makePad(parent, t, b, l, r) local p = Instance.new("UIPadding"); p.PaddingTop = UDim.new(0,t or 0); p.PaddingBottom = UDim.new(0,b or 0); p.PaddingLeft = UDim.new(0,l or 0); p.PaddingRight = UDim.new(0,r or 0); p.Parent = parent; return p end
 local function makeListLayout(parent, dir, halign, valign, padding)
     local ll = Instance.new("UIListLayout")
     ll.SortOrder = Enum.SortOrder.LayoutOrder
@@ -512,7 +665,6 @@ local function makeListLayout(parent, dir, halign, valign, padding)
     return ll
 end
 
--- Card that auto-sizes vertically
 local function makeCard(parent, order)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1,0,0,0); f.AutomaticSize = Enum.AutomaticSize.Y
@@ -522,7 +674,6 @@ local function makeCard(parent, order)
     return f
 end
 
--- Section header inside a card
 local function makeSection(parent, title, order)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1,0,0,28); f.BackgroundColor3 = T.accentDm; f.BorderSizePixel = 0
@@ -537,7 +688,6 @@ local function makeSection(parent, title, order)
     return f
 end
 
--- Row frame inside a card
 local function makeRow(parent, h, order)
     local sep = Instance.new("Frame")
     sep.Size = UDim2.new(1,0,0,1); sep.BackgroundColor3 = T.sep
@@ -548,7 +698,6 @@ local function makeRow(parent, h, order)
     return row
 end
 
--- Label inside a row
 local function rowLabel(parent, text, xOff, small)
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(0.58,0,1,0); lbl.Position = UDim2.new(0, xOff or 14, 0, 0)
@@ -558,7 +707,6 @@ local function rowLabel(parent, text, xOff, small)
     return lbl
 end
 
--- Toggle switch
 local function makeToggle(parent, label, initState, rowOrder, onChange)
     local row = makeRow(parent, 42, rowOrder)
     rowLabel(row, label)
@@ -582,7 +730,6 @@ local function makeToggle(parent, label, initState, rowOrder, onChange)
     return row, track, knob
 end
 
--- Button
 local function makeButton(parent, label, rowOrder, onClick)
     local row = makeRow(parent, 42, rowOrder)
     local btn = Instance.new("TextButton")
@@ -597,7 +744,6 @@ local function makeButton(parent, label, rowOrder, onClick)
     return row, btn
 end
 
--- Slider
 local function makeSlider(parent, label, minV, maxV, initV, rowOrder, onChange)
     local row = makeRow(parent, 54, rowOrder)
     rowLabel(row, label, 14)
@@ -619,12 +765,8 @@ local function makeSlider(parent, label, minV, maxV, initV, rowOrder, onChange)
     knob.AutoButtonColor = false; knob.Text = ""; knob.ZIndex = 3; knob.Parent = track; makeCorner(knob,7)
 
     local dragging = false
-    knob.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
+    knob.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
     UserInputService.InputChanged:Connect(function(i)
         if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
             local ap = track.AbsolutePosition; local az = track.AbsoluteSize
@@ -639,21 +781,18 @@ local function makeSlider(parent, label, minV, maxV, initV, rowOrder, onChange)
     return row
 end
 
--- Dropdown (simple cycling)
 local function makeDropdown(parent, label, options, initVal, rowOrder, onChange)
     local row = makeRow(parent, 42, rowOrder)
     rowLabel(row, label)
     local current = initVal or options[1]
     local idx = 1
     for i,v in ipairs(options) do if v==current then idx=i break end end
-
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0,110,0,26); btn.Position = UDim2.new(1,-122,0.5,-13)
     btn.Text = current; btn.Font = Enum.Font.GothamBold; btn.TextSize = 9
     btn.TextColor3 = T.text; btn.BackgroundColor3 = T.inputBg
     btn.BorderSizePixel = 0; btn.AutoButtonColor = false; btn.Parent = row
     makeCorner(btn, 6); makeStroke(btn, T.border)
-
     btn.MouseButton1Click:Connect(function()
         idx = (idx % #options) + 1
         current = options[idx]
@@ -663,7 +802,6 @@ local function makeDropdown(parent, label, options, initVal, rowOrder, onChange)
     return row
 end
 
--- Color swatch button (opens a basic RGB notify — full colorpicker is complex; swatches below)
 local function makeColorPicker(parent, label, initColor, rowOrder, onChange)
     local row = makeRow(parent, 42, rowOrder)
     rowLabel(row, label)
@@ -672,8 +810,6 @@ local function makeColorPicker(parent, label, initColor, rowOrder, onChange)
     swatch.BackgroundColor3 = initColor; swatch.BorderSizePixel = 0
     swatch.AutoButtonColor = false; swatch.Text = ""; swatch.Parent = row
     makeCorner(swatch, 5); makeStroke(swatch, T.border)
-
-    -- Cycle through a palette on click (practical without a full color wheel)
     local palette = {
         Color3.fromRGB(255,50,50),   Color3.fromRGB(50,255,100),
         Color3.fromRGB(50,150,255),  Color3.fromRGB(255,220,50),
@@ -691,7 +827,7 @@ local function makeColorPicker(parent, label, initColor, rowOrder, onChange)
 end
 
 -- ============================================================
--- SCROLLING PAGE
+-- SCROLLING PAGES
 -- ============================================================
 local function makePage(parent)
     local pg = Instance.new("ScrollingFrame")
@@ -708,7 +844,7 @@ end
 -- ============================================================
 -- MAIN GUI CONSTRUCTION
 -- ============================================================
-sg = Instance.new("ScreenGui"); sg.Name = "AbyssalESP_V1"
+sg = Instance.new("ScreenGui"); sg.Name = "FeatherHub_3008"
 sg.ResetOnSpawn = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.DisplayOrder = 998; sg.IgnoreGuiInset = true
 if not pcall(function() sg.Parent = CoreGui end) then
@@ -721,17 +857,15 @@ win.BackgroundColor3 = T.bg; win.BorderSizePixel = 0; win.ClipsDescendants = tru
 win.ZIndex = 1; win.Parent = sg
 makeCorner(win, 14); makeStroke(win, T.border)
 
--- ── Sidebar ─────────────────────────────────────────────────
+-- Sidebar
 local sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"; sidebar.Size = UDim2.new(0,SIDE_W,1,0)
 sidebar.BackgroundColor3 = T.sidebar; sidebar.BorderSizePixel = 0; sidebar.ZIndex = 3; sidebar.Parent = win
 makeCorner(sidebar, 14)
--- fill right gap
 local sbCover = Instance.new("Frame")
 sbCover.Size = UDim2.new(0,14,1,0); sbCover.Position = UDim2.new(1,-14,0,0)
 sbCover.BackgroundColor3 = T.sidebar; sbCover.BorderSizePixel = 0; sbCover.ZIndex = 3; sbCover.Parent = sidebar
 
--- Logo pill
 local logo = Instance.new("Frame")
 logo.Size = UDim2.new(0,44,0,44); logo.Position = UDim2.new(0.5,-22,0,10)
 logo.BackgroundColor3 = T.accent; logo.BorderSizePixel = 0; logo.ZIndex = 5; logo.Parent = sidebar; makeCorner(logo,12)
@@ -740,10 +874,9 @@ logoTxt.Size = UDim2.new(1,0,1,0); logoTxt.Text = "F"; logoTxt.TextSize = 22
 logoTxt.Font = Enum.Font.GothamBold; logoTxt.TextColor3 = Color3.new(1,1,1)
 logoTxt.BackgroundTransparency = 1; logoTxt.ZIndex = 6; logoTxt.Parent = logo
 
--- Version watermark
 local ver = Instance.new("TextLabel")
 ver.Size = UDim2.new(1,0,0,12); ver.Position = UDim2.new(0,0,1,-34)
-ver.Text = "3008 | FEATHERHUB v1"; ver.Font = Enum.Font.GothamBold; ver.TextSize = 6
+ver.Text = "3008 | FEATHERHUB v2 (All Features)"; ver.Font = Enum.Font.GothamBold; ver.TextSize = 6
 ver.TextColor3 = T.muted; ver.BackgroundTransparency = 1; ver.TextXAlignment = Enum.TextXAlignment.Center
 ver.ZIndex = 4; ver.Parent = sidebar
 
@@ -752,7 +885,7 @@ navCont.Size = UDim2.new(1,0,1,-130); navCont.Position = UDim2.new(0,0,0,66)
 navCont.BackgroundTransparency = 1; navCont.ZIndex = 4; navCont.Parent = sidebar
 makeListLayout(navCont, nil, Enum.HorizontalAlignment.Center, nil, 4)
 
--- ── Header ──────────────────────────────────────────────────
+-- Header
 local hdr = Instance.new("Frame")
 hdr.Size = UDim2.new(1,-SIDE_W,0,HDR_H); hdr.Position = UDim2.new(0,SIDE_W,0,0)
 hdr.BackgroundColor3 = T.header; hdr.BorderSizePixel = 0; hdr.ZIndex = 3; hdr.Parent = win
@@ -763,11 +896,10 @@ local hdrLine = Instance.new("Frame"); hdrLine.Size = UDim2.new(1,-10,0,1); hdrL
 
 local hdrTitle = Instance.new("TextLabel")
 hdrTitle.Size = UDim2.new(1,-120,1,0); hdrTitle.Position = UDim2.new(0,14,0,0)
-hdrTitle.Text = "Employee ESP"; hdrTitle.Font = Enum.Font.GothamBold; hdrTitle.TextSize = 13
+hdrTitle.Text = "ESP"; hdrTitle.Font = Enum.Font.GothamBold; hdrTitle.TextSize = 13
 hdrTitle.TextColor3 = T.text; hdrTitle.BackgroundTransparency = 1
 hdrTitle.TextXAlignment = Enum.TextXAlignment.Left; hdrTitle.ZIndex = 5; hdrTitle.Parent = hdr
 
--- Header close / minimize
 local function makeHdrBtn(symbol, xOff, onClick)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(0,26,0,26); b.Position = UDim2.new(1,xOff,0.5,-13)
@@ -796,16 +928,20 @@ makeHdrBtn("×", -32, function()
     clearAllDrawings(playerDrawings)
     clearAllDrawings(itemDrawings)
     if renderConn then renderConn:Disconnect() end
+    if noclipConn then noclipConn:Disconnect() end
+    if fullbrightConn then fullbrightConn:Disconnect() end
+    if coordConn then coordConn:Disconnect() end
+    if thirdPersonConn then thirdPersonConn:Disconnect() end
+    if infJumpConn then infJumpConn:Disconnect() end
     _G.abyssal_loaded = nil
     sg:Destroy()
 end)
 
--- ── Content area ─────────────────────────────────────────────
 local content = Instance.new("Frame")
 content.Size = UDim2.new(1,-SIDE_W,1,-HDR_H); content.Position = UDim2.new(0,SIDE_W,0,HDR_H)
 content.BackgroundTransparency = 1; content.ClipsDescendants = true; content.Parent = win
 
--- ── Drag ────────────────────────────────────────────────────
+-- Drag logic
 do
     local drag, dragReady, dragInput, dragStart, startPos, ht = false,false,nil,nil,nil,nil
     hdr.InputBegan:Connect(function(i)
@@ -830,11 +966,13 @@ do
     end)
 end
 
--- ── Tab system ──────────────────────────────────────────────
+-- Tabs
 local TABS = {
-    {label="Employee",  icon=""},
-    {label="Player",    icon=""},
-    {label="Items",     icon=""},
+    {label="Employee", icon=""},
+    {label="Player",   icon=""},
+    {label="Items",    icon=""},
+    {label="Character",icon=""},
+    {label="Misc",     icon=""},
 }
 local pages = {}
 local navBtns = {}
@@ -844,7 +982,7 @@ for i=1,#TABS do pages[i] = makePage(content) end
 
 local function setTab(idx)
     activeTab = idx
-    hdrTitle.Text = TABS[idx].label.." ESP"
+    hdrTitle.Text = TABS[idx].label.." ESP" .. (idx>3 and "" or "")
     for i,pg in ipairs(pages) do pg.Visible = (i==idx) end
     for i,nb in ipairs(navBtns) do
         local on = (i==idx)
@@ -858,7 +996,6 @@ for i, tab in ipairs(TABS) do
     local row = Instance.new("Frame"); row.Size = UDim2.new(1,-8,0,40); row.BackgroundTransparency = 1; row.LayoutOrder = i; row.ZIndex = 4; row.Parent = navCont
     local bar = Instance.new("Frame"); bar.Size = UDim2.new(0,3,0.5,0); bar.Position = UDim2.new(0,0,0.25,0); bar.BackgroundColor3 = T.accent; bar.BackgroundTransparency = 1; bar.BorderSizePixel = 0; bar.ZIndex = 5; bar.Parent = row; makeCorner(bar,4)
     local bg = Instance.new("Frame"); bg.Size = UDim2.new(1,-5,1,-6); bg.Position = UDim2.new(0,5,0,3); bg.BackgroundColor3 = T.dim; bg.BackgroundTransparency = 0; bg.BorderSizePixel = 0; bg.ZIndex = 4; bg.Parent = row; makeCorner(bg,8)
-    local icon = Instance.new("TextLabel"); icon.Size = UDim2.new(0,22,1,0); icon.Position = UDim2.new(0,8,0,0); icon.Text = tab.icon; icon.TextSize = 13; icon.Font = Enum.Font.GothamBold; icon.BackgroundTransparency = 1; icon.ZIndex = 5; icon.Parent = row
     local lbl = Instance.new("TextLabel"); lbl.Size = UDim2.new(1,-34,1,0); lbl.Position = UDim2.new(0,30,0,0); lbl.Text = tab.label; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 7; lbl.TextColor3 = T.text; lbl.BackgroundTransparency = 1; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.ZIndex = 5; lbl.Parent = row
     local hit = Instance.new("TextButton"); hit.Size = UDim2.new(1,0,1,0); hit.BackgroundTransparency = 1; hit.Text = ""; hit.ZIndex = 6; hit.Parent = row
     local ci = i; hit.MouseButton1Click:Connect(function() setTab(ci) end)
@@ -866,7 +1003,7 @@ for i, tab in ipairs(TABS) do
 end
 
 -- ============================================================
--- TAB 1 — EMPLOYEE ESP
+-- TAB 1 – EMPLOYEE ESP (same as before)
 -- ============================================================
 do
     local pg = pages[1]
@@ -887,7 +1024,6 @@ do
         clearAllDrawings(employeeDrawings)
         notify("Employee ESP","Drawings cleared","warning")
     end)
-
     local comp = makeCard(pg, 2)
     makeSection(comp, "ESP Components", 1)
     makeToggle(comp, "Box ESP",      true,  2, function(v) espState.employee.box      = v end)
@@ -895,7 +1031,6 @@ do
     makeToggle(comp, "Name ESP",     true,  6, function(v) espState.employee.name     = v end)
     makeToggle(comp, "Distance ESP", true,  8, function(v) espState.employee.distance = v end)
     makeToggle(comp, "Health ESP",   true,  10,function(v) espState.employee.health   = v end)
-
     local vis = makeCard(pg, 3)
     makeSection(vis, "Visual Settings", 1)
     makeColorPicker(vis, "Box Color",    Color3.fromRGB(255,50,50),   2, function(c) espState.employee.boxColor    = c end)
@@ -906,7 +1041,7 @@ do
 end
 
 -- ============================================================
--- TAB 2 — PLAYER ESP
+-- TAB 2 – PLAYER ESP (same as before)
 -- ============================================================
 do
     local pg = pages[2]
@@ -925,7 +1060,6 @@ do
         clearAllDrawings(playerDrawings)
         notify("Player ESP","Drawings cleared","warning")
     end)
-
     local comp = makeCard(pg, 2)
     makeSection(comp, "Player ESP Components", 1)
     makeToggle(comp, "Box ESP",      true,  2,  function(v) espState.player.box      = v end)
@@ -934,7 +1068,6 @@ do
     makeToggle(comp, "Distance ESP", true,  8,  function(v) espState.player.distance = v end)
     makeToggle(comp, "Health ESP",   true,  10, function(v) espState.player.health   = v end)
     makeToggle(comp, "Text Outline", true,  12, function(v) espState.player.textOutline = v end)
-
     local vis = makeCard(pg, 3)
     makeSection(vis, "Player Visual Settings", 1)
     makeColorPicker(vis, "Box Color",      Color3.fromRGB(50,255,100),  2,  function(c) espState.player.boxColor    = c end)
@@ -948,38 +1081,10 @@ do
     makeDropdown(vis, "Tracer Origin", {"Bottom","Top","Mouse"}, "Bottom", 18, function(v)
         espState.player.tracerOrigin = v
     end)
-
-    local dbg = makeCard(pg, 4)
-    makeSection(dbg, "Debug & Info", 1)
-    makeButton(dbg, "Debug Folder Structure", 2, function()
-        local go = workspace:FindFirstChild("GameObjects")
-        if not go then notify("Debug","GameObjects NOT found","error"); return end
-        local ph = go:FindFirstChild("Physical")
-        if not ph then notify("Debug","Physical NOT found","error"); return end
-        local plrFolder = ph:FindFirstChild("Players") or ph:FindFirstChild("Clients")
-        if plrFolder then
-            notify("Debug","Found: "..plrFolder:GetFullName().." ("..#plrFolder:GetChildren().." children)","success")
-        else
-            notify("Debug","No Players/Clients folder under Physical","warning")
-        end
-    end)
-    makeButton(dbg, "Show Tracked Players", 4, function()
-        local count = 0
-        for _ in pairs(playerDrawings) do count = count + 1 end
-        notify("Debug","Tracking "..count.." player(s)","success")
-    end)
-    makeButton(dbg, "System Status", 6, function()
-        local empCount  = 0; for _ in pairs(employeeDrawings) do empCount  = empCount  + 1 end
-        local plrCount  = 0; for _ in pairs(playerDrawings)   do plrCount  = plrCount  + 1 end
-        local itemCount = 0; for _ in pairs(itemDrawings)      do itemCount = itemCount + 1 end
-        notify("Status",
-            "Emps: "..empCount.."  |  Plrs: "..plrCount.."  |  Items: "..itemCount,
-        "success")
-    end)
 end
 
 -- ============================================================
--- TAB 3 — ITEM ESP
+-- TAB 3 – ITEM ESP (with filters)
 -- ============================================================
 do
     local pg = pages[3]
@@ -999,32 +1104,62 @@ do
         clearAllDrawings(itemDrawings)
         notify("Item ESP","Drawings cleared","warning")
     end)
-
     local vis = makeCard(pg, 2)
     makeSection(vis, "Visual Settings", 1)
     makeToggle(vis, "Show Icons",   true, 2, function(v) espState.item.icons   = v end)
     makeSlider(vis, "Max Distance", 50, 500, 200, 4, function(v) espState.item.maxDist  = v end)
     makeSlider(vis, "Text Size",    8,  20,  14,  6, function(v) espState.item.textSize = v end)
-
     local filters = makeCard(pg, 3)
     makeSection(filters, "Item Filters", 1)
-    -- Dynamic filter toggles based on what's actually in the workspace
-    local KNOWN_ITEM_TYPES = {
-        "Chair","Bed","Lamp","Bookshelf","Couch","Table","Stool","Desk"
-    }
+    local KNOWN_TYPES = {"Chair","Bed","Lamp","Bookshelf","Couch","Table","Stool","Desk"}
     local itemFilters = {}
-    for _, itype in ipairs(KNOWN_ITEM_TYPES) do itemFilters[itype] = true end
-
-    for oi, itype in ipairs(KNOWN_ITEM_TYPES) do
-        local order = oi * 2
-        makeToggle(filters, itype, true, order, function(v)
-            itemFilters[itype] = v
-            -- Hide/show drawings whose name matches
+    for _, t in ipairs(KNOWN_TYPES) do itemFilters[t] = true end
+    for oi, t in ipairs(KNOWN_TYPES) do
+        makeToggle(filters, t, true, oi*2, function(v)
+            itemFilters[t] = v
             for item, drw in pairs(itemDrawings) do
-                if item.Name == itype then drw.nameLbl.Visible = v and espState.item.enabled end
+                if item.Name == t then drw.nameLbl.Visible = v and espState.item.enabled end
             end
         end)
     end
+end
+
+-- ============================================================
+-- TAB 4 – CHARACTER (movement, noclip, etc.)
+-- ============================================================
+do
+    local pg = pages[4]
+    local moveCard = makeCard(pg, 1)
+    makeSection(moveCard, "Movement", 1)
+    makeToggle(moveCard, "Noclip", false, 2, toggleNoclip)
+    makeToggle(moveCard, "Infinite Jump", false, 4, toggleInfJump)
+    makeToggle(moveCard, "No Fall Damage", false, 6, toggleNoFallDamage)
+    makeSlider(moveCard, "Walk Speed", 16, 100, 16, 8, applyWalkSpeed)
+    makeSlider(moveCard, "Jump Power", 50, 200, 50, 10, applyJumpPower)
+    local camCard = makeCard(pg, 2)
+    makeSection(camCard, "Camera", 1)
+    makeToggle(camCard, "Unlock Third Person", false, 2, toggleThirdPerson)
+    local utilCard = makeCard(pg, 3)
+    makeSection(utilCard, "Utility", 1)
+    makeToggle(utilCard, "Fullbright", false, 2, toggleFullbright)
+    makeToggle(utilCard, "Coordinate Display", false, 4, toggleCoordDisplay)
+end
+
+-- ============================================================
+-- TAB 5 – MISC (teleport, rejoin, serverhop)
+-- ============================================================
+do
+    local pg = pages[5]
+    local itemCard = makeCard(pg, 1)
+    makeSection(itemCard, "Item Teleporter", 1)
+    makeDropdown(itemCard, "Select Item", itemNamesList, selectedItem, 2, function(v)
+        selectedItem = v
+    end)
+    makeButton(itemCard, "Teleport to Closest", 4, teleportToItem)
+    local serverCard = makeCard(pg, 2)
+    makeSection(serverCard, "Server Control", 1)
+    makeButton(serverCard, "Rejoin Server", 2, rejoin)
+    makeButton(serverCard, "Server Hop", 4, serverHop)
 end
 
 -- ============================================================
@@ -1046,6 +1181,5 @@ UserInputService.InputBegan:Connect(function(input)
 end)
 
 task.delay(0.6, function()
-    notify("3008","ESP ready  •  RightCtrl to toggle","success")
+    notify("FeatherHub 3008","All features loaded • RightCtrl to toggle","success")
 end)
-
