@@ -30,19 +30,29 @@ local function tween(obj, props, dur)
     return TweenService:Create(obj, TweenInfo.new(dur or 0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props)
 end
 
--- Anti‑staff
+-- ================== Anti‑staff (safe) ==================
 local function checkStaff()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p:GetRankInGroup(33269521) >= 10 then
-            LocalPlayer:Kick("kicked for safety")
+    pcall(function()
+        if not LocalPlayer then return end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p:IsA("Player") then
+                local rank = p:GetRankInGroup(33269521)
+                if rank and rank >= 10 then
+                    LocalPlayer:Kick("kicked for safety")
+                    break
+                end
+            end
         end
-    end
+    end)
 end
+
+-- Wait for player to be fully loaded
+task.wait(1)
 checkStaff()
+
 Players.PlayerAdded:Connect(function(p)
-    if p:GetRankInGroup(33269521) >= 10 then
-        LocalPlayer:Kick("kicked for safety")
-    end
+    task.wait(0.5)
+    checkStaff()
 end)
 
 -- ================== UI Framework ==================
@@ -84,7 +94,7 @@ sbCover.BackgroundColor3 = T.card
 sbCover.BorderSizePixel = 0
 sbCover.Parent = sidebar
 
--- "F" Logo in top left of sidebar
+-- "F" Logo
 local logoPill = Instance.new("Frame")
 logoPill.Size = UDim2.new(0, 40, 0, 40)
 logoPill.Position = UDim2.new(0.5, -20, 0, 12)
@@ -101,7 +111,7 @@ logoF.TextColor3 = Color3.new(1,1,1)
 logoF.BackgroundTransparency = 1
 logoF.Parent = logoPill
 
--- Header (top right)
+-- Header
 local hdr = Instance.new("Frame")
 hdr.Size = UDim2.new(1, -SIDE_W, 0, HDR_H)
 hdr.Position = UDim2.new(0, SIDE_W, 0, 0)
@@ -180,7 +190,7 @@ hdr.InputChanged:Connect(function(input)
     end
 end)
 
--- Content area (right of sidebar)
+-- Content area
 local content = Instance.new("Frame")
 content.Size = UDim2.new(1, -SIDE_W, 1, -HDR_H)
 content.Position = UDim2.new(0, SIDE_W, 0, HDR_H)
@@ -189,7 +199,7 @@ content.BorderSizePixel = 0
 content.ClipsDescendants = true
 content.Parent = win
 
--- Sidebar navigation (tabs)
+-- Sidebar navigation
 local sbTopSep = Instance.new("Frame")
 sbTopSep.Size = UDim2.new(0.6, 0, 0, 1)
 sbTopSep.Position = UDim2.new(0.2, 0, 0, 60)
@@ -244,10 +254,10 @@ local function makePage()
     return pg
 end
 
+-- Only 3 tabs now (ESP, Aimbot, Utility)
 local TABS = {
     {key = "ESP", name = "ESP"},
     {key = "Aimbot", name = "Aimbot"},
-    {key = "Teams", name = "Teams"},
     {key = "Utility", name = "Utility"},
 }
 
@@ -310,7 +320,7 @@ for i = 1, #TABS do
     navBtns[i] = {bg = bg, lbl = lbl, bar = bar}
 end
 
--- Discord button at bottom of sidebar
+-- Discord button
 local sbBotSep = Instance.new("Frame")
 sbBotSep.Size = UDim2.new(0.6, 0, 0, 1)
 sbBotSep.Position = UDim2.new(0.2, 0, 1, -50)
@@ -359,7 +369,7 @@ wmVer.BackgroundTransparency = 1
 wmVer.TextXAlignment = Enum.TextXAlignment.Center
 wmVer.Parent = sidebar
 
--- Helper functions for page content
+-- Helper functions
 local function section(parent, title, order)
     local f = Instance.new("Frame")
     f.Size = UDim2.new(1, 0, 0, 22)
@@ -710,35 +720,88 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Keycard ESP
+-- ============================
+-- KEYCARD ESP – Optimized & Purple
+-- ============================
 local keycardESP = false
-local keycards = {}
-RunService.RenderStepped:Connect(function()
-    if not keycardESP then
-        for _, d in pairs(keycards) do d:Remove() end
-        keycards = {}
-        return
+local keycardCircles = {}
+local keycardParts = {}
+
+local function isKeycardPart(part)
+    if not part:IsA("BasePart") then return false end
+    local prompt = part:FindFirstChildWhichIsA("ProximityPrompt")
+    if not prompt then return false end
+    local objText = prompt.ObjectText or ""
+    local actText = prompt.ActionText or ""
+    if objText:lower():find("keycard") or actText:lower():find("pick up") then
+        return true
     end
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Name:lower():find("card") then
-            local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt")
-            if prompt and (not prompt.ObjectText or prompt.ObjectText=="") and (not prompt.ActionText or prompt.ActionText=="") then
-                if not keycards[obj] then
-                    local c = Drawing.new("Circle")
-                    c.Thickness = 2
-                    c.Filled = false
-                    c.Color = Color3.new(0,255,0)
-                    c.Radius = 10
-                    c.Visible = true
-                    keycards[obj] = c
-                end
-                local pos = Camera:WorldToViewportPoint(obj.Position)
-                keycards[obj].Position = Vector2.new(pos.X, pos.Y)
-                keycards[obj].Visible = pos.Z > 0
+    if part.Name:lower():find("keycard") then return true end
+    local parent = part.Parent
+    if parent and parent.Name:lower():find("keycard") then return true end
+    return false
+end
+
+local function addKeycard(part)
+    if keycardParts[part] then return end
+    local circle = Drawing.new("Circle")
+    circle.Thickness = 2
+    circle.Filled = false
+    circle.Color = T.accent  -- Purple theme
+    circle.Radius = 10
+    circle.Visible = false
+    keycardCircles[part] = circle
+    keycardParts[part] = true
+end
+
+local function removeKeycard(part)
+    local circle = keycardCircles[part]
+    if circle then
+        circle:Remove()
+        keycardCircles[part] = nil
+    end
+    keycardParts[part] = nil
+end
+
+-- Initial scan
+for _, obj in ipairs(Workspace:GetDescendants()) do
+    if isKeycardPart(obj) then
+        addKeycard(obj)
+    end
+end
+
+Workspace.DescendantAdded:Connect(function(obj)
+    if isKeycardPart(obj) then addKeycard(obj) end
+end)
+
+Workspace.DescendantRemoving:Connect(function(obj)
+    if keycardParts[obj] then removeKeycard(obj) end
+end)
+
+RunService.RenderStepped:Connect(function()
+    for part, circle in pairs(keycardCircles) do
+        if keycardESP and part and part.Parent then
+            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen then
+                circle.Position = Vector2.new(pos.X, pos.Y)
+                circle.Visible = true
+            else
+                circle.Visible = false
             end
+        else
+            circle.Visible = false
         end
     end
 end)
+
+-- Team Filters (used in ESP tab)
+local teamFilters = {}
+for _, obj in ipairs(Teams:GetChildren()) do
+    if obj:IsA("Team") then teamFilters[obj.Name] = true end
+end
+for _, n in ipairs({"Riot","Guard","Riot Officer","Correctional Officer","Booking","Escapee","Maximum Security","Medium Security","Minimum Security","Mental Patient","Department of Corrections","Civilian","Sheriff's Office","State Police","VCSO-SWAT"}) do
+    teamFilters[n] = true
+end
 
 -- Aimbot
 local aimbot = false
@@ -806,44 +869,65 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Gun Mods
+-- Gun Mods (safe)
 local gunMods = false
-local function applyMods(tool)
-    if not gunMods then return end
+local function safeApplyMods(tool)
+    if not gunMods or not tool then return end
     local cfg = tool:FindFirstChild("LocalConfig")
     if cfg then cfg = cfg:FindFirstChild("Configuration") end
     if cfg then
         for _, v in ipairs(cfg:GetChildren()) do
-            if v.Name=="Accuracy" then v.Value=0
-            elseif v.Name=="RecoilMin" then v.Value=0
-            elseif v.Name=="RecoilMax" then v.Value=0
-            elseif v.Name=="MaximumRange" then v.Value=9999 end
+            if v:IsA("NumberValue") or v:IsA("IntValue") then
+                pcall(function()
+                    if v.Name == "Accuracy" then v.Value = 0
+                    elseif v.Name == "RecoilMin" then v.Value = 0
+                    elseif v.Name == "RecoilMax" then v.Value = 0
+                    elseif v.Name == "MaximumRange" then v.Value = 9999
+                    end
+                end)
+            end
         end
     end
 end
-LocalPlayer.Backpack.ChildAdded:Connect(function(c) if c:IsA("Tool") then applyMods(c) end end)
+
+for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+    if tool:IsA("Tool") then safeApplyMods(tool) end
+end
+LocalPlayer.Backpack.ChildAdded:Connect(function(c)
+    if c:IsA("Tool") then safeApplyMods(c) end
+end)
 LocalPlayer.CharacterAdded:Connect(function(c)
-    c.ChildAdded:Connect(function(ch) if ch:IsA("Tool") then applyMods(ch) end end)
+    c.ChildAdded:Connect(function(ch)
+        if ch:IsA("Tool") then safeApplyMods(ch) end
+    end)
 end)
 
--- Team Filters
-local teamFilters = {}
-for _, obj in ipairs(Teams:GetChildren()) do
-    if obj:IsA("Team") then teamFilters[obj.Name] = true end
-end
-for _, n in ipairs({"Riot","Guard","Riot Officer","Correctional Officer","Booking","Escapee","Maximum Security","Medium Security","Minimum Security","Mental Patient","Department of Corrections","Civilian","Sheriff's Office","State Police","VCSO-SWAT"}) do
-    teamFilters[n] = true
-end
-
 -- ================== Populate Tabs ==================
--- Tab 1: ESP
+-- Tab 1: ESP (now includes Keycard ESP and Team Filters)
 do
     local pg = pages[1]
     section(pg, "Player ESP", 1)
     local c = card(pg, 2)
     addToggle(c, 1, "ESP (Chams + Name)", false, function(v) espEnabled = v end, false)
     addToggle(c, 2, "Inventory Overhead", false, function(v) invESP = v end, false)
-    addToggle(c, 3, "Dropped Items ESP", false, function(v) dropESP = v end, true)
+    addToggle(c, 3, "Dropped Items ESP", false, function(v) dropESP = v end, false)
+    addToggle(c, 4, "Keycard ESP (Purple)", false, function(v)
+        keycardESP = v
+        if not v then
+            for _, circle in pairs(keycardCircles) do
+                circle.Visible = false
+            end
+        end
+    end, true)
+
+    section(pg, "Team Visibility", 3)
+    local c2 = card(pg, 4)
+    local names = {}
+    for n,_ in pairs(teamFilters) do table.insert(names, n) end
+    table.sort(names)
+    for i, n in ipairs(names) do
+        addToggle(c2, i, "Show: "..n, true, function(v) teamFilters[n] = v end, i == #names)
+    end
 end
 
 -- Tab 2: Aimbot
@@ -858,33 +942,23 @@ do
     addKeybind(c, 5, "Toggle Key", "Q", function(key) aimKey = key end, true)
 end
 
--- Tab 3: Teams
+-- Tab 3: Utility
 do
     local pg = pages[3]
-    section(pg, "Team Visibility", 1)
-    local c = card(pg, 2)
-    local names = {}
-    for n,_ in pairs(teamFilters) do table.insert(names, n) end
-    table.sort(names)
-    for i, n in ipairs(names) do
-        addToggle(c, i, "Show: "..n, true, function(v) teamFilters[n] = v end, i == #names)
-    end
-end
-
--- Tab 4: Utility
-do
-    local pg = pages[4]
     section(pg, "Movement", 1)
     local c1 = card(pg, 2)
     addToggle(c1, 1, "Infinite Sprint", false, function(v) sprintOn = v end, true)
 
     section(pg, "Gun Mods", 3)
     local c2 = card(pg, 4)
-    addToggle(c2, 1, "No Recoil + Max Range", false, function(v) gunMods = v end, true)
-
-    section(pg, "Keycard", 5)
-    local c3 = card(pg, 6)
-    addToggle(c3, 1, "Keycard ESP", false, function(v) keycardESP = v end, true)
+    addToggle(c2, 1, "No Recoil + Max Range", false, function(v)
+        gunMods = v
+        if v then
+            for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+                if tool:IsA("Tool") then safeApplyMods(tool) end
+            end
+        end
+    end, true)
 end
 
 -- Activate first tab
@@ -892,7 +966,7 @@ navBtns[1].bg.BackgroundColor3 = T.accent
 navBtns[1].lbl.TextColor3 = Color3.new(1,1,1)
 pages[1].Visible = true
 
--- Animation
+-- Animation (fast)
 win.Size = UDim2.new(0,0,0,0)
 win.BackgroundTransparency = 1
-tween(win, {Size = UDim2.new(0,WIN_W,0,WIN_H), BackgroundTransparency=0}, 0.45):Play()
+tween(win, {Size = UDim2.new(0,WIN_W,0,WIN_H), BackgroundTransparency=0}, 0.35):Play()
