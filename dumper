@@ -1,281 +1,470 @@
---[[
-    Feather Dumper v3 (UI STABLE — FIXED)
-    - Fixed syntax error in tryClipboard
-    - Fixed button hover causing layout shifts (removed UICorner from buttons inside layouts
-      that trigger size recalculations; pinned button sizes)
-    - Fixed dump option buttons: sub-label no longer causes layout jump
-    - Drag logic unchanged (title bar only)
-    - All dump features preserved
-    - Console logger with pause-on-scroll
---]]
-
 local Players = game:GetService("Players")
 local LogService = game:GetService("LogService")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+local StarterPack = game:GetService("StarterPack")
+local Teams = game:GetService("Teams")
 local LocalPlayer = Players.LocalPlayer
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- CONFIG
--- ═══════════════════════════════════════════════════════════════════════════════
-local BATCH_SIZE = 20
-local MAX_ENTRIES = 2000
-local MAX_DEPTH = 6
-
--- ═══════════════════════════════════════════════════════════════════════════════
--- EXECUTOR COMPATIBILITY
--- ═══════════════════════════════════════════════════════════════════════════════
-local COMPAT_CHECKS = {
-    { name = "setclipboard", fn = function() return type(setclipboard) == "function" end, category = "Clipboard", critical = false },
-    { name = "toclipboard", fn = function() return type(toclipboard) == "function" end, category = "Clipboard", critical = false },
-    { name = "readfile", fn = function() return type(readfile) == "function" end, category = "Filesystem", critical = false },
-    { name = "writefile", fn = function() return type(writefile) == "function" end, category = "Filesystem", critical = false },
-    { name = "listfiles", fn = function() return type(listfiles) == "function" end, category = "Filesystem", critical = false },
-    { name = "gethiddenproperty", fn = function() return type(gethiddenproperty) == "function" end, category = "Instance", critical = false },
-    { name = "sethiddenproperty", fn = function() return type(sethiddenproperty) == "function" end, category = "Instance", critical = false },
-    { name = "getrawmetatable", fn = function() return type(getrawmetatable) == "function" end, category = "Instance", critical = false },
-    { name = "setrawmetatable", fn = function() return type(setrawmetatable) == "function" end, category = "Instance", critical = false },
-    { name = "game:GetDescendants", fn = function() return type(game.GetDescendants) == "function" end, category = "Scanning", critical = true },
-    { name = "Instance:GetChildren", fn = function() return type(game.GetChildren) == "function" end, category = "Scanning", critical = true },
-    { name = "GetAttributes", fn = function() local ok = pcall(function() workspace:GetAttributes() end) return ok end, category = "Scanning", critical = false },
-    { name = "LogService.MessageOut", fn = function() return LogService ~= nil end, category = "Logging", critical = true },
-    { name = "ScreenGui parenting", fn = function() local ok = pcall(function() LocalPlayer:WaitForChild("PlayerGui", 1) end) return ok end, category = "UI", critical = true },
-    { name = "identifyexecutor", fn = function() return type(identifyexecutor) == "function" end, category = "Identity", critical = false },
-    { name = "getexecutorname", fn = function() return type(getexecutorname) == "function" end, category = "Identity", critical = false },
-    { name = "syn.request / http", fn = function() return type(syn) == "table" or type(http) == "table" or type(request) == "function" end, category = "Network", critical = false },
+local filterConfig = {
+	BaseParts = true,
+	Constraints = true,
+	Decorators = true,
+	Effects = true,
+	Lights = true,
+	BodyMovers = true,
+	Attachments = true,
+	ClickDetectors = false,
+	Animations = false,
+	LocalizationTbl = true,
+	WireframeAdorn = true,
+	MaxDepth = 6,
 }
+
+local baseParts = {
+	Part = true, MeshPart = true, UnionOperation = true, WedgePart = true,
+	CornerWedgePart = true, TrussPart = true, FlagStand = true, Terrain = true,
+	SpecialMesh = true, BlockMesh = true, CylinderMesh = true, TriangleMeshPart = true,
+}
+local constraints = {
+	Weld = true, WeldConstraint = true, Motor6D = true, HingeConstraint = true,
+	BallSocketConstraint = true, RodConstraint = true, RopeConstraint = true,
+	SpringConstraint = true, TorsionSpringConstraint = true,
+	UniversalConstraint = true, CylindricalConstraint = true,
+	PrismaticConstraint = true, PlaneConstraint = true,
+	LineForce = true, AlignPosition = true, AlignOrientation = true,
+	AngularVelocity = true, LinearVelocity = true,
+	Glue = true, Snap = true, ManualWeld = true, ManualGlue = true,
+	Motor = true, Rotate = true, RotateP = true, RotateV = true,
+	NoCollisionConstraint = true,
+}
+local decorators = {
+	Decal = true, Texture = true, SurfaceAppearance = true,
+}
+local effects = {
+	ParticleEmitter = true, Fire = true, Smoke = true, Sparkles = true,
+	Trail = true, Beam = true, SelectionBox = true, SelectionSphere = true,
+	Highlight = true,
+}
+local lights = {
+	PointLight = true, SpotLight = true, SurfaceLight = true,
+}
+local bodyMovers = {
+	BodyVelocity = true, BodyPosition = true, BodyAngularVelocity = true,
+	BodyForce = true, BodyGyro = true, BodyThrust = true,
+	VectorForce = true, Torque = true,
+}
+local attachments = {
+	Attachment = true, Bone = true,
+}
+local anims = {
+	Animation = true, AnimationTrack = true, Animator = true,
+}
+local wireframe = {
+	WireframeHandleAdornment = true, ConeHandleAdornment = true,
+	CylinderHandleAdornment = true, ImageHandleAdornment = true,
+	LineHandleAdornment = true, SphereHandleAdornment = true,
+	BoxHandleAdornment = true,
+}
+
+local alwaysKeep = {
+	RemoteEvent = true, RemoteFunction = true, BindableEvent = true, BindableFunction = true,
+	LocalScript = true, Script = true, ModuleScript = true,
+	StringValue = true, IntValue = true, NumberValue = true, BoolValue = true,
+	ObjectValue = true, CFrameValue = true, Vector3Value = true, Color3Value = true,
+	IntConstrainedValue = true,
+	Folder = true, Configuration = true, Model = true,
+	Sound = true, SoundGroup = true,
+	Humanoid = true, HumanoidDescription = true,
+	AnimationController = true,
+	ProximityPrompt = true,
+	BillboardGui = true, SurfaceGui = true, ScreenGui = true,
+	Dialog = true, DialogChoice = true,
+	Tool = true, VehicleSeat = true, Seat = true, SpawnLocation = true,
+	Team = true,
+	ReplicatedFirst = true,
+}
+
+local function shouldFilter(inst)
+	local cn = inst.ClassName
+	if alwaysKeep[cn] then return false end
+
+	local ok, attrs = pcall(function() return inst:GetAttributes() end)
+	if ok and attrs then
+		for _ in pairs(attrs) do return false end
+	end
+
+	if filterConfig.BaseParts and baseParts[cn] then return true end
+	if filterConfig.Constraints and constraints[cn] then return true end
+	if filterConfig.Decorators and decorators[cn] then return true end
+	if filterConfig.Effects and effects[cn] then return true end
+	if filterConfig.Lights and lights[cn] then return true end
+	if filterConfig.BodyMovers and bodyMovers[cn] then return true end
+	if filterConfig.Attachments and attachments[cn] then return true end
+	if filterConfig.ClickDetectors and cn == "ClickDetector" then return true end
+	if filterConfig.Animations and anims[cn] then return true end
+	if filterConfig.LocalizationTbl and cn == "LocalizationTable" then return true end
+	if filterConfig.WireframeAdorn and wireframe[cn] then return true end
+	return false
+end
+
+local compatChecks = {
+	{ name = "setclipboard", category = "Clipboard", critical = false, fn = function() return type(setclipboard) == "function" end },
+	{ name = "toclipboard", category = "Clipboard", critical = false, fn = function() return type(toclipboard) == "function" end },
+	{ name = "readfile", category = "Filesystem", critical = false, fn = function() return type(readfile) == "function" end },
+	{ name = "writefile", category = "Filesystem", critical = false, fn = function() return type(writefile) == "function" end },
+	{ name = "listfiles", category = "Filesystem", critical = false, fn = function() return type(listfiles) == "function" end },
+	{ name = "gethiddenproperty", category = "Instance", critical = false, fn = function() return type(gethiddenproperty) == "function" end },
+	{ name = "getrawmetatable", category = "Instance", critical = false, fn = function() return type(getrawmetatable) == "function" end },
+	{ name = "game:GetDescendants", category = "Scanning", critical = true, fn = function() return type(game.GetDescendants) == "function" end },
+	{ name = "GetAttributes", category = "Scanning", critical = false, fn = function() local ok = pcall(function() workspace:GetAttributes() end) return ok end },
+	{ name = "LogService.MessageOut", category = "Logging", critical = true, fn = function() return LogService ~= nil end },
+	{ name = "identifyexecutor", category = "Identity", critical = false, fn = function() return type(identifyexecutor) == "function" end },
+	{ name = "syn.request / http", category = "Network", critical = false, fn = function() return type(syn) == "table" or type(http) == "table" or type(request) == "function" end },
+}
+
 local compatResults = {}
 local executorName = "Unknown"
 pcall(function()
-    if type(identifyexecutor) == "function" then executorName = identifyexecutor()
-    elseif type(getexecutorname) == "function" then executorName = getexecutorname() end
+	if type(identifyexecutor) == "function" then
+		executorName = identifyexecutor()
+	elseif type(getexecutorname) == "function" then
+		executorName = getexecutorname()
+	end
 end)
-for _, check in ipairs(COMPAT_CHECKS) do
-    local ok, result = pcall(check.fn)
-    compatResults[check.name] = (ok and result == true)
+for _, check in ipairs(compatChecks) do
+	local ok, result = pcall(check.fn)
+	compatResults[check.name] = (ok and result == true)
 end
 
--- FIX: removed stray ')' that was ')' instead of nothing
-local function tryClipboard(text)
-    if type(setclipboard) == "function" then
-        local ok = pcall(setclipboard, text); if ok then return true end
-    end
-    if type(toclipboard) == "function" then
-        local ok = pcall(toclipboard, text); if ok then return true end
-    end
-    return false
+local function copyToClipboard(text)
+	if type(setclipboard) == "function" then
+		local ok = pcall(setclipboard, text)
+		if ok then return true end
+	end
+	if type(toclipboard) == "function" then
+		local ok = pcall(toclipboard, text)
+		if ok then return true end
+	end
+	return false
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- UI SETUP (STABLE LAYOUT)
--- ═══════════════════════════════════════════════════════════════════════════════
-local FULL_SIZE = UDim2.new(0, 540, 0, 420)
-local MINI_SIZE = UDim2.new(0, 540, 0, 28)
+local c = {
+	bg = Color3.fromRGB(12, 12, 18),
+	bgPanel = Color3.fromRGB(18, 18, 28),
+	bgCard = Color3.fromRGB(22, 22, 34),
+	titleBar = Color3.fromRGB(22, 22, 32),
+	border = Color3.fromRGB(200, 160, 60),
+	borderDim = Color3.fromRGB(50, 50, 70),
+	text = Color3.fromRGB(210, 210, 220),
+	textDim = Color3.fromRGB(110, 110, 130),
+	textHdr = Color3.fromRGB(200, 160, 60),
+	btnNorm = Color3.fromRGB(35, 35, 52),
+	btnHover = Color3.fromRGB(50, 50, 72),
+	btnActive = Color3.fromRGB(60, 60, 95),
+	green = Color3.fromRGB(80, 220, 100),
+	red = Color3.fromRGB(255, 80, 80),
+	yellow = Color3.fromRGB(255, 200, 60),
+	blue = Color3.fromRGB(100, 160, 255),
+	purple = Color3.fromRGB(160, 130, 255),
+	teal = Color3.fromRGB(100, 210, 180),
+	orange = Color3.fromRGB(255, 165, 80),
+	pink = Color3.fromRGB(255, 140, 180),
+	onToggle = Color3.fromRGB(60, 180, 100),
+	offToggle = Color3.fromRGB(70, 70, 90),
+}
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ConsoleDumperUI_v3"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder = 999
+local classColors = {
+	RemoteEvent = c.blue, RemoteFunction = c.blue, BindableEvent = c.purple, BindableFunction = c.purple,
+	StringValue = c.green, IntValue = c.green, NumberValue = c.green, BoolValue = c.green, ObjectValue = c.green,
+	CFrameValue = c.green, Vector3Value = c.green, Color3Value = c.green,
+	LocalScript = c.orange, Script = c.orange, ModuleScript = c.yellow,
+	Model = Color3.fromRGB(180, 220, 255), Folder = c.text, Configuration = c.text,
+	Sound = c.purple, ProximityPrompt = c.yellow, Tool = c.orange,
+	Humanoid = c.teal, VehicleSeat = c.orange, Seat = c.orange,
+	BillboardGui = c.green, SurfaceGui = c.green, ScreenGui = c.green,
+	Dialog = c.yellow, DialogChoice = c.yellow, Team = c.pink,
+}
+local function classColor(cn) return classColors[cn] end
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = FULL_SIZE
-MainFrame.Position = UDim2.new(0.5, -270, 0, 10)
-MainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-MainFrame.BackgroundTransparency = 0.02
-MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+local fullSize = UDim2.new(0, 580, 0, 440)
+local miniSize = UDim2.new(0, 580, 0, 28)
 
-local mainStroke = Instance.new("UIStroke")
-mainStroke.Color = Color3.fromRGB(200, 160, 60)
-mainStroke.Thickness = 2
-mainStroke.Parent = MainFrame
+local gui = Instance.new("ScreenGui")
+gui.Name = "featherdumper"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 999
 
--- Title bar (draggable, but no interference with buttons)
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 28)
-TitleBar.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
-TitleBar.BorderSizePixel = 0
-TitleBar.Parent = MainFrame
-Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.Size = fullSize
+main.Position = UDim2.new(0.5, -290, 0, 10)
+main.BackgroundColor3 = c.bg
+main.BackgroundTransparency = 0.02
+main.BorderSizePixel = 0
+main.ClipsDescendants = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
+local mainStroke = Instance.new("UIStroke", main)
+mainStroke.Color = c.border
+mainStroke.Thickness = 1.5
+mainStroke.Transparency = 0.25
+local mainGrad = Instance.new("UIGradient", main)
+mainGrad.Rotation = 90
+mainGrad.Color = ColorSequence.new(Color3.fromRGB(20, 20, 30), Color3.fromRGB(10, 10, 16))
 
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 28)
+titleBar.BackgroundColor3 = c.titleBar
+titleBar.BorderSizePixel = 0
+titleBar.Parent = main
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 8)
 local titleFix = Instance.new("Frame")
 titleFix.Size = UDim2.new(1, 0, 0, 10)
 titleFix.Position = UDim2.new(0, 0, 1, -10)
-titleFix.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
+titleFix.BackgroundColor3 = c.titleBar
 titleFix.BorderSizePixel = 0
-titleFix.Parent = TitleBar
+titleFix.Parent = titleBar
+
+local titleAccent = Instance.new("Frame")
+titleAccent.Size = UDim2.new(1, 0, 0, 1)
+titleAccent.Position = UDim2.new(0, 0, 1, -1)
+titleAccent.BackgroundColor3 = c.border
+titleAccent.BackgroundTransparency = 0.5
+titleAccent.BorderSizePixel = 0
+titleAccent.Parent = titleBar
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Size = UDim2.new(1, -80, 1, 0)
-titleLbl.Position = UDim2.new(0, 10, 0, 0)
+titleLbl.Size = UDim2.new(1, -120, 1, 0)
+titleLbl.Position = UDim2.new(0, 12, 0, 0)
 titleLbl.BackgroundTransparency = 1
 titleLbl.Font = Enum.Font.GothamBold
 titleLbl.TextSize = 12
-titleLbl.TextColor3 = Color3.fromRGB(200, 160, 60)
+titleLbl.TextColor3 = c.textHdr
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-titleLbl.Text = "FEATHER DUMPER v3  •  " .. executorName
-titleLbl.Parent = TitleBar
+titleLbl.TextYAlignment = Enum.TextYAlignment.Center
+titleLbl.Text = "feather dumper  -  " .. executorName
+titleLbl.Parent = titleBar
 
--- Minimize button
-local isMinimized = false
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size = UDim2.new(0, 26, 0, 20)
-minimizeBtn.Position = UDim2.new(1, -32, 0, 4)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-minimizeBtn.BorderSizePixel = 0
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.TextSize = 14
-minimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
-minimizeBtn.Text = "─"
-minimizeBtn.Parent = TitleBar
-Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 4)
-minimizeBtn.MouseEnter:Connect(function() minimizeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 110) end)
-minimizeBtn.MouseLeave:Connect(function() minimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80) end)
-minimizeBtn.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    MainFrame.Size = isMinimized and MINI_SIZE or FULL_SIZE
-    minimizeBtn.Text = isMinimized and "+" or "─"
+local minimized = false
+local function makeTitleBtn(text, x)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0, 26, 0, 20)
+	b.Position = UDim2.new(1, x, 0, 4)
+	b.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+	b.BorderSizePixel = 0
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 13
+	b.TextColor3 = c.text
+	b.Text = text
+	b.Parent = titleBar
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+	b.MouseEnter:Connect(function() b.BackgroundColor3 = Color3.fromRGB(80, 80, 110) end)
+	b.MouseLeave:Connect(function() b.BackgroundColor3 = Color3.fromRGB(60, 60, 80) end)
+	return b
+end
+local minBtn = makeTitleBtn("-", -32)
+minBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	main.Size = minimized and miniSize or fullSize
+	minBtn.Text = minimized and "+" or "-"
 end)
 
--- DRAG LOGIC (only from title bar, no global input changed)
-local dragging = false
-local dragStartPos, dragStartMousePos
-TitleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStartPos = MainFrame.Position
-        dragStartMousePos = input.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
+local dragging, dragStartPos, dragStartMouse = false, nil, nil
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStartPos = main.Position
+		dragStartMouse = input.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+		end)
+	end
 end)
 UserInputService.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = input.Position - dragStartMousePos
-        MainFrame.Position = UDim2.new(
-            dragStartPos.X.Scale, dragStartPos.X.Offset + delta.X,
-            dragStartPos.Y.Scale, dragStartPos.Y.Offset + delta.Y
-        )
-    end
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local d = input.Position - dragStartMouse
+		main.Position = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + d.X, dragStartPos.Y.Scale, dragStartPos.Y.Offset + d.Y)
+	end
 end)
 
--- Tab bar
-local TabBar = Instance.new("Frame")
-TabBar.Size = UDim2.new(1, 0, 0, 28)
-TabBar.Position = UDim2.new(0, 0, 0, 28)
-TabBar.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
-TabBar.BorderSizePixel = 0
-TabBar.Parent = MainFrame
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(1, 0, 0, 28)
+tabBar.Position = UDim2.new(0, 0, 0, 28)
+tabBar.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
+tabBar.BorderSizePixel = 0
+tabBar.Parent = main
 
-local function makeTabBtn(text, id, posX)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 85, 0, 24)
-    btn.Position = UDim2.new(0, posX, 0, 2)
-    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-    btn.BorderSizePixel = 0
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 11
-    btn.TextColor3 = Color3.fromRGB(180, 180, 180)
-    btn.Text = text
-    btn.Name = id
-    btn.Parent = TabBar
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
-    return btn
+local tabAccents = {}
+local function makeTabBtn(id, text, posX)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0, 62, 0, 24)
+	b.Position = UDim2.new(0, posX, 0, 2)
+	b.BackgroundColor3 = c.btnNorm
+	b.BackgroundTransparency = 1
+	b.BorderSizePixel = 0
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 11
+	b.TextColor3 = Color3.fromRGB(150, 150, 165)
+	b.Text = text
+	b.AutoButtonColor = false
+	b.Parent = tabBar
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+	local accent = Instance.new("Frame")
+	accent.Size = UDim2.new(1, -16, 0, 2)
+	accent.Position = UDim2.new(0, 8, 1, -1)
+	accent.BackgroundColor3 = c.border
+	accent.BorderSizePixel = 0
+	accent.Visible = false
+	accent.Parent = b
+	Instance.new("UICorner", accent).CornerRadius = UDim.new(1, 0)
+	tabAccents[id] = accent
+	return b
 end
+local consoleTabBtn = makeTabBtn("console", "Console", 6)
+local dumperTabBtn = makeTabBtn("dumper", "Dumper", 70)
+local spyTabBtn = makeTabBtn("spy", "Spy", 134)
+local compatTabBtn = makeTabBtn("compat", "Compat", 198)
 
-local consoleTabBtn = makeTabBtn("Console", "consoleTab", 6)
-local dumperTabBtn = makeTabBtn("Dumper", "dumperTab", 95)
-local compatTabBtn = makeTabBtn("Compat", "compatTab", 184)
-
--- Action buttons
-local function makeActionBtn(text, posX, color)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 60, 0, 22)
-    btn.Position = UDim2.new(1, posX, 0, 3)
-    btn.BackgroundColor3 = color
-    btn.BorderSizePixel = 0
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 10
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Text = text
-    btn.Parent = TabBar
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
-    return btn
+local function makeActionBtn(text, posX, col)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0, 52, 0, 22)
+	b.Position = UDim2.new(1, posX, 0, 3)
+	b.BackgroundColor3 = col
+	b.BorderSizePixel = 0
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 10
+	b.TextColor3 = Color3.new(1, 1, 1)
+	b.Text = text
+	b.AutoButtonColor = false
+	b.Parent = tabBar
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+	local baseCol = col
+	b.MouseEnter:Connect(function() b.BackgroundColor3 = baseCol:Lerp(Color3.new(1, 1, 1), 0.18) end)
+	b.MouseLeave:Connect(function() b.BackgroundColor3 = baseCol end)
+	return b
 end
-
-local cancelBtn = makeActionBtn("Cancel", -200, Color3.fromRGB(160, 100, 20))
-local copyBtn = makeActionBtn("Copy", -137, Color3.fromRGB(50, 120, 200))
-local clearBtn = makeActionBtn("Clear", -74, Color3.fromRGB(160, 60, 60))
+local cancelBtn = makeActionBtn("Cancel", -228, Color3.fromRGB(160, 100, 20))
+local copyBtn = makeActionBtn("Copy", -172, Color3.fromRGB(50, 120, 200))
+local saveBtn = makeActionBtn("Save", -116, Color3.fromRGB(70, 150, 90))
+local clearBtn = makeActionBtn("Clear", -60, Color3.fromRGB(160, 60, 60))
 cancelBtn.Visible = false
 
 local statusLbl = Instance.new("TextLabel")
-statusLbl.Size = UDim2.new(0, 55, 0, 22)
-statusLbl.Position = UDim2.new(1, -260, 0, 3)
+statusLbl.Size = UDim2.new(0, 54, 0, 22)
+statusLbl.Position = UDim2.new(1, -284, 0, 3)
 statusLbl.BackgroundTransparency = 1
 statusLbl.Font = Enum.Font.GothamBold
 statusLbl.TextSize = 10
-statusLbl.TextColor3 = Color3.fromRGB(100, 255, 100)
+statusLbl.TextColor3 = c.green
+statusLbl.TextXAlignment = Enum.TextXAlignment.Right
 statusLbl.Text = ""
-statusLbl.Parent = TabBar
+statusLbl.Parent = tabBar
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- CONSOLE TAB (manual canvas sizing to avoid layout jumps)
--- ═══════════════════════════════════════════════════════════════════════════════
-local ConsoleFrame = Instance.new("Frame")
-ConsoleFrame.Size = UDim2.new(1, -8, 1, -62)
-ConsoleFrame.Position = UDim2.new(0, 4, 0, 58)
-ConsoleFrame.BackgroundTransparency = 1
-ConsoleFrame.Visible = true
-ConsoleFrame.Parent = MainFrame
-
-local ConsoleScroll = Instance.new("ScrollingFrame")
-ConsoleScroll.Size = UDim2.new(1, 0, 1, 0)
-ConsoleScroll.BackgroundTransparency = 1
-ConsoleScroll.BorderSizePixel = 0
-ConsoleScroll.ScrollBarThickness = 6
-ConsoleScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
-ConsoleScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-ConsoleScroll.Parent = ConsoleFrame
-
-local consoleLayout = Instance.new("UIListLayout")
-consoleLayout.SortOrder = Enum.SortOrder.LayoutOrder
-consoleLayout.Padding = UDim.new(0, 1)
-consoleLayout.Parent = ConsoleScroll
-
-local function updateConsoleCanvas()
-    task.defer(function()
-        ConsoleScroll.CanvasSize = UDim2.new(0, 0, 0, consoleLayout.AbsoluteContentSize.Y + 4)
-    end)
+local function flashStatus(text, color, hold)
+	statusLbl.Text = text
+	statusLbl.TextColor3 = color or c.green
+	task.delay(hold or 2, function()
+		if statusLbl.Text == text then statusLbl.Text = "" end
+	end)
 end
 
+local consoleFrame = Instance.new("Frame")
+consoleFrame.Size = UDim2.new(1, -8, 1, -62)
+consoleFrame.Position = UDim2.new(0, 4, 0, 58)
+consoleFrame.BackgroundTransparency = 1
+consoleFrame.Visible = true
+consoleFrame.Parent = main
+
+local consoleScroll = Instance.new("ScrollingFrame")
+consoleScroll.Size = UDim2.new(1, 0, 1, 0)
+consoleScroll.BackgroundTransparency = 1
+consoleScroll.BorderSizePixel = 0
+consoleScroll.ScrollBarThickness = 6
+consoleScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
+consoleScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+consoleScroll.Parent = consoleFrame
+local consoleLayout = Instance.new("UIListLayout", consoleScroll)
+consoleLayout.SortOrder = Enum.SortOrder.LayoutOrder
+consoleLayout.Padding = UDim.new(0, 1)
+local function updateConsoleCanvas()
+	task.defer(function()
+		consoleScroll.CanvasSize = UDim2.new(0, 0, 0, consoleLayout.AbsoluteContentSize.Y + 4)
+	end)
+end
 consoleLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateConsoleCanvas)
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- DUMPER TAB
--- ═══════════════════════════════════════════════════════════════════════════════
-local DumperFrame = Instance.new("Frame")
-DumperFrame.Size = UDim2.new(1, -8, 1, -62)
-DumperFrame.Position = UDim2.new(0, 4, 0, 58)
-DumperFrame.BackgroundTransparency = 1
-DumperFrame.Visible = false
-DumperFrame.Parent = MainFrame
+local spyFrame = Instance.new("Frame")
+spyFrame.Size = UDim2.new(1, -8, 1, -62)
+spyFrame.Position = UDim2.new(0, 4, 0, 58)
+spyFrame.BackgroundTransparency = 1
+spyFrame.Visible = false
+spyFrame.Parent = main
 
-local OptionsPanel = Instance.new("Frame")
-OptionsPanel.Size = UDim2.new(0, 150, 1, 0)
-OptionsPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
-OptionsPanel.BorderSizePixel = 0
-OptionsPanel.ClipsDescendants = true  -- FIX: prevent children from rendering outside
-OptionsPanel.Parent = DumperFrame
-Instance.new("UICorner", OptionsPanel).CornerRadius = UDim.new(0, 6)
+local spyBar = Instance.new("Frame")
+spyBar.Size = UDim2.new(1, 0, 0, 24)
+spyBar.BackgroundColor3 = c.bgPanel
+spyBar.BorderSizePixel = 0
+spyBar.Parent = spyFrame
+Instance.new("UICorner", spyBar).CornerRadius = UDim.new(0, 4)
+
+local spyToggle = Instance.new("TextButton")
+spyToggle.Size = UDim2.new(0, 96, 0, 18)
+spyToggle.Position = UDim2.new(0, 3, 0.5, -9)
+spyToggle.BackgroundColor3 = c.onToggle
+spyToggle.BorderSizePixel = 0
+spyToggle.Font = Enum.Font.GothamBold
+spyToggle.TextSize = 10
+spyToggle.TextColor3 = Color3.new(1, 1, 1)
+spyToggle.Text = "start spying"
+spyToggle.AutoButtonColor = false
+spyToggle.Parent = spyBar
+Instance.new("UICorner", spyToggle).CornerRadius = UDim.new(0, 4)
+
+local spyHint = Instance.new("TextLabel")
+spyHint.Size = UDim2.new(1, -110, 1, 0)
+spyHint.Position = UDim2.new(0, 106, 0, 0)
+spyHint.BackgroundTransparency = 1
+spyHint.Font = Enum.Font.Gotham
+spyHint.TextSize = 9
+spyHint.TextColor3 = c.textDim
+spyHint.TextXAlignment = Enum.TextXAlignment.Left
+spyHint.Text = "logs every fireserver / invokeserver and its args"
+spyHint.Parent = spyBar
+
+local spyScroll = Instance.new("ScrollingFrame")
+spyScroll.Size = UDim2.new(1, 0, 1, -28)
+spyScroll.Position = UDim2.new(0, 0, 0, 28)
+spyScroll.BackgroundTransparency = 1
+spyScroll.BorderSizePixel = 0
+spyScroll.ScrollBarThickness = 6
+spyScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
+spyScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+spyScroll.Parent = spyFrame
+local spyLayout = Instance.new("UIListLayout", spyScroll)
+spyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+spyLayout.Padding = UDim.new(0, 1)
+spyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	spyScroll.CanvasSize = UDim2.new(0, 0, 0, spyLayout.AbsoluteContentSize.Y + 4)
+end)
+
+local dumperFrame = Instance.new("Frame")
+dumperFrame.Size = UDim2.new(1, -8, 1, -62)
+dumperFrame.Position = UDim2.new(0, 4, 0, 58)
+dumperFrame.BackgroundTransparency = 1
+dumperFrame.Visible = false
+dumperFrame.Parent = main
+
+local optionsPanel = Instance.new("Frame")
+optionsPanel.Size = UDim2.new(0, 158, 1, 0)
+optionsPanel.BackgroundColor3 = c.bgPanel
+optionsPanel.BorderSizePixel = 0
+optionsPanel.ClipsDescendants = true
+optionsPanel.Parent = dumperFrame
+Instance.new("UICorner", optionsPanel).CornerRadius = UDim.new(0, 6)
 
 local optScroll = Instance.new("ScrollingFrame")
 optScroll.Size = UDim2.new(1, -6, 1, -6)
@@ -284,665 +473,1471 @@ optScroll.BackgroundTransparency = 1
 optScroll.BorderSizePixel = 0
 optScroll.ScrollBarThickness = 4
 optScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-optScroll.Parent = OptionsPanel
-
-local optLayout = Instance.new("UIListLayout")
+optScroll.Parent = optionsPanel
+local optLayout = Instance.new("UIListLayout", optScroll)
 optLayout.SortOrder = Enum.SortOrder.LayoutOrder
 optLayout.Padding = UDim.new(0, 3)
-optLayout.Parent = optScroll
 optLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    optScroll.CanvasSize = UDim2.new(0, 0, 0, optLayout.AbsoluteContentSize.Y + 4)
+	optScroll.CanvasSize = UDim2.new(0, 0, 0, optLayout.AbsoluteContentSize.Y + 4)
 end)
 
--- Right output area
-local DumpRight = Instance.new("Frame")
-DumpRight.Size = UDim2.new(1, -156, 1, 0)
-DumpRight.Position = UDim2.new(0, 154, 0, 0)
-DumpRight.BackgroundTransparency = 1
-DumpRight.Parent = DumperFrame
+local dumpRight = Instance.new("Frame")
+dumpRight.Size = UDim2.new(1, -162, 1, 0)
+dumpRight.Position = UDim2.new(0, 162, 0, 0)
+dumpRight.BackgroundTransparency = 1
+dumpRight.Parent = dumperFrame
 
-local FilterBox = Instance.new("TextBox")
-FilterBox.Size = UDim2.new(1, 0, 0, 22)
-FilterBox.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
-FilterBox.BorderSizePixel = 0
-FilterBox.Font = Enum.Font.RobotoMono
-FilterBox.TextSize = 11
-FilterBox.TextColor3 = Color3.fromRGB(200, 200, 200)
-FilterBox.PlaceholderText = "Filter output..."
-FilterBox.PlaceholderColor3 = Color3.fromRGB(90, 90, 110)
-FilterBox.Text = ""
-FilterBox.ClearTextOnFocus = false
-FilterBox.Parent = DumpRight
-Instance.new("UICorner", FilterBox).CornerRadius = UDim.new(0, 4)
-local filterPad = Instance.new("UIPadding")
-filterPad.PaddingLeft = UDim.new(0, 6)
-filterPad.Parent = FilterBox
+local filterBox = Instance.new("TextBox")
+filterBox.Size = UDim2.new(1, 0, 0, 22)
+filterBox.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
+filterBox.BorderSizePixel = 0
+filterBox.Font = Enum.Font.RobotoMono
+filterBox.TextSize = 11
+filterBox.TextColor3 = c.text
+filterBox.PlaceholderText = "filter output (type to search)..."
+filterBox.PlaceholderColor3 = c.textDim
+filterBox.Text = ""
+filterBox.ClearTextOnFocus = false
+filterBox.Parent = dumpRight
+Instance.new("UICorner", filterBox).CornerRadius = UDim.new(0, 4)
+local fpad = Instance.new("UIPadding", filterBox)
+fpad.PaddingLeft = UDim.new(0, 6)
 
-local DumpScroll = Instance.new("ScrollingFrame")
-DumpScroll.Size = UDim2.new(1, 0, 1, -26)
-DumpScroll.Position = UDim2.new(0, 0, 0, 26)
-DumpScroll.BackgroundTransparency = 1
-DumpScroll.BorderSizePixel = 0
-DumpScroll.ScrollBarThickness = 6
-DumpScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
-DumpScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-DumpScroll.Parent = DumpRight
-
-local dumpLayout = Instance.new("UIListLayout")
+local dumpScroll = Instance.new("ScrollingFrame")
+dumpScroll.Size = UDim2.new(1, 0, 1, -26)
+dumpScroll.Position = UDim2.new(0, 0, 0, 26)
+dumpScroll.BackgroundTransparency = 1
+dumpScroll.BorderSizePixel = 0
+dumpScroll.ScrollBarThickness = 6
+dumpScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
+dumpScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+dumpScroll.Parent = dumpRight
+local dumpLayout = Instance.new("UIListLayout", dumpScroll)
 dumpLayout.SortOrder = Enum.SortOrder.LayoutOrder
 dumpLayout.Padding = UDim.new(0, 1)
-dumpLayout.Parent = DumpScroll
 dumpLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    DumpScroll.CanvasSize = UDim2.new(0, 0, 0, dumpLayout.AbsoluteContentSize.Y + 4)
+	dumpScroll.CanvasSize = UDim2.new(0, 0, 0, dumpLayout.AbsoluteContentSize.Y + 4)
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- COMPAT TAB
--- ═══════════════════════════════════════════════════════════════════════════════
-local CompatFrame = Instance.new("Frame")
-CompatFrame.Size = UDim2.new(1, -8, 1, -62)
-CompatFrame.Position = UDim2.new(0, 4, 0, 58)
-CompatFrame.BackgroundTransparency = 1
-CompatFrame.Visible = false
-CompatFrame.Parent = MainFrame
+local configPanel = Instance.new("Frame")
+configPanel.Size = UDim2.new(1, 0, 1, 0)
+configPanel.BackgroundColor3 = Color3.fromRGB(10, 10, 16)
+configPanel.BackgroundTransparency = 0.06
+configPanel.BorderSizePixel = 0
+configPanel.ZIndex = 20
+configPanel.Visible = false
+configPanel.Parent = dumperFrame
 
-local CompatScroll = Instance.new("ScrollingFrame")
-CompatScroll.Size = UDim2.new(1, 0, 1, 0)
-CompatScroll.BackgroundTransparency = 1
-CompatScroll.BorderSizePixel = 0
-CompatScroll.ScrollBarThickness = 6
-CompatScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-CompatScroll.Parent = CompatFrame
+local cfInner = Instance.new("Frame")
+cfInner.Size = UDim2.new(0, 380, 0, 0)
+cfInner.AutomaticSize = Enum.AutomaticSize.Y
+cfInner.Position = UDim2.new(0.5, -190, 0, 16)
+cfInner.BackgroundColor3 = c.bgCard
+cfInner.BorderSizePixel = 0
+cfInner.ZIndex = 21
+cfInner.Parent = configPanel
+Instance.new("UICorner", cfInner).CornerRadius = UDim.new(0, 10)
+local cfStroke = Instance.new("UIStroke", cfInner)
+cfStroke.Color = c.border
+cfStroke.Thickness = 1.5
+local cfLayout = Instance.new("UIListLayout", cfInner)
+cfLayout.SortOrder = Enum.SortOrder.LayoutOrder
+cfLayout.Padding = UDim.new(0, 0)
 
-local compatListLayout = Instance.new("UIListLayout")
+local cfHeader = Instance.new("Frame")
+cfHeader.Size = UDim2.new(1, 0, 0, 36)
+cfHeader.BackgroundColor3 = c.titleBar
+cfHeader.BorderSizePixel = 0
+cfHeader.LayoutOrder = 0
+cfHeader.ZIndex = 21
+cfHeader.Parent = cfInner
+Instance.new("UICorner", cfHeader).CornerRadius = UDim.new(0, 10)
+local cfHFix = Instance.new("Frame")
+cfHFix.Size = UDim2.new(1, 0, 0, 10)
+cfHFix.Position = UDim2.new(0, 0, 1, -10)
+cfHFix.BackgroundColor3 = c.titleBar
+cfHFix.BorderSizePixel = 0
+cfHFix.ZIndex = 21
+cfHFix.Parent = cfHeader
+local cfTitle = Instance.new("TextLabel")
+cfTitle.Size = UDim2.new(1, -20, 1, 0)
+cfTitle.Position = UDim2.new(0, 14, 0, 0)
+cfTitle.BackgroundTransparency = 1
+cfTitle.Font = Enum.Font.GothamBold
+cfTitle.TextSize = 13
+cfTitle.TextColor3 = c.textHdr
+cfTitle.TextXAlignment = Enum.TextXAlignment.Left
+cfTitle.Text = "filter config - pick what to skip"
+cfTitle.ZIndex = 22
+cfTitle.Parent = cfHeader
+
+local cfScroll = Instance.new("ScrollingFrame")
+cfScroll.Size = UDim2.new(1, -8, 0, 260)
+cfScroll.Position = UDim2.new(0, 4, 0, 0)
+cfScroll.BackgroundTransparency = 1
+cfScroll.BorderSizePixel = 0
+cfScroll.ScrollBarThickness = 5
+cfScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+cfScroll.LayoutOrder = 1
+cfScroll.ZIndex = 21
+cfScroll.Parent = cfInner
+local cfScrollLayout = Instance.new("UIListLayout", cfScroll)
+cfScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+cfScrollLayout.Padding = UDim.new(0, 2)
+cfScrollLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	cfScroll.CanvasSize = UDim2.new(0, 0, 0, cfScrollLayout.AbsoluteContentSize.Y + 4)
+end)
+
+local filterDefs = {
+	{ key = "BaseParts", label = "BaseParts", desc = "part, meshpart, wedgepart, unionoperation, terrain..." },
+	{ key = "Constraints", label = "Constraints", desc = "weld, motor6d, hingeconstraint, weldconstraint..." },
+	{ key = "Decorators", label = "Decorators", desc = "decal, texture, surfaceappearance" },
+	{ key = "Effects", label = "Effects", desc = "particleemitter, fire, smoke, sparkles, trail, beam" },
+	{ key = "Lights", label = "Lights", desc = "pointlight, spotlight, surfacelight" },
+	{ key = "BodyMovers", label = "Body Movers", desc = "bodyvelocity, bodyposition, bodygyro..." },
+	{ key = "Attachments", label = "Attachments", desc = "attachment, bone" },
+	{ key = "ClickDetectors", label = "ClickDetectors", desc = "clickdetector (handy for finding game logic)" },
+	{ key = "Animations", label = "Animations", desc = "animation, animationtrack, animator" },
+	{ key = "LocalizationTbl", label = "LocalizationTable", desc = "localizationtable instances" },
+	{ key = "WireframeAdorn", label = "Wireframe Adornments", desc = "wireframehandleadornment and its subtypes" },
+}
+
+local toggleRefreshers = {}
+
+local function makeToggleRow(def, order)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 32)
+	row.BackgroundColor3 = Color3.fromRGB(26, 26, 38)
+	row.BorderSizePixel = 0
+	row.LayoutOrder = order
+	row.ZIndex = 22
+	row.Parent = cfScroll
+
+	local sep = Instance.new("Frame")
+	sep.Size = UDim2.new(1, -16, 0, 1)
+	sep.Position = UDim2.new(0, 8, 1, -1)
+	sep.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+	sep.BorderSizePixel = 0
+	sep.ZIndex = 22
+	sep.Parent = row
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, -80, 1, 0)
+	lbl.Position = UDim2.new(0, 12, 0, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.Font = Enum.Font.Gotham
+	lbl.TextSize = 11
+	lbl.TextColor3 = c.text
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.TextYAlignment = Enum.TextYAlignment.Center
+	lbl.Text = def.label
+	lbl.ZIndex = 23
+	lbl.Parent = row
+
+	local track = Instance.new("TextButton")
+	track.Size = UDim2.new(0, 44, 0, 24)
+	track.Position = UDim2.new(1, -56, 0.5, -12)
+	track.BorderSizePixel = 0
+	track.AutoButtonColor = false
+	track.Text = ""
+	track.ZIndex = 23
+	track.Parent = row
+	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+	local knob = Instance.new("Frame")
+	knob.Size = UDim2.new(0, 20, 0, 20)
+	knob.BorderSizePixel = 0
+	knob.ZIndex = 24
+	knob.Parent = track
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	knob.BackgroundColor3 = Color3.new(1, 1, 1)
+
+	local function refresh()
+		local on = filterConfig[def.key]
+		track.BackgroundColor3 = on and c.onToggle or c.offToggle
+		knob.Position = on and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+		lbl.TextColor3 = on and c.text or c.textDim
+	end
+	refresh()
+
+	track.MouseButton1Click:Connect(function()
+		filterConfig[def.key] = not filterConfig[def.key]
+		refresh()
+	end)
+	track.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.Touch then
+			filterConfig[def.key] = not filterConfig[def.key]
+			refresh()
+		end
+	end)
+
+	toggleRefreshers[def.key] = refresh
+	return row
+end
+
+for i, def in ipairs(filterDefs) do makeToggleRow(def, i) end
+
+local depthRow = Instance.new("Frame")
+depthRow.Size = UDim2.new(1, 0, 0, 44)
+depthRow.BackgroundColor3 = Color3.fromRGB(26, 26, 38)
+depthRow.BorderSizePixel = 0
+depthRow.LayoutOrder = #filterDefs + 1
+depthRow.ZIndex = 22
+depthRow.Parent = cfScroll
+local depthLbl = Instance.new("TextLabel")
+depthLbl.Size = UDim2.new(0, 160, 0, 18)
+depthLbl.Position = UDim2.new(0, 12, 0, 5)
+depthLbl.BackgroundTransparency = 1
+depthLbl.Font = Enum.Font.GothamBold
+depthLbl.TextSize = 11
+depthLbl.TextColor3 = c.text
+depthLbl.TextXAlignment = Enum.TextXAlignment.Left
+depthLbl.Text = "Max Tree Depth"
+depthLbl.ZIndex = 23
+depthLbl.Parent = depthRow
+local depthValLbl = Instance.new("TextLabel")
+depthValLbl.Size = UDim2.new(0, 30, 0, 18)
+depthValLbl.Position = UDim2.new(1, -40, 0, 5)
+depthValLbl.BackgroundTransparency = 1
+depthValLbl.Font = Enum.Font.GothamBold
+depthValLbl.TextSize = 13
+depthValLbl.TextColor3 = c.textHdr
+depthValLbl.Text = tostring(filterConfig.MaxDepth)
+depthValLbl.ZIndex = 23
+depthValLbl.Parent = depthRow
+local dMinus = Instance.new("TextButton")
+dMinus.Size = UDim2.new(0, 28, 0, 22)
+dMinus.Position = UDim2.new(1, -108, 0.5, -11)
+dMinus.BackgroundColor3 = c.btnNorm
+dMinus.BorderSizePixel = 0
+dMinus.Font = Enum.Font.GothamBold
+dMinus.TextSize = 16
+dMinus.TextColor3 = c.text
+dMinus.Text = "-"
+dMinus.ZIndex = 23
+dMinus.Parent = depthRow
+Instance.new("UICorner", dMinus).CornerRadius = UDim.new(0, 6)
+local dPlus = Instance.new("TextButton")
+dPlus.Size = UDim2.new(0, 28, 0, 22)
+dPlus.Position = UDim2.new(1, -76, 0.5, -11)
+dPlus.BackgroundColor3 = c.btnNorm
+dPlus.BorderSizePixel = 0
+dPlus.Font = Enum.Font.GothamBold
+dPlus.TextSize = 16
+dPlus.TextColor3 = c.text
+dPlus.Text = "+"
+dPlus.ZIndex = 23
+dPlus.Parent = depthRow
+Instance.new("UICorner", dPlus).CornerRadius = UDim.new(0, 6)
+dMinus.MouseButton1Click:Connect(function()
+	filterConfig.MaxDepth = math.max(1, filterConfig.MaxDepth - 1)
+	depthValLbl.Text = tostring(filterConfig.MaxDepth)
+end)
+dPlus.MouseButton1Click:Connect(function()
+	filterConfig.MaxDepth = math.min(12, filterConfig.MaxDepth + 1)
+	depthValLbl.Text = tostring(filterConfig.MaxDepth)
+end)
+
+local presetRow = Instance.new("Frame")
+presetRow.Size = UDim2.new(1, 0, 0, 38)
+presetRow.BackgroundColor3 = Color3.fromRGB(20, 20, 32)
+presetRow.BorderSizePixel = 0
+presetRow.LayoutOrder = #filterDefs + 2
+presetRow.ZIndex = 22
+presetRow.Parent = cfScroll
+local presetsLbl = Instance.new("TextLabel")
+presetsLbl.Size = UDim2.new(0, 80, 1, 0)
+presetsLbl.Position = UDim2.new(0, 12, 0, 0)
+presetsLbl.BackgroundTransparency = 1
+presetsLbl.Font = Enum.Font.GothamSemibold
+presetsLbl.TextSize = 10
+presetsLbl.TextColor3 = c.textDim
+presetsLbl.TextXAlignment = Enum.TextXAlignment.Left
+presetsLbl.Text = "presets:"
+presetsLbl.ZIndex = 23
+presetsLbl.Parent = presetRow
+
+local function makePresetBtn(text, x, fn)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0, 74, 0, 24)
+	b.Position = UDim2.new(0, x, 0.5, -12)
+	b.BackgroundColor3 = c.btnNorm
+	b.BorderSizePixel = 0
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 9
+	b.TextColor3 = c.text
+	b.Text = text
+	b.ZIndex = 23
+	b.Parent = presetRow
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+	b.MouseEnter:Connect(function() b.BackgroundColor3 = c.btnHover end)
+	b.MouseLeave:Connect(function() b.BackgroundColor3 = c.btnNorm end)
+	b.MouseButton1Click:Connect(function()
+		fn()
+		for _, ref in pairs(toggleRefreshers) do ref() end
+		depthValLbl.Text = tostring(filterConfig.MaxDepth)
+	end)
+	return b
+end
+makePresetBtn("Filter All", 84, function()
+	for _, def in ipairs(filterDefs) do filterConfig[def.key] = true end
+end)
+makePresetBtn("Keep All", 162, function()
+	for _, def in ipairs(filterDefs) do filterConfig[def.key] = false end
+end)
+makePresetBtn("Default", 240, function()
+	filterConfig.BaseParts = true
+	filterConfig.Constraints = true
+	filterConfig.Decorators = true
+	filterConfig.Effects = true
+	filterConfig.Lights = true
+	filterConfig.BodyMovers = true
+	filterConfig.Attachments = true
+	filterConfig.ClickDetectors = false
+	filterConfig.Animations = false
+	filterConfig.LocalizationTbl = true
+	filterConfig.WireframeAdorn = true
+	filterConfig.MaxDepth = 6
+end)
+
+local cfFooter = Instance.new("Frame")
+cfFooter.Size = UDim2.new(1, 0, 0, 46)
+cfFooter.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+cfFooter.BorderSizePixel = 0
+cfFooter.LayoutOrder = #filterDefs + 3
+cfFooter.ZIndex = 22
+cfFooter.Parent = cfInner
+local cfFix = Instance.new("Frame")
+cfFix.Size = UDim2.new(1, 0, 0, 10)
+cfFix.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+cfFix.BorderSizePixel = 0
+cfFix.ZIndex = 22
+cfFix.Parent = cfFooter
+
+local cfRunBtn = Instance.new("TextButton")
+cfRunBtn.Size = UDim2.new(0, 140, 0, 30)
+cfRunBtn.Position = UDim2.new(0.5, -74, 0, 8)
+cfRunBtn.BackgroundColor3 = c.onToggle
+cfRunBtn.BorderSizePixel = 0
+cfRunBtn.Font = Enum.Font.GothamBold
+cfRunBtn.TextSize = 12
+cfRunBtn.TextColor3 = Color3.new(1, 1, 1)
+cfRunBtn.Text = "run dump"
+cfRunBtn.ZIndex = 23
+cfRunBtn.Parent = cfFooter
+Instance.new("UICorner", cfRunBtn).CornerRadius = UDim.new(0, 8)
+cfRunBtn.MouseEnter:Connect(function() cfRunBtn.BackgroundColor3 = Color3.fromRGB(80, 210, 120) end)
+cfRunBtn.MouseLeave:Connect(function() cfRunBtn.BackgroundColor3 = c.onToggle end)
+
+local cfCancelBtn = Instance.new("TextButton")
+cfCancelBtn.Size = UDim2.new(0, 90, 0, 30)
+cfCancelBtn.Position = UDim2.new(0.5, 74, 0, 8)
+cfCancelBtn.BackgroundColor3 = c.offToggle
+cfCancelBtn.BorderSizePixel = 0
+cfCancelBtn.Font = Enum.Font.GothamBold
+cfCancelBtn.TextSize = 12
+cfCancelBtn.TextColor3 = c.text
+cfCancelBtn.Text = "Cancel"
+cfCancelBtn.ZIndex = 23
+cfCancelBtn.Parent = cfFooter
+Instance.new("UICorner", cfCancelBtn).CornerRadius = UDim.new(0, 8)
+
+local pendingDump = nil
+cfRunBtn.MouseButton1Click:Connect(function()
+	configPanel.Visible = false
+	if pendingDump then task.spawn(pendingDump) end
+	pendingDump = nil
+end)
+
+local function openConfigPanel(dumpFn, dumpName)
+	pendingDump = dumpFn
+	cfTitle.Text = "filter config - " .. dumpName
+	depthValLbl.Text = tostring(filterConfig.MaxDepth)
+	for _, ref in pairs(toggleRefreshers) do ref() end
+	configPanel.Visible = true
+end
+
+local compatFrame = Instance.new("Frame")
+compatFrame.Size = UDim2.new(1, -8, 1, -62)
+compatFrame.Position = UDim2.new(0, 4, 0, 58)
+compatFrame.BackgroundTransparency = 1
+compatFrame.Visible = false
+compatFrame.Parent = main
+local compatScroll = Instance.new("ScrollingFrame")
+compatScroll.Size = UDim2.new(1, 0, 1, 0)
+compatScroll.BackgroundTransparency = 1
+compatScroll.BorderSizePixel = 0
+compatScroll.ScrollBarThickness = 6
+compatScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+compatScroll.Parent = compatFrame
+local compatListLayout = Instance.new("UIListLayout", compatScroll)
 compatListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 compatListLayout.Padding = UDim.new(0, 2)
-compatListLayout.Parent = CompatScroll
 compatListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    CompatScroll.CanvasSize = UDim2.new(0, 0, 0, compatListLayout.AbsoluteContentSize.Y + 4)
+	compatScroll.CanvasSize = UDim2.new(0, 0, 0, compatListLayout.AbsoluteContentSize.Y + 4)
 end)
 
--- Parent GUI
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- TAB SWITCHING
--- ═══════════════════════════════════════════════════════════════════════════════
-local activeTab = "console"  -- FIX: declared local before use
+local activeTab = "console"
 local function switchTab(tab)
-    activeTab = tab
-    ConsoleFrame.Visible = (tab == "console")
-    DumperFrame.Visible = (tab == "dumper")
-    CompatFrame.Visible = (tab == "compat")
-    local tabs = {console = consoleTabBtn, dumper = dumperTabBtn, compat = compatTabBtn}
-    for id, btn in pairs(tabs) do
-        if id == tab then
-            btn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-            btn.TextColor3 = Color3.fromRGB(140, 140, 140)
-        end
-    end
+	activeTab = tab
+	consoleFrame.Visible = (tab == "console")
+	dumperFrame.Visible = (tab == "dumper")
+	spyFrame.Visible = (tab == "spy")
+	compatFrame.Visible = (tab == "compat")
+	local tabs = { console = consoleTabBtn, dumper = dumperTabBtn, spy = spyTabBtn, compat = compatTabBtn }
+	for id, btn in pairs(tabs) do
+		local on = (id == tab)
+		btn.BackgroundTransparency = on and 0 or 1
+		btn.BackgroundColor3 = Color3.fromRGB(40, 40, 58)
+		btn.TextColor3 = on and Color3.new(1, 1, 1) or Color3.fromRGB(150, 150, 165)
+		tabAccents[id].Visible = on
+	end
 end
 consoleTabBtn.MouseButton1Click:Connect(function() switchTab("console") end)
 dumperTabBtn.MouseButton1Click:Connect(function() switchTab("dumper") end)
+spyTabBtn.MouseButton1Click:Connect(function() switchTab("spy") end)
 compatTabBtn.MouseButton1Click:Connect(function() switchTab("compat") end)
 switchTab("console")
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- LOG HELPERS (stable label creation)
--- ═══════════════════════════════════════════════════════════════════════════════
 local consoleEntries = {}
 local consoleCount = 0
 local dumpEntries = {}
 local dumpCount = 0
 local dumpLabels = {}
+local spyEntries = {}
+local spyCount = 0
+local spyQueue = {}
+local spying = false
+local spyHooked = false
 local filterText = ""
+local maxEntries = 2000
+local batchSize = 20
 
-local TYPE_COLORS = {
-    [Enum.MessageType.MessageOutput] = Color3.fromRGB(200, 200, 200),
-    [Enum.MessageType.MessageWarning] = Color3.fromRGB(255, 200, 60),
-    [Enum.MessageType.MessageError] = Color3.fromRGB(255, 80, 80),
-    [Enum.MessageType.MessageInfo] = Color3.fromRGB(130, 180, 255),
+local typeColors = {
+	[Enum.MessageType.MessageOutput] = Color3.fromRGB(200, 200, 200),
+	[Enum.MessageType.MessageWarning] = c.yellow,
+	[Enum.MessageType.MessageError] = c.red,
+	[Enum.MessageType.MessageInfo] = c.blue,
 }
-local TYPE_PREFIX = {
-    [Enum.MessageType.MessageOutput] = "",
-    [Enum.MessageType.MessageWarning] = "[WARN] ",
-    [Enum.MessageType.MessageError] = "[ERR]  ",
-    [Enum.MessageType.MessageInfo] = "[INFO] ",
-}
-
-local CLASS_COLORS = {
-    RemoteEvent = Color3.fromRGB(100, 160, 255),
-    RemoteFunction = Color3.fromRGB(100, 160, 255),
-    BindableEvent = Color3.fromRGB(160, 130, 255),
-    BindableFunction = Color3.fromRGB(160, 130, 255),
-    StringValue = Color3.fromRGB(100, 210, 140),
-    IntValue = Color3.fromRGB(100, 210, 140),
-    NumberValue = Color3.fromRGB(100, 210, 140),
-    BoolValue = Color3.fromRGB(100, 210, 140),
-    ObjectValue = Color3.fromRGB(100, 210, 140),
-    LocalScript = Color3.fromRGB(255, 165, 80),
-    Script = Color3.fromRGB(255, 140, 60),
-    ModuleScript = Color3.fromRGB(255, 200, 80),
-    Model = Color3.fromRGB(180, 220, 255),
-    Sound = Color3.fromRGB(200, 150, 255),
+local typePrefix = {
+	[Enum.MessageType.MessageOutput] = "",
+	[Enum.MessageType.MessageWarning] = "[warn] ",
+	[Enum.MessageType.MessageError] = "[err]  ",
+	[Enum.MessageType.MessageInfo] = "[info] ",
 }
 
-local function classColor(cn) return CLASS_COLORS[cn] end
-
--- FIX: makeLabel now uses fixed height + TextWrapped instead of AutomaticSize
--- AutomaticSize inside a UIListLayout was causing constant layout recalculations
--- and the "jumping" behavior on hover
 local function makeLabel(scroll, count, text, color, visible)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -4, 0, 16)
-    lbl.AutomaticSize = Enum.AutomaticSize.Y
-    lbl.BackgroundTransparency = 0.92
-    lbl.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-    lbl.Font = Enum.Font.RobotoMono
-    lbl.TextSize = 11
-    lbl.TextColor3 = color or Color3.fromRGB(200, 200, 200)
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.TextYAlignment = Enum.TextYAlignment.Top
-    lbl.TextWrapped = true
-    lbl.RichText = true
-    lbl.Text = text
-    lbl.LayoutOrder = count
-    lbl.Visible = (visible ~= false)
-    lbl.Parent = scroll
-    local pad = Instance.new("UIPadding")
-    pad.PaddingLeft = UDim.new(0, 4)
-    pad.PaddingTop = UDim.new(0, 2)
-    pad.PaddingBottom = UDim.new(0, 2)
-    pad.Parent = lbl
-    return lbl
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, -4, 0, 16)
+	lbl.AutomaticSize = Enum.AutomaticSize.Y
+	lbl.BackgroundTransparency = 0.92
+	lbl.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+	lbl.Font = Enum.Font.RobotoMono
+	lbl.TextSize = 11
+	lbl.TextColor3 = color or c.text
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.TextYAlignment = Enum.TextYAlignment.Top
+	lbl.TextWrapped = true
+	lbl.RichText = true
+	lbl.Text = text
+	lbl.LayoutOrder = count
+	lbl.Visible = (visible ~= false)
+	lbl.Parent = scroll
+	local pad = Instance.new("UIPadding", lbl)
+	pad.PaddingLeft = UDim.new(0, 4)
+	pad.PaddingTop = UDim.new(0, 2)
+	pad.PaddingBottom = UDim.new(0, 2)
+	return lbl
+end
+
+local function bindLineCopy(lbl, text)
+	lbl.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			local ok = copyToClipboard(text)
+			flashStatus(ok and "line copied" or "no clip", ok and c.green or c.red)
+		end
+	end)
 end
 
 local consolePaused = false
-ConsoleScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-    local maxScroll = ConsoleScroll.AbsoluteCanvasSize.Y - ConsoleScroll.AbsoluteSize.Y
-    local atBottom = maxScroll <= 0 or ConsoleScroll.CanvasPosition.Y >= (maxScroll - 5)
-    consolePaused = not atBottom
+consoleScroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+	local maxY = consoleScroll.AbsoluteCanvasSize.Y - consoleScroll.AbsoluteSize.Y
+	consolePaused = not (maxY <= 0 or consoleScroll.CanvasPosition.Y >= maxY - 5)
 end)
 
+local function scrollToBottom(scroll)
+	task.defer(function()
+		scroll.CanvasPosition = Vector2.new(0, math.max(0, scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteSize.Y))
+	end)
+end
+
 local function addConsoleEntry(message, messageType)
-    consoleCount = consoleCount + 1
-    local color = TYPE_COLORS[messageType] or Color3.fromRGB(200, 200, 200)
-    local prefix = TYPE_PREFIX[messageType] or ""
-    local ts = os.date("%H:%M:%S")
-    local text = ts .. "  " .. prefix .. tostring(message)
-    table.insert(consoleEntries, text)
-    if consoleCount > MAX_ENTRIES then
-        -- FIX: remove by LayoutOrder instead of constructed name (entries were never named)
-        local removeOrder = consoleCount - MAX_ENTRIES
-        for _, child in ipairs(ConsoleScroll:GetChildren()) do
-            if child:IsA("TextLabel") and child.LayoutOrder == removeOrder then
-                child:Destroy()
-                break
-            end
-        end
-        table.remove(consoleEntries, 1)
-    end
-    makeLabel(ConsoleScroll, consoleCount, text, color)
-    if not consolePaused then
-        task.defer(function()
-            ConsoleScroll.CanvasPosition = Vector2.new(0, math.max(0, ConsoleScroll.AbsoluteCanvasSize.Y - ConsoleScroll.AbsoluteSize.Y))
-        end)
-    end
+	consoleCount = consoleCount + 1
+	local color = typeColors[messageType] or c.text
+	local prefix = typePrefix[messageType] or ""
+	local text = os.date("%H:%M:%S") .. "  " .. prefix .. tostring(message)
+	table.insert(consoleEntries, text)
+	if consoleCount > maxEntries then
+		local removeOrder = consoleCount - maxEntries
+		for _, child in ipairs(consoleScroll:GetChildren()) do
+			if child:IsA("TextLabel") and child.LayoutOrder == removeOrder then
+				child:Destroy()
+				break
+			end
+		end
+		table.remove(consoleEntries, 1)
+	end
+	local lbl = makeLabel(consoleScroll, consoleCount, text, color)
+	bindLineCopy(lbl, text)
+	if not consolePaused then scrollToBottom(consoleScroll) end
 end
 
 local function addDumpEntry(text, color)
-    dumpCount = dumpCount + 1
-    table.insert(dumpEntries, text)
-    local show = (filterText == "") or (text:lower():find(filterText:lower(), 1, true) ~= nil)
-    local lbl = makeLabel(DumpScroll, dumpCount, text, color or Color3.fromRGB(190, 190, 200), show)
-    table.insert(dumpLabels, lbl)
-    task.defer(function()
-        DumpScroll.CanvasPosition = Vector2.new(0, math.max(0, DumpScroll.AbsoluteCanvasSize.Y - DumpScroll.AbsoluteSize.Y))
-    end)
+	dumpCount = dumpCount + 1
+	table.insert(dumpEntries, text)
+	local show = (filterText == "") or (text:lower():find(filterText:lower(), 1, true) ~= nil)
+	local lbl = makeLabel(dumpScroll, dumpCount, text, color or Color3.fromRGB(190, 190, 200), show)
+	bindLineCopy(lbl, text)
+	table.insert(dumpLabels, lbl)
+	scrollToBottom(dumpScroll)
 end
 
 local function addDumpHeader(text)
-    addDumpEntry("━━━ " .. text .. " ━━━", Color3.fromRGB(200, 160, 60))
+	addDumpEntry("--- " .. text .. " ---", c.textHdr)
 end
 
-FilterBox:GetPropertyChangedSignal("Text"):Connect(function()
-    filterText = FilterBox.Text
-    local lower = filterText:lower()
-    for i, lbl in ipairs(dumpLabels) do
-        if lbl and lbl.Parent then
-            local entryText = dumpEntries[i] or ""
-            lbl.Visible = (lower == "") or (entryText:lower():find(lower, 1, true) ~= nil)
-        end
-    end
+local function addSpyEntry(text, color)
+	spyCount = spyCount + 1
+	table.insert(spyEntries, text)
+	if spyCount > maxEntries then
+		local removeOrder = spyCount - maxEntries
+		for _, child in ipairs(spyScroll:GetChildren()) do
+			if child:IsA("TextLabel") and child.LayoutOrder == removeOrder then
+				child:Destroy()
+				break
+			end
+		end
+		table.remove(spyEntries, 1)
+	end
+	local lbl = makeLabel(spyScroll, spyCount, text, color or c.text)
+	bindLineCopy(lbl, text)
+	scrollToBottom(spyScroll)
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.1)
+		if #spyQueue > 0 then
+			local batch = spyQueue
+			spyQueue = {}
+			for _, e in ipairs(batch) do addSpyEntry(e.text, e.color) end
+		end
+	end
 end)
 
--- Hook console
+filterBox:GetPropertyChangedSignal("Text"):Connect(function()
+	filterText = filterBox.Text
+	local lower = filterText:lower()
+	for i, lbl in ipairs(dumpLabels) do
+		if lbl and lbl.Parent then
+			lbl.Visible = (lower == "") or ((dumpEntries[i] or ""):lower():find(lower, 1, true) ~= nil)
+		end
+	end
+end)
+
 pcall(function()
-    LogService.MessageOut:Connect(function(message, messageType)
-        addConsoleEntry(message, messageType)
-    end)
+	LogService.MessageOut:Connect(function(msg, msgType)
+		addConsoleEntry(msg, msgType)
+	end)
 end)
 
--- Copy & Clear
+local function currentEntries()
+	if activeTab == "dumper" then return dumpEntries end
+	if activeTab == "spy" then return spyEntries end
+	return consoleEntries
+end
+
 copyBtn.MouseButton1Click:Connect(function()
-    local entries = (activeTab == "console") and consoleEntries or dumpEntries
-    local fullLog = table.concat(entries, "\n")
-    local ok = tryClipboard(fullLog)
-    statusLbl.Text = ok and "Copied!" or "No clip"
-    statusLbl.TextColor3 = ok and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
-    task.delay(2, function() statusLbl.Text = "" end)
+	local ok = copyToClipboard(table.concat(currentEntries(), "\n"))
+	flashStatus(ok and "copied" or "no clip", ok and c.green or c.red)
+end)
+
+saveBtn.MouseButton1Click:Connect(function()
+	if type(writefile) ~= "function" then
+		flashStatus("no writefile", c.red)
+		return
+	end
+	local entries = currentEntries()
+	if #entries == 0 then
+		flashStatus("nothing to save", c.yellow)
+		return
+	end
+	local name = "featherdump_" .. activeTab .. "_" .. os.time() .. ".txt"
+	local ok = pcall(writefile, name, table.concat(entries, "\n"))
+	flashStatus(ok and "saved" or "save failed", ok and c.green or c.red)
+	if ok then addConsoleEntry("saved " .. #entries .. " lines to " .. name, Enum.MessageType.MessageInfo) end
 end)
 
 clearBtn.MouseButton1Click:Connect(function()
-    if activeTab == "console" then
-        for _, c in ipairs(ConsoleScroll:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
-        consoleEntries = {}; consoleCount = 0
-        updateConsoleCanvas()
-    elseif activeTab == "dumper" then
-        for _, c in ipairs(DumpScroll:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
-        dumpEntries = {}; dumpLabels = {}; dumpCount = 0
-        DumpScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    end
-    statusLbl.Text = "Cleared"
-    task.delay(1.5, function() statusLbl.Text = "" end)
+	if activeTab == "console" then
+		for _, child in ipairs(consoleScroll:GetChildren()) do
+			if child:IsA("TextLabel") then child:Destroy() end
+		end
+		consoleEntries = {}
+		consoleCount = 0
+		updateConsoleCanvas()
+	elseif activeTab == "dumper" then
+		for _, child in ipairs(dumpScroll:GetChildren()) do
+			if child:IsA("TextLabel") then child:Destroy() end
+		end
+		dumpEntries = {}
+		dumpLabels = {}
+		dumpCount = 0
+		dumpScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	elseif activeTab == "spy" then
+		for _, child in ipairs(spyScroll:GetChildren()) do
+			if child:IsA("TextLabel") then child:Destroy() end
+		end
+		spyEntries = {}
+		spyCount = 0
+		spyScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	end
+	flashStatus("cleared", c.green, 1.5)
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- BATCHED DUMP ENGINE (cancelable)
--- ═══════════════════════════════════════════════════════════════════════════════
+local function spyArgs(...)
+	local n = select("#", ...)
+	if n == 0 then return "no args" end
+	local parts = {}
+	for i = 1, n do
+		local v = select(i, ...)
+		local ok, s = pcall(function() return tostring(v) end)
+		s = ok and s or "?"
+		if #s > 40 then s = s:sub(1, 40) .. "..." end
+		table.insert(parts, typeof(v) .. ": " .. s)
+	end
+	return table.concat(parts, ", ")
+end
+
+local function setupSpy()
+	if spyHooked then return true end
+	local ok = pcall(function()
+		local getMethod = getnamecallmethod
+		if type(hookmetamethod) == "function" then
+			local old
+			old = hookmetamethod(game, "__namecall", function(self, ...)
+				if spying then
+					local method = getMethod and getMethod() or ""
+					if method == "FireServer" or method == "InvokeServer" then
+						local path = "?"
+						pcall(function() path = self:GetFullName() end)
+						table.insert(spyQueue, {
+							text = os.date("%H:%M:%S") .. "  " .. method .. "  " .. path .. "  (" .. spyArgs(...) .. ")",
+							color = c.blue,
+						})
+					end
+				end
+				return old(self, ...)
+			end)
+		elseif type(getrawmetatable) == "function" then
+			local mt = getrawmetatable(game)
+			local old = mt.__namecall
+			if type(setreadonly) == "function" then setreadonly(mt, false) end
+			local function hooked(self, ...)
+				if spying then
+					local method = getMethod and getMethod() or ""
+					if method == "FireServer" or method == "InvokeServer" then
+						local path = "?"
+						pcall(function() path = self:GetFullName() end)
+						table.insert(spyQueue, {
+							text = os.date("%H:%M:%S") .. "  " .. method .. "  " .. path .. "  (" .. spyArgs(...) .. ")",
+							color = c.blue,
+						})
+					end
+				end
+				return old(self, ...)
+			end
+			mt.__namecall = (type(newcclosure) == "function") and newcclosure(hooked) or hooked
+		else
+			error("no namecall hook available")
+		end
+	end)
+	spyHooked = ok
+	return ok
+end
+
+spyToggle.MouseButton1Click:Connect(function()
+	if not spying then
+		if not setupSpy() then
+			addSpyEntry("this executor can't hook remotes (needs hookmetamethod or getrawmetatable)", c.red)
+			return
+		end
+		spying = true
+		spyToggle.Text = "stop spying"
+		spyToggle.BackgroundColor3 = c.red
+		addSpyEntry("--- spying started ---", c.textHdr)
+	else
+		spying = false
+		spyToggle.Text = "start spying"
+		spyToggle.BackgroundColor3 = c.onToggle
+		addSpyEntry("--- spying stopped ---", c.textHdr)
+	end
+end)
+
 local isDumping = false
 local cancelFlag = false
 
 cancelBtn.MouseButton1Click:Connect(function()
-    if isDumping then cancelFlag = true end
+	if isDumping then cancelFlag = true end
 end)
 
 local function setDumpState(running)
-    isDumping = running
-    cancelFlag = false
-    cancelBtn.Visible = running
+	isDumping = running
+	cancelFlag = false
+	cancelBtn.Visible = running
 end
 
 local function batchedDump(title, items, formatFn)
-    if isDumping then
-        addDumpEntry("⚠ A dump is already running. Press Cancel first.", Color3.fromRGB(255, 200, 60))
-        return
-    end
-    setDumpState(true)
-    switchTab("dumper")
-    local ts = os.date("%H:%M:%S")
-    addDumpHeader(title .. "  [" .. ts .. "]  (" .. #items .. " items)")
-    if #items == 0 then
-        addDumpEntry("  (no items found)", Color3.fromRGB(160, 160, 160))
-        setDumpState(false)
-        return
-    end
-    local index = 0
-    local total = #items
-    local function processBatch()
-        if cancelFlag then
-            addDumpEntry("✗ Cancelled at " .. index .. "/" .. total, Color3.fromRGB(255, 120, 60))
-            setDumpState(false)
-            statusLbl.Text = "Cancelled"
-            statusLbl.TextColor3 = Color3.fromRGB(255, 140, 60)
-            task.delay(2, function() statusLbl.Text = "" end)
-            return
-        end
-        local batchEnd = math.min(index + BATCH_SIZE, total)
-        for i = index + 1, batchEnd do
-            if items[i] ~= nil then
-                local ok, text, color = pcall(formatFn, items[i], i)
-                if ok and text then
-                    addDumpEntry(text, color)
-                end
-            end
-        end
-        index = batchEnd
-        statusLbl.Text = math.floor((index / total) * 100) .. "%"
-        statusLbl.TextColor3 = Color3.fromRGB(180, 180, 255)
-        if index < total then
-            task.wait()
-            processBatch()
-        else
-            addDumpEntry("✓ Done — " .. total .. " items", Color3.fromRGB(100, 255, 100))
-            setDumpState(false)
-            statusLbl.Text = "Done"
-            statusLbl.TextColor3 = Color3.fromRGB(100, 255, 100)
-            task.delay(2, function() statusLbl.Text = "" end)
-        end
-    end
-    task.spawn(processBatch)
+	if isDumping then
+		addDumpEntry("a dump is already running, hit cancel first", c.yellow)
+		return
+	end
+	setDumpState(true)
+	switchTab("dumper")
+	addDumpHeader(title .. "  [" .. os.date("%H:%M:%S") .. "]  (" .. #items .. " items)")
+	if #items == 0 then
+		addDumpEntry("  (nothing found)", c.textDim)
+		setDumpState(false)
+		return
+	end
+	local index, total = 0, #items
+	local function processBatch()
+		if cancelFlag then
+			addDumpEntry("cancelled at " .. index .. "/" .. total, c.orange)
+			setDumpState(false)
+			flashStatus("cancelled", c.orange)
+			return
+		end
+		local stop = math.min(index + batchSize, total)
+		for i = index + 1, stop do
+			if items[i] ~= nil then
+				local ok, text, color = pcall(formatFn, items[i], i)
+				if ok and text then addDumpEntry(text, color) end
+			end
+		end
+		index = stop
+		statusLbl.Text = math.floor((index / total) * 100) .. "%"
+		statusLbl.TextColor3 = Color3.fromRGB(180, 180, 255)
+		if index < total then
+			task.wait()
+			processBatch()
+		else
+			addDumpEntry("done - " .. total .. " items", c.green)
+			setDumpState(false)
+			flashStatus("done", c.green)
+		end
+	end
+	task.spawn(processBatch)
 end
 
 local function batchedCollect(root, predicate, onDone)
-    task.spawn(function()
-        local results = {}
-        local all = {}
-        pcall(function() all = root:GetDescendants() end)
-        local i = 0
-        while i < #all do
-            local bEnd = math.min(i + 50, #all)
-            for j = i + 1, bEnd do
-                local ok, passes = pcall(predicate, all[j])
-                if ok and passes then table.insert(results, all[j]) end
-            end
-            i = bEnd
-            task.wait()
-        end
-        onDone(results)
-    end)
+	task.spawn(function()
+		local results, all = {}, {}
+		pcall(function() all = root:GetDescendants() end)
+		local i = 0
+		while i < #all do
+			local stop = math.min(i + 50, #all)
+			for j = i + 1, stop do
+				local ok, passes = pcall(predicate, all[j])
+				if ok and passes then table.insert(results, all[j]) end
+			end
+			i = stop
+			task.wait()
+		end
+		onDone(results)
+	end)
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- TREE FLATTEN
--- ═══════════════════════════════════════════════════════════════════════════════
-local function flattenTree(root, maxDepth)
-    local flat = {}
-    maxDepth = maxDepth or MAX_DEPTH
-    local function recurse(obj, depth)
-        if depth > maxDepth then return end
-        local indent = string.rep("  ", depth)
-        local cn = obj.ClassName
-        local info = indent .. obj.Name .. "  <font color='rgb(120,120,150)'>(" .. cn .. ")</font>"
-        if obj:IsA("ValueBase") then
-            local ok, val = pcall(function() return tostring(obj.Value) end)
-            if ok then
-                if #val > 80 then val = val:sub(1, 80) .. "..." end
-                info = info .. "  <font color='rgb(100,200,100)'>= " .. val .. "</font>"
-            end
-        end
-        local attrOk, attrs = pcall(function() return obj:GetAttributes() end)
-        if attrOk and attrs then
-            local parts = {}
-            for k, v in pairs(attrs) do table.insert(parts, k .. "=" .. tostring(v)) end
-            if #parts > 0 then
-                local s = table.concat(parts, ", ")
-                if #s > 100 then s = s:sub(1, 100) .. "..." end
-                info = info .. "  <font color='rgb(180,160,255)'>[attr: " .. s .. "]</font>"
-            end
-        end
-        table.insert(flat, {text = info, depth = depth, color = classColor(cn)})
-        local children = {}
-        pcall(function() children = obj:GetChildren() end)
-        for _, child in ipairs(children) do recurse(child, depth + 1) end
-    end
-    local children = {}
-    pcall(function() children = root:GetChildren() end)
-    for _, child in ipairs(children) do recurse(child, 0) end
-    return flat
+local function flattenTree(root, maxDepth, useFilter)
+	local flat = {}
+	maxDepth = maxDepth or filterConfig.MaxDepth
+	local skipped = 0
+
+	local function recurse(obj, depth)
+		if depth > maxDepth then return end
+		local cn = obj.ClassName
+		local filtered = useFilter and shouldFilter(obj)
+		if not filtered then
+			local indent = string.rep("  ", depth)
+			local info = indent .. obj.Name .. "  <font color='rgb(120,120,150)'>(" .. cn .. ")</font>"
+			if obj:IsA("ValueBase") then
+				local ok, val = pcall(function() return tostring(obj.Value) end)
+				if ok then
+					if #val > 80 then val = val:sub(1, 80) .. "..." end
+					info = info .. "  <font color='rgb(100,200,100)'>= " .. val .. "</font>"
+				end
+			end
+			local attrOk, attrs = pcall(function() return obj:GetAttributes() end)
+			if attrOk and attrs then
+				local parts = {}
+				for k, v in pairs(attrs) do table.insert(parts, k .. "=" .. tostring(v)) end
+				if #parts > 0 then
+					local s = table.concat(parts, ", ")
+					if #s > 100 then s = s:sub(1, 100) .. "..." end
+					info = info .. "  <font color='rgb(180,160,255)'>[attr: " .. s .. "]</font>"
+				end
+			end
+			table.insert(flat, { text = info, depth = depth, color = classColor(cn) })
+		else
+			skipped = skipped + 1
+		end
+		if cn ~= "Terrain" then
+			local children = {}
+			pcall(function() children = obj:GetChildren() end)
+			for _, child in ipairs(children) do recurse(child, depth + 1) end
+		end
+	end
+
+	local children = {}
+	pcall(function() children = root:GetChildren() end)
+	for _, child in ipairs(children) do recurse(child, 0) end
+
+	if useFilter and skipped > 0 then
+		table.insert(flat, {
+			text = "<font color='rgb(100,100,130)'>  -- " .. skipped .. " noise instances filtered (change it in the config before dumping) --</font>",
+			depth = 0, color = c.textDim,
+		})
+	end
+	return flat
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- DUMP OPTIONS
--- ═══════════════════════════════════════════════════════════════════════════════
-local DUMP_OPTIONS = {
-    { name = "ReplicatedStorage", desc = "Remotes, values, modules", fn = function()
-        batchedDump("ReplicatedStorage", flattenTree(ReplicatedStorage, MAX_DEPTH),
-            function(item) return item.text, item.color end)
-    end },
-    { name = "PlayerGui", desc = "UI structure & screens", fn = function()
-        local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if not pg then addDumpEntry("PlayerGui not found!", Color3.fromRGB(255, 80, 80)) return end
-        batchedDump("PlayerGui", flattenTree(pg, MAX_DEPTH),
-            function(item) return item.text, item.color end)
-    end },
-    { name = "Workspace Top", desc = "Top-level children", fn = function()
-        local ch = {}; pcall(function() ch = workspace:GetChildren() end)
-        batchedDump("Workspace Children", ch, function(item)
-            local extra = ""
-            pcall(function()
-                if item:IsA("Model") then extra = "  (" .. #item:GetDescendants() .. " desc)" end
-            end)
-            return item.Name .. "  (" .. item.ClassName .. ")" .. extra, classColor(item.ClassName)
-        end)
-    end },
-    { name = "Workspace Full", desc = "Full tree (depth 4)", fn = function()
-        batchedDump("Workspace Full", flattenTree(workspace, 4),
-            function(item) return item.text, item.color end)
-    end },
-    { name = "Cars / Vehicles", desc = "Workspace.Cars tree", fn = function()
-        local cars = workspace:FindFirstChild("Cars") or workspace:FindFirstChild("Vehicles")
-        if not cars then addDumpEntry("No Cars folder", Color3.fromRGB(255, 80, 80)) return end
-        batchedDump("Cars", flattenTree(cars, MAX_DEPTH),
-            function(item) return item.text, item.color end)
-    end },
-    { name = "Jobs Folder", desc = "Workspace.Jobs tree", fn = function()
-        local jobs = workspace:FindFirstChild("Jobs") or workspace:FindFirstChild("jobs")
-        if not jobs then addDumpEntry("No Jobs folder", Color3.fromRGB(255, 80, 80)) return end
-        batchedDump("Jobs", flattenTree(jobs, MAX_DEPTH),
-            function(item) return item.text, item.color end)
-    end },
-    { name = "Remotes Only", desc = "All RemoteEvents & Functions", fn = function()
-        addDumpEntry("Collecting remotes...", Color3.fromRGB(180, 180, 255))
-        batchedCollect(game, function(d)
-            return d:IsA("RemoteEvent") or d:IsA("RemoteFunction")
-                or d:IsA("BindableEvent") or d:IsA("BindableFunction")
-        end, function(remotes)
-            batchedDump("Remotes & Bindables", remotes, function(item)
-                return item:GetFullName() .. "  (" .. item.ClassName .. ")", classColor(item.ClassName)
-            end)
-        end)
-    end },
-    { name = "Values Only", desc = "All StringValue, IntValue…", fn = function()
-        addDumpEntry("Collecting values...", Color3.fromRGB(180, 180, 255))
-        batchedCollect(game, function(d) return d:IsA("ValueBase") end, function(values)
-            batchedDump("Value Objects", values, function(item)
-                local ok, v = pcall(function() return tostring(item.Value) end)
-                v = ok and v or "?"
-                if #v > 60 then v = v:sub(1, 60) .. "..." end
-                return item:GetFullName() .. "  = " .. v, Color3.fromRGB(100, 210, 140)
-            end)
-        end)
-    end },
-    { name = "Scripts Only", desc = "LocalScript/Script/Module", fn = function()
-        addDumpEntry("Collecting scripts...", Color3.fromRGB(180, 180, 255))
-        batchedCollect(game, function(d)
-            return d:IsA("LocalScript") or d:IsA("Script") or d:IsA("ModuleScript")
-        end, function(scripts)
-            batchedDump("Scripts", scripts, function(item)
-                return item:GetFullName() .. "  (" .. item.ClassName .. ")", classColor(item.ClassName)
-            end)
-        end)
-    end },
-    { name = "Player Info", desc = "Character, backpack, stats", fn = function()
-        local items = {}
-        local char = LocalPlayer.Character
-        if char then
-            for _, v in ipairs(flattenTree(char, 3)) do
-                table.insert(items, {text = "[Char] " .. v.text, color = v.color})
-            end
-        end
-        for _, child in ipairs(LocalPlayer:GetChildren()) do
-            local skip = {PlayerGui=1, PlayerScripts=1, Backpack=1}
-            if not skip[child.Name] then
-                table.insert(items, {text = "[Player] " .. child.Name .. "  (" .. child.ClassName .. ")"})
-            end
-        end
-        batchedDump("Player Info", items, function(item) return item.text, item.color end)
-    end },
-    { name = "Services", desc = "All top-level services", fn = function()
-        local svcs = {}; pcall(function() svcs = game:GetChildren() end)
-        batchedDump("Services", svcs, function(item)
-            local c = 0; pcall(function() c = #item:GetChildren() end)
-            return item.Name .. "  (" .. item.ClassName .. ", " .. c .. " children)"
-        end)
-    end },
-    { name = "Lighting", desc = "Effects & properties", fn = function()
-        local items = {}
-        for _, p in ipairs({"Ambient","Brightness","ClockTime","FogEnd"}) do
-            local ok, v = pcall(function() return tostring(Lighting[p]) end)
-            if ok then table.insert(items, {text = p .. ": " .. v}) end
-        end
-        for _, v in ipairs(flattenTree(Lighting, 3)) do table.insert(items, v) end
-        batchedDump("Lighting", items, function(item) return item.text, item.color end)
-    end },
-    { name = "Sounds", desc = "All Sound instances", fn = function()
-        addDumpEntry("Collecting sounds...", Color3.fromRGB(180, 180, 255))
-        batchedCollect(game, function(d) return d:IsA("Sound") end, function(sounds)
-            batchedDump("Sounds", sounds, function(item)
-                local sid = ""; pcall(function() sid = tostring(item.SoundId) end)
-                return item:GetFullName() .. "  ID:" .. sid, Color3.fromRGB(200, 150, 255)
-            end)
-        end)
-    end },
-    { name = "Trailers", desc = "JobTrailers folder", fn = function()
-        local container = nil
-        pcall(function()
-            for _, d in ipairs(workspace:GetDescendants()) do
-                if d.Name == "JobTrailers" then container = d; break end
-            end
-        end)
-        if not container then addDumpEntry("No JobTrailers found", Color3.fromRGB(255, 80, 80)) return end
-        batchedDump("JobTrailers", flattenTree(container, MAX_DEPTH),
-            function(item) return item.text, item.color end)
-    end },
+local dumpOptions = {
+	{
+		name = "ReplicatedStorage", desc = "remotes, scripts, values", filtered = true,
+		fn = function()
+			batchedDump("ReplicatedStorage", flattenTree(ReplicatedStorage, filterConfig.MaxDepth, true),
+				function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "Workspace Full", desc = "full workspace tree", filtered = true,
+		fn = function()
+			batchedDump("Workspace Full", flattenTree(workspace, filterConfig.MaxDepth, true),
+				function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "Workspace Top", desc = "top level children only", filtered = true,
+		fn = function()
+			local ch = {}
+			pcall(function() ch = workspace:GetChildren() end)
+			local kept = {}
+			for _, item in ipairs(ch) do
+				if not shouldFilter(item) then
+					local extra = ""
+					pcall(function()
+						if item:IsA("Model") then extra = "  (" .. #item:GetDescendants() .. " desc)" end
+					end)
+					table.insert(kept, { inst = item, extra = extra })
+				end
+			end
+			batchedDump("Workspace Top", kept, function(i)
+				return i.inst.Name .. "  (" .. i.inst.ClassName .. ")" .. i.extra, classColor(i.inst.ClassName)
+			end)
+		end,
+	},
+	{
+		name = "ServerScriptService", desc = "whatever's visible", filtered = true,
+		fn = function()
+			local sss = game:FindFirstChild("ServerScriptService")
+			if not sss then
+				addDumpEntry("ServerScriptService not accessible", c.red)
+				return
+			end
+			batchedDump("ServerScriptService", flattenTree(sss, filterConfig.MaxDepth, true),
+				function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "StarterGui", desc = "startergui tree", filtered = true,
+		fn = function()
+			batchedDump("StarterGui", flattenTree(StarterGui, filterConfig.MaxDepth, true),
+				function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "StarterPack", desc = "tools in starterpack", filtered = true,
+		fn = function()
+			batchedDump("StarterPack", flattenTree(StarterPack, filterConfig.MaxDepth, true),
+				function(i) return i.text, i.color end)
+		end,
+	},
+
+	{
+		name = "RS (raw)", desc = "replicatedstorage, no filter", filtered = false,
+		fn = function()
+			batchedDump("ReplicatedStorage raw", flattenTree(ReplicatedStorage, filterConfig.MaxDepth, false),
+				function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "WS Full (raw)", desc = "workspace, no filter", filtered = false,
+		fn = function()
+			batchedDump("Workspace Full raw", flattenTree(workspace, filterConfig.MaxDepth, false),
+				function(i) return i.text, i.color end)
+		end,
+	},
+
+	{
+		name = "PlayerGui", desc = "ui structure and screens", filtered = false,
+		fn = function()
+			local pg = LocalPlayer:FindFirstChild("PlayerGui")
+			if not pg then
+				addDumpEntry("PlayerGui not found", c.red)
+				return
+			end
+			batchedDump("PlayerGui", flattenTree(pg, filterConfig.MaxDepth, false),
+				function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "Cars / Vehicles", desc = "workspace.Cars or Vehicles", filtered = false,
+		fn = function()
+			local found = workspace:FindFirstChild("Cars") or workspace:FindFirstChild("Vehicles")
+			if not found then
+				addDumpEntry("no cars/vehicles folder", c.red)
+				return
+			end
+			batchedDump("Cars/Vehicles", flattenTree(found, filterConfig.MaxDepth, false),
+				function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "Jobs Folder", desc = "workspace.Jobs tree", filtered = false,
+		fn = function()
+			local found = workspace:FindFirstChild("Jobs") or workspace:FindFirstChild("jobs")
+			if not found then
+				addDumpEntry("no jobs folder", c.red)
+				return
+			end
+			batchedDump("Jobs", flattenTree(found, filterConfig.MaxDepth, false),
+				function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "Teams", desc = "all teams and their color", filtered = false,
+		fn = function()
+			local items = {}
+			for _, t in ipairs(Teams:GetChildren()) do
+				if t:IsA("Team") then
+					table.insert(items, { name = t.Name, color = t.TeamColor and tostring(t.TeamColor) or "?" })
+				end
+			end
+			batchedDump("Teams", items, function(i)
+				return "Team: " .. i.name .. "  (color: " .. i.color .. ")", c.pink
+			end)
+		end,
+	},
+	{
+		name = "Remotes Only", desc = "every remote + bindable", filtered = false,
+		fn = function()
+			addDumpEntry("collecting remotes...", c.blue)
+			batchedCollect(game, function(d)
+				return d:IsA("RemoteEvent") or d:IsA("RemoteFunction")
+					or d:IsA("BindableEvent") or d:IsA("BindableFunction")
+			end, function(remotes)
+				batchedDump("Remotes & Bindables", remotes, function(i)
+					return i:GetFullName() .. "  (" .. i.ClassName .. ")", classColor(i.ClassName)
+				end)
+			end)
+		end,
+	},
+	{
+		name = "Values Only", desc = "every value object in game", filtered = false,
+		fn = function()
+			addDumpEntry("collecting values...", c.blue)
+			batchedCollect(game, function(d) return d:IsA("ValueBase") end, function(values)
+				batchedDump("Value Objects", values, function(i)
+					local ok, v = pcall(function() return tostring(i.Value) end)
+					v = ok and v or "?"
+					if #v > 60 then v = v:sub(1, 60) .. "..." end
+					return i:GetFullName() .. "  = " .. v, c.green
+				end)
+			end)
+		end,
+	},
+	{
+		name = "Scripts Only", desc = "localscript / script / module", filtered = false,
+		fn = function()
+			addDumpEntry("collecting scripts...", c.blue)
+			batchedCollect(game, function(d)
+				return d:IsA("LocalScript") or d:IsA("Script") or d:IsA("ModuleScript")
+			end, function(scripts)
+				batchedDump("Scripts", scripts, function(i)
+					return i:GetFullName() .. "  (" .. i.ClassName .. ")", classColor(i.ClassName)
+				end)
+			end)
+		end,
+	},
+	{
+		name = "Humanoids", desc = "all humanoids, npcs + players", filtered = false,
+		fn = function()
+			addDumpEntry("collecting humanoids...", c.blue)
+			batchedCollect(workspace, function(d) return d:IsA("Humanoid") end, function(humanoids)
+				batchedDump("Humanoids", humanoids, function(i)
+					local hp, maxhp = "?", "?"
+					pcall(function()
+						hp = tostring(math.floor(i.Health))
+						maxhp = tostring(i.MaxHealth)
+					end)
+					local parent = i.Parent and i.Parent.Name or "?"
+					return parent .. " -> " .. i:GetFullName() .. "  HP:" .. hp .. "/" .. maxhp, c.teal
+				end)
+			end)
+		end,
+	},
+	{
+		name = "ProximityPrompts", desc = "all proximityprompts", filtered = false,
+		fn = function()
+			addDumpEntry("collecting prompts...", c.blue)
+			batchedCollect(workspace, function(d) return d:IsA("ProximityPrompt") end, function(prompts)
+				batchedDump("ProximityPrompts", prompts, function(i)
+					local action, obj = "?", "?"
+					pcall(function()
+						action = i.ActionText
+						obj = i.ObjectText
+					end)
+					return i:GetFullName() .. "  [" .. action .. " / " .. obj .. "]", c.yellow
+				end)
+			end)
+		end,
+	},
+	{
+		name = "All Guis (WS)", desc = "billboard/surface gui in workspace", filtered = false,
+		fn = function()
+			addDumpEntry("collecting world guis...", c.blue)
+			batchedCollect(workspace, function(d)
+				return d:IsA("BillboardGui") or d:IsA("SurfaceGui")
+			end, function(guis)
+				batchedDump("World Guis", guis, function(i)
+					return i:GetFullName() .. "  (" .. i.ClassName .. ")", c.green
+				end)
+			end)
+		end,
+	},
+	{
+		name = "Attributes", desc = "everything with 1+ attribute", filtered = false,
+		fn = function()
+			addDumpEntry("collecting attributed instances...", c.blue)
+			batchedCollect(game, function(d)
+				local ok, attrs = pcall(function() return d:GetAttributes() end)
+				if not ok or not attrs then return false end
+				for _ in pairs(attrs) do return true end
+				return false
+			end, function(instances)
+				batchedDump("Attributed Instances", instances, function(i)
+					local ok, attrs = pcall(function() return i:GetAttributes() end)
+					local parts = {}
+					if ok and attrs then
+						for k, v in pairs(attrs) do table.insert(parts, k .. "=" .. tostring(v)) end
+					end
+					return i:GetFullName() .. "  <font color='rgb(180,160,255)'>[" .. (table.concat(parts, ", ")):sub(1, 80) .. "]</font>", classColor(i.ClassName)
+				end)
+			end)
+		end,
+	},
+	{
+		name = "Full Path Dump", desc = "getfullname for everything kept", filtered = true,
+		fn = function()
+			addDumpEntry("collecting all paths (filtered)...", c.blue)
+			batchedCollect(game, function(d) return not shouldFilter(d) end, function(instances)
+				batchedDump("Full Path Dump", instances, function(i)
+					return i:GetFullName() .. "  (" .. i.ClassName .. ")", classColor(i.ClassName)
+				end)
+			end)
+		end,
+	},
+	{
+		name = "Sounds", desc = "all sound instances", filtered = false,
+		fn = function()
+			addDumpEntry("collecting sounds...", c.blue)
+			batchedCollect(game, function(d) return d:IsA("Sound") end, function(sounds)
+				batchedDump("Sounds", sounds, function(i)
+					local sid = ""
+					pcall(function() sid = tostring(i.SoundId) end)
+					return i:GetFullName() .. "  ID:" .. sid, c.purple
+				end)
+			end)
+		end,
+	},
+	{
+		name = "Dialogs", desc = "dialog + dialogchoice", filtered = false,
+		fn = function()
+			addDumpEntry("collecting dialogs...", c.blue)
+			batchedCollect(workspace, function(d)
+				return d:IsA("Dialog") or d:IsA("DialogChoice")
+			end, function(dialogs)
+				batchedDump("Dialogs", dialogs, function(i)
+					local text = ""
+					pcall(function() text = i.InitialPrompt or i.ResponseDialog or "" end)
+					if #text > 60 then text = text:sub(1, 60) .. "..." end
+					return i:GetFullName() .. "  [" .. text .. "]", c.yellow
+				end)
+			end)
+		end,
+	},
+	{
+		name = "Player Info", desc = "character, stats, leftovers", filtered = false,
+		fn = function()
+			local items = {}
+			local char = LocalPlayer.Character
+			if char then
+				for _, v in ipairs(flattenTree(char, 3, false)) do
+					table.insert(items, { text = "[char] " .. v.text, color = v.color })
+				end
+			end
+			for _, child in ipairs(LocalPlayer:GetChildren()) do
+				local skip = { PlayerGui = 1, PlayerScripts = 1, Backpack = 1 }
+				if not skip[child.Name] then
+					table.insert(items, { text = "[player] " .. child.Name .. "  (" .. child.ClassName .. ")" })
+				end
+			end
+			batchedDump("Player Info", items, function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "Services", desc = "all top level services", filtered = false,
+		fn = function()
+			local svcs = {}
+			pcall(function() svcs = game:GetChildren() end)
+			batchedDump("Services", svcs, function(i)
+				local count = 0
+				pcall(function() count = #i:GetChildren() end)
+				return i.Name .. "  (" .. i.ClassName .. ", " .. count .. " children)"
+			end)
+		end,
+	},
+	{
+		name = "Lighting", desc = "effects and sky props", filtered = false,
+		fn = function()
+			local items = {}
+			for _, p in ipairs({ "Ambient", "Brightness", "ClockTime", "FogEnd", "FogStart", "GlobalShadows", "OutdoorAmbient", "TimeOfDay" }) do
+				local ok, v = pcall(function() return tostring(Lighting[p]) end)
+				if ok then table.insert(items, { text = p .. ": " .. v }) end
+			end
+			for _, v in ipairs(flattenTree(Lighting, 3, false)) do table.insert(items, v) end
+			batchedDump("Lighting", items, function(i) return i.text, i.color end)
+		end,
+	},
+	{
+		name = "Trailers", desc = "JobTrailers folder", filtered = false,
+		fn = function()
+			local found = nil
+			pcall(function()
+				for _, d in ipairs(workspace:GetDescendants()) do
+					if d.Name == "JobTrailers" then
+						found = d
+						break
+					end
+				end
+			end)
+			if not found then
+				addDumpEntry("no jobtrailers found", c.red)
+				return
+			end
+			batchedDump("JobTrailers", flattenTree(found, filterConfig.MaxDepth, false),
+				function(i) return i.text, i.color end)
+		end,
+	},
 }
 
--- FIX: Build dump buttons with stable layout
--- The original had hover effects that changed BackgroundColor3 on buttons inside a UIListLayout.
--- Combined with sub-labels positioned relative to the button bottom edge, this caused
--- layout recalculations and visual jumping. Fix: use ClipsDescendants on buttons,
--- ensure fixed sizes, and keep hover effects color-only (no size changes).
-for i, opt in ipairs(DUMP_OPTIONS) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -4, 0, 34)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-    btn.BorderSizePixel = 0
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 10
-    btn.TextColor3 = Color3.fromRGB(200, 200, 220)
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.Text = "  " .. opt.name
-    btn.LayoutOrder = i
-    btn.AutoButtonColor = false  -- FIX: disable default Roblox hover color (this was a big cause of flickering)
-    btn.ClipsDescendants = true  -- FIX: keep sub-label inside bounds
-    btn.Parent = optScroll
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
-
-    -- FIX: shift the main text up so there's room for the sub-label
-    -- without using relative positioning that causes jumps
-    local textPad = Instance.new("UIPadding")
-    textPad.PaddingTop = UDim.new(0, 2)
-    textPad.PaddingLeft = UDim.new(0, 6)
-    textPad.Parent = btn
-
-    local sub = Instance.new("TextLabel")
-    sub.Size = UDim2.new(1, -6, 0, 11)
-    sub.Position = UDim2.new(0, 0, 1, -13)
-    sub.BackgroundTransparency = 1
-    sub.Font = Enum.Font.Gotham
-    sub.TextSize = 8
-    sub.TextColor3 = Color3.fromRGB(100, 100, 120)
-    sub.TextXAlignment = Enum.TextXAlignment.Left
-    sub.Text = opt.desc
-    sub.Parent = btn
-
-    -- FIX: hover effects only change color, nothing structural
-    local normalColor = Color3.fromRGB(30, 30, 45)
-    local hoverColor = Color3.fromRGB(45, 45, 65)
-    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = hoverColor end)
-    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = normalColor end)
-    btn.MouseButton1Click:Connect(function()
-        if isDumping then return end
-        opt.fn()
-    end)
+local function makeOptSep(text, order)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, -4, 0, 18)
+	f.BackgroundTransparency = 1
+	f.BorderSizePixel = 0
+	f.LayoutOrder = order
+	f.Parent = optScroll
+	local lbl = Instance.new("TextLabel", f)
+	lbl.Size = UDim2.new(1, 0, 1, 0)
+	lbl.BackgroundTransparency = 1
+	lbl.Font = Enum.Font.GothamBold
+	lbl.TextSize = 8
+	lbl.TextColor3 = c.textHdr
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.Text = "  " .. text
+	return f
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- COMPAT TAB BUILD
--- ═══════════════════════════════════════════════════════════════════════════════
+local cfOpenBtn = Instance.new("TextButton")
+cfOpenBtn.Size = UDim2.new(1, -4, 0, 28)
+cfOpenBtn.BackgroundColor3 = Color3.fromRGB(40, 38, 22)
+cfOpenBtn.BorderSizePixel = 0
+cfOpenBtn.Font = Enum.Font.Gotham
+cfOpenBtn.TextSize = 10
+cfOpenBtn.TextColor3 = c.textHdr
+cfOpenBtn.Text = "filter config"
+cfOpenBtn.LayoutOrder = 0
+cfOpenBtn.AutoButtonColor = false
+cfOpenBtn.ClipsDescendants = true
+cfOpenBtn.Parent = optScroll
+Instance.new("UICorner", cfOpenBtn).CornerRadius = UDim.new(0, 6)
+local cfStroke2 = Instance.new("UIStroke", cfOpenBtn)
+cfStroke2.Color = c.textHdr
+cfStroke2.Thickness = 1
+cfOpenBtn.MouseEnter:Connect(function() cfOpenBtn.BackgroundColor3 = Color3.fromRGB(60, 55, 25) end)
+cfOpenBtn.MouseLeave:Connect(function() cfOpenBtn.BackgroundColor3 = Color3.fromRGB(40, 38, 22) end)
+cfOpenBtn.MouseButton1Click:Connect(function()
+	openConfigPanel(nil, "(just editing, no dump)")
+	cfRunBtn.Visible = false
+	cfCancelBtn.Text = "Close"
+end)
+cfCancelBtn.MouseButton1Click:Connect(function()
+	configPanel.Visible = false
+	cfRunBtn.Visible = true
+	cfCancelBtn.Text = "Cancel"
+end)
+
+local mouse = LocalPlayer:GetMouse()
+local picking = false
+local pickHighlight = Instance.new("Highlight")
+pickHighlight.FillColor = c.border
+pickHighlight.FillTransparency = 0.7
+pickHighlight.OutlineColor = c.border
+pickHighlight.Enabled = false
+pickHighlight.Parent = gui
+
+local pickBtn = Instance.new("TextButton")
+pickBtn.Size = UDim2.new(1, -4, 0, 28)
+pickBtn.BackgroundColor3 = Color3.fromRGB(22, 38, 40)
+pickBtn.BorderSizePixel = 0
+pickBtn.Font = Enum.Font.Gotham
+pickBtn.TextSize = 10
+pickBtn.TextColor3 = c.teal
+pickBtn.Text = "pick instance (click world)"
+pickBtn.LayoutOrder = 1
+pickBtn.AutoButtonColor = false
+pickBtn.ClipsDescendants = true
+pickBtn.Parent = optScroll
+Instance.new("UICorner", pickBtn).CornerRadius = UDim.new(0, 6)
+local pickStroke = Instance.new("UIStroke", pickBtn)
+pickStroke.Color = c.teal
+pickStroke.Thickness = 1
+
+local function setPicking(on)
+	picking = on
+	pickHighlight.Enabled = on
+	if on then
+		pickBtn.Text = "picking... click to cancel"
+		pickBtn.TextColor3 = c.yellow
+		pickBtn.BackgroundColor3 = Color3.fromRGB(40, 38, 22)
+		pickStroke.Color = c.yellow
+	else
+		pickHighlight.Adornee = nil
+		pickBtn.Text = "pick instance (click world)"
+		pickBtn.TextColor3 = c.teal
+		pickBtn.BackgroundColor3 = Color3.fromRGB(22, 38, 40)
+		pickStroke.Color = c.teal
+	end
+end
+
+local function dumpPickedInstance(inst)
+	local items = {}
+	table.insert(items, { text = inst:GetFullName() .. "  (" .. inst.ClassName .. ")", color = classColor(inst.ClassName) or c.text })
+	for _, v in ipairs(flattenTree(inst, filterConfig.MaxDepth, false)) do
+		table.insert(items, { text = "  " .. v.text, color = v.color })
+	end
+	switchTab("dumper")
+	batchedDump("picked " .. inst.Name, items, function(i) return i.text, i.color end)
+end
+
+local function clickedOnWindow()
+	local ok, objs = pcall(function()
+		return LocalPlayer.PlayerGui:GetGuiObjectsAtPosition(mouse.X, mouse.Y)
+	end)
+	if not ok or not objs then return false end
+	for _, g in ipairs(objs) do
+		if g == main or g:IsDescendantOf(main) then return true end
+	end
+	return false
+end
+
+mouse.Move:Connect(function()
+	if picking then pickHighlight.Adornee = mouse.Target end
+end)
+mouse.Button1Down:Connect(function()
+	if not picking then return end
+	if clickedOnWindow() then return end
+	local target = mouse.Target
+	setPicking(false)
+	if not target then
+		flashStatus("nothing picked", c.red)
+		return
+	end
+	dumpPickedInstance(target)
+end)
+
+pickBtn.MouseEnter:Connect(function()
+	if not picking then pickBtn.BackgroundColor3 = Color3.fromRGB(30, 52, 55) end
+end)
+pickBtn.MouseLeave:Connect(function()
+	if not picking then pickBtn.BackgroundColor3 = Color3.fromRGB(22, 38, 40) end
+end)
+pickBtn.MouseButton1Click:Connect(function()
+	if picking then
+		setPicking(false)
+		flashStatus("pick off", c.textDim, 1.5)
+		return
+	end
+	task.defer(function()
+		setPicking(true)
+		flashStatus("click a part", c.yellow, 8)
+	end)
+end)
+
+makeOptSep("filtered", 2)
+
+local order = 3
+local sepDone = false
+for _, opt in ipairs(dumpOptions) do
+	if not sepDone and not opt.filtered then
+		makeOptSep("raw / targeted", order)
+		order = order + 1
+		sepDone = true
+	end
+
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -4, 0, 34)
+	btn.BackgroundColor3 = c.btnNorm
+	btn.BorderSizePixel = 0
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 10
+	btn.TextColor3 = opt.filtered and c.textHdr or c.text
+	btn.TextXAlignment = Enum.TextXAlignment.Left
+	btn.Text = "  " .. opt.name
+	btn.LayoutOrder = order
+	btn.AutoButtonColor = false
+	btn.ClipsDescendants = true
+	btn.Parent = optScroll
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
+
+	local textPad = Instance.new("UIPadding", btn)
+	textPad.PaddingTop = UDim.new(0, 2)
+	textPad.PaddingLeft = UDim.new(0, 6)
+
+	local sub = Instance.new("TextLabel", btn)
+	sub.Size = UDim2.new(1, -6, 0, 11)
+	sub.Position = UDim2.new(0, 0, 1, -13)
+	sub.BackgroundTransparency = 1
+	sub.Font = Enum.Font.Gotham
+	sub.TextSize = 8
+	sub.TextColor3 = c.textDim
+	sub.TextXAlignment = Enum.TextXAlignment.Left
+	sub.Text = opt.desc
+
+	btn.MouseEnter:Connect(function() btn.BackgroundColor3 = c.btnHover end)
+	btn.MouseLeave:Connect(function() btn.BackgroundColor3 = c.btnNorm end)
+
+	local thisOpt = opt
+	btn.MouseButton1Click:Connect(function()
+		if isDumping then return end
+		if thisOpt.filtered then
+			cfRunBtn.Visible = true
+			cfCancelBtn.Text = "Cancel"
+			openConfigPanel(thisOpt.fn, thisOpt.name)
+		else
+			task.spawn(thisOpt.fn)
+			switchTab("dumper")
+		end
+	end)
+	order = order + 1
+end
+
 local function buildCompatUI()
-    local hdr = Instance.new("TextLabel")
-    hdr.Size = UDim2.new(1, -8, 0, 26)
-    hdr.BackgroundColor3 = Color3.fromRGB(22, 22, 36)
-    hdr.BorderSizePixel = 0
-    hdr.Font = Enum.Font.GothamBold
-    hdr.TextSize = 11
-    hdr.TextColor3 = Color3.fromRGB(200, 160, 60)
-    hdr.Text = "  Executor: " .. executorName
-    hdr.TextXAlignment = Enum.TextXAlignment.Left
-    hdr.LayoutOrder = 0
-    hdr.Parent = CompatScroll
-    Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 5)
+	local hdr = Instance.new("TextLabel")
+	hdr.Size = UDim2.new(1, -8, 0, 26)
+	hdr.BackgroundColor3 = Color3.fromRGB(22, 22, 36)
+	hdr.BorderSizePixel = 0
+	hdr.Font = Enum.Font.GothamBold
+	hdr.TextSize = 11
+	hdr.TextColor3 = c.textHdr
+	hdr.Text = "  executor: " .. executorName
+	hdr.TextXAlignment = Enum.TextXAlignment.Left
+	hdr.LayoutOrder = 0
+	hdr.Parent = compatScroll
+	Instance.new("UICorner", hdr).CornerRadius = UDim.new(0, 5)
 
-    local cats, catOrder = {}, {}
-    for _, check in ipairs(COMPAT_CHECKS) do
-        if not cats[check.category] then
-            cats[check.category] = {}
-            table.insert(catOrder, check.category)
-        end
-        table.insert(cats[check.category], check)
-    end
+	local cats, catOrder = {}, {}
+	for _, check in ipairs(compatChecks) do
+		if not cats[check.category] then
+			cats[check.category] = {}
+			table.insert(catOrder, check.category)
+		end
+		table.insert(cats[check.category], check)
+	end
 
-    local order = 1
-    for _, cat in ipairs(catOrder) do
-        local catLbl = Instance.new("TextLabel")
-        catLbl.Size = UDim2.new(1, -8, 0, 16)
-        catLbl.BackgroundTransparency = 1
-        catLbl.Font = Enum.Font.GothamBold
-        catLbl.TextSize = 9
-        catLbl.TextColor3 = Color3.fromRGB(140, 140, 160)
-        catLbl.TextXAlignment = Enum.TextXAlignment.Left
-        catLbl.Text = "  ── " .. cat:upper() .. " ──"
-        catLbl.LayoutOrder = order
-        catLbl.Parent = CompatScroll
-        order = order + 1
+	local order = 1
+	for _, cat in ipairs(catOrder) do
+		local catLbl = Instance.new("TextLabel")
+		catLbl.Size = UDim2.new(1, -8, 0, 16)
+		catLbl.BackgroundTransparency = 1
+		catLbl.Font = Enum.Font.GothamBold
+		catLbl.TextSize = 9
+		catLbl.TextColor3 = c.textDim
+		catLbl.TextXAlignment = Enum.TextXAlignment.Left
+		catLbl.Text = "  -- " .. cat .. " --"
+		catLbl.LayoutOrder = order
+		catLbl.Parent = compatScroll
+		order = order + 1
 
-        for _, check in ipairs(cats[cat]) do
-            local supported = compatResults[check.name]
-            local row = Instance.new("Frame")
-            row.Size = UDim2.new(1, -8, 0, 22)
-            row.BackgroundColor3 = Color3.fromRGB(22, 22, 34)
-            row.BorderSizePixel = 0
-            row.LayoutOrder = order
-            row.Parent = CompatScroll
-            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
-            order = order + 1
+		for _, check in ipairs(cats[cat]) do
+			local supported = compatResults[check.name]
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1, -8, 0, 22)
+			row.BackgroundColor3 = Color3.fromRGB(22, 22, 34)
+			row.BorderSizePixel = 0
+			row.LayoutOrder = order
+			row.Parent = compatScroll
+			Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
+			order = order + 1
 
-            local icon = Instance.new("TextLabel")
-            icon.Size = UDim2.new(0, 18, 1, 0)
-            icon.Position = UDim2.new(0, 4, 0, 0)
-            icon.BackgroundTransparency = 1
-            icon.Font = Enum.Font.GothamBold
-            icon.TextSize = 13
-            icon.TextColor3 = supported and Color3.fromRGB(80, 220, 100) or Color3.fromRGB(255, 70, 70)
-            icon.Text = supported and "✓" or "✗"
-            icon.Parent = row
+			local icon = Instance.new("TextLabel", row)
+			icon.Size = UDim2.new(0, 18, 1, 0)
+			icon.Position = UDim2.new(0, 4, 0, 0)
+			icon.BackgroundTransparency = 1
+			icon.Font = Enum.Font.GothamBold
+			icon.TextSize = 13
+			icon.TextColor3 = supported and c.green or c.red
+			icon.Text = supported and "+" or "x"
 
-            local nameLbl = Instance.new("TextLabel")
-            nameLbl.Size = UDim2.new(1, -90, 1, 0)
-            nameLbl.Position = UDim2.new(0, 24, 0, 0)
-            nameLbl.BackgroundTransparency = 1
-            nameLbl.Font = Enum.Font.RobotoMono
-            nameLbl.TextSize = 10
-            nameLbl.TextColor3 = Color3.fromRGB(200, 200, 210)
-            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-            nameLbl.Text = check.name
-            nameLbl.Parent = row
+			local nameLbl = Instance.new("TextLabel", row)
+			nameLbl.Size = UDim2.new(1, -90, 1, 0)
+			nameLbl.Position = UDim2.new(0, 24, 0, 0)
+			nameLbl.BackgroundTransparency = 1
+			nameLbl.Font = Enum.Font.RobotoMono
+			nameLbl.TextSize = 10
+			nameLbl.TextColor3 = c.text
+			nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+			nameLbl.Text = check.name
 
-            local badge = Instance.new("TextLabel")
-            badge.Size = UDim2.new(0, 70, 0, 14)
-            badge.Position = UDim2.new(1, -76, 0.5, -7)
-            badge.BackgroundColor3 = supported and Color3.fromRGB(30, 70, 30)
-                or (check.critical and Color3.fromRGB(80, 20, 20) or Color3.fromRGB(50, 40, 20))
-            badge.BorderSizePixel = 0
-            badge.Font = Enum.Font.GothamBold
-            badge.TextSize = 8
-            badge.TextColor3 = supported and Color3.fromRGB(100, 255, 100)
-                or (check.critical and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(200, 160, 60))
-            badge.Text = supported and "OK" or (check.critical and "MISSING!" or "N/A")
-            badge.Parent = row
-            Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 3)
-        end
-    end
+			local badge = Instance.new("TextLabel", row)
+			badge.Size = UDim2.new(0, 70, 0, 14)
+			badge.Position = UDim2.new(1, -76, 0.5, -7)
+			badge.BackgroundColor3 = supported and Color3.fromRGB(30, 70, 30) or (check.critical and Color3.fromRGB(80, 20, 20) or Color3.fromRGB(50, 40, 20))
+			badge.BorderSizePixel = 0
+			badge.Font = Enum.Font.GothamBold
+			badge.TextSize = 8
+			badge.TextColor3 = supported and c.green or (check.critical and c.red or c.yellow)
+			badge.Text = supported and "ok" or (check.critical and "missing" or "n/a")
+			badge.Parent = row
+			Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 3)
+		end
+	end
 end
-
 buildCompatUI()
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- DONE
--- ═══════════════════════════════════════════════════════════════════════════════
-addConsoleEntry("Feather Dumper v3 (STABLE UI) loaded — " .. executorName, Enum.MessageType.MessageInfo)
+addConsoleEntry("feather dumper loaded - " .. executorName, Enum.MessageType.MessageInfo)
+addConsoleEntry("gold buttons open the filter panel first, the rest just run", Enum.MessageType.MessageInfo)
+addConsoleEntry("spy tab logs remote calls, save writes the current tab to a file", Enum.MessageType.MessageInfo)
+addConsoleEntry("right click any line to copy it, or use pick instance to grab one part", Enum.MessageType.MessageInfo)
