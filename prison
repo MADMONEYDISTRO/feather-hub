@@ -1,0 +1,1416 @@
+-- Prison Life Suite v4 â€“ Fully working (ESP filters, fly, teleports, gun mods, drag)
+-- Press K for UI, X to toggle Aimbot
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Camera = workspace.CurrentCamera
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- Cooldown
+local actionCooldown = 0
+local cooldownDuration = 5
+
+-- Services
+local Services = {
+    ESP = {
+        Enabled = false,
+        MaxDistance = 2000,
+        ESPObjects = {},
+        Filters = {Criminals = true, Prisoners = true, Guards = true, Neutrals = true}
+    },
+    Aimbot = {Enabled = false, FOV = 150, TargetHostilesOnly = false, Smoothness = 0.3, LockPart = "HumanoidRootPart", LockedTarget = nil},
+    GunMods = {InfiniteAmmo = false, NoSpread = false},
+    Movement = {FlyEnabled = false, FlySpeed = 60, NoclipEnabled = false, VehicleFlyEnabled = false, VehicleFlySpeed = 60},
+    Teleport = {},
+    GunGrabber = {LastPosition = nil},
+    AutoSafe = {Enabled = false, Safe = false, ReturnCFrame = nil, LowHP = 20, SafeHP = 100}
+}
+
+-- Auto Safe / Never Die: where you get hidden when low HP.
+-- Default is deep under the map. Replace with your exact safe-zone CFrame.
+local SAFE_ZONE_CFRAME = CFrame.new(1228.8021240234375, 97.99993133544922, 2427.2431640625)
+
+-- Locations
+local Locations = {
+    PoliceBase = CFrame.new(830.1173095703125, 99.97666931152344, 2239.53564453125),
+    Prison = CFrame.new(826.0852661132812, 118.989990234375, 2361.30859375),
+    Yard = CFrame.new(757.7476806640625, 97.99993133544922, 2529.286865234375),
+    City = CFrame.new(-394.4735412597656, 86.83882141113281, 1909.817626953125),
+    CrimBase = CFrame.new(-924.4691772460938, 92.12699890136719, 2053.7705078125)
+}
+
+local GunButtons = {
+    MP5 = CFrame.new(813.4911499023438, 100.7553482055664, 2228.220458984375),
+    AK47 = CFrame.new(-933.0243530273438, 94.24864196777344, 2038.3426513671875),
+    Remington = CFrame.new(-938.0651245117188, 94.42827606201172, 2039.480224609375)
+}
+
+-- ======================== FEATHER UI ========================
+-- Feather Hub style window (theme, header, tabs, smooth drag, builders)
+local bgCol     = Color3.fromRGB(14,14,16)
+local hdrCol    = Color3.fromRGB(18,18,22)
+local cardCol   = Color3.fromRGB(26,26,30)
+local borderCol = Color3.fromRGB(44,44,52)
+local txtCol    = Color3.fromRGB(240,240,244)
+local mutedCol  = Color3.fromRGB(100,100,115)
+local dimCol    = Color3.fromRGB(32,32,38)
+local sepCol    = Color3.fromRGB(36,36,44)
+local accent    = Color3.fromRGB(130,90,220)
+local redCol    = Color3.fromRGB(220,60,70)
+
+local function tw(t,s,d) return TweenInfo.new(t or 0.2, s or Enum.EasingStyle.Quart, d or Enum.EasingDirection.Out) end
+local function mkC(p,r) local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, r or 6) c.Parent = p return c end
+local function mkStroke(p,col,th) local s = Instance.new("UIStroke") s.Color = col or borderCol s.Thickness = th or 1 s.Parent = p return s end
+
+local WIN_W, WIN_H, HDR_H, TAB_H = 480, 470, 44, 30
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "PLS_v4"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 999
+pcall(function() ScreenGui.Parent = game:GetService("CoreGui") end)
+if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local win = Instance.new("Frame")
+win.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = bgCol
+win.BorderSizePixel = 0
+win.ClipsDescendants = true
+win.Parent = ScreenGui
+mkC(win, 14)
+mkStroke(win, borderCol, 1)
+local MainFrame = win  -- alias so legacy references (keybind K) keep working
+
+local glow = Instance.new("ImageLabel")
+glow.Size = UDim2.new(1,40,1,40)
+glow.Position = UDim2.new(0,-20,0,-20)
+glow.BackgroundTransparency = 1
+glow.Image = "rbxassetid://1316045217"
+glow.ImageColor3 = Color3.fromRGB(100,70,160)
+glow.ImageTransparency = 0.88
+glow.ZIndex = -1
+glow.Parent = win
+
+-- Header
+local hdr = Instance.new("Frame")
+hdr.Size = UDim2.new(1,0,0,HDR_H)
+hdr.BackgroundColor3 = hdrCol
+hdr.BorderSizePixel = 0
+hdr.ZIndex = 3
+hdr.Parent = win
+mkC(hdr, 14)
+local hdrFill = Instance.new("Frame")
+hdrFill.Size = UDim2.new(1,0,0,14)
+hdrFill.Position = UDim2.new(0,0,1,-14)
+hdrFill.BackgroundColor3 = hdrCol
+hdrFill.BorderSizePixel = 0
+hdrFill.ZIndex = 3
+hdrFill.Parent = hdr
+local hdrLine = Instance.new("Frame")
+hdrLine.Size = UDim2.new(1,-8,0,1)
+hdrLine.Position = UDim2.new(0,4,1,-1)
+hdrLine.BackgroundColor3 = sepCol
+hdrLine.BorderSizePixel = 0
+hdrLine.ZIndex = 4
+hdrLine.Parent = hdr
+
+local logoPill = Instance.new("Frame")
+logoPill.Size = UDim2.new(0,28,0,28)
+logoPill.Position = UDim2.new(0,10,0.5,-14)
+logoPill.BackgroundColor3 = accent
+logoPill.BorderSizePixel = 0
+logoPill.ZIndex = 5
+logoPill.Parent = hdr
+mkC(logoPill, 7)
+local logoF = Instance.new("TextLabel")
+logoF.Size = UDim2.new(1,0,1,0)
+logoF.Text = "F"
+logoF.TextSize = 14
+logoF.Font = Enum.Font.GothamBold
+logoF.TextColor3 = Color3.new(1,1,1)
+logoF.BackgroundTransparency = 1
+logoF.ZIndex = 6
+logoF.Parent = logoPill
+
+local hdrTitle = Instance.new("TextLabel")
+hdrTitle.Size = UDim2.new(0,0,1,0)
+hdrTitle.AutomaticSize = Enum.AutomaticSize.X
+hdrTitle.Position = UDim2.new(0,46,0,0)
+hdrTitle.Text = "Feather Hub | Prison Life"
+hdrTitle.Font = Enum.Font.GothamBold
+hdrTitle.TextSize = 13
+hdrTitle.TextColor3 = txtCol
+hdrTitle.TextXAlignment = Enum.TextXAlignment.Left
+hdrTitle.BackgroundTransparency = 1
+hdrTitle.ZIndex = 5
+hdrTitle.Parent = hdr
+
+local verBg = Instance.new("Frame")
+verBg.Size = UDim2.new(0,34,0,16)
+verBg.Position = UDim2.new(0,236,0.5,-8)
+verBg.BackgroundColor3 = Color3.fromRGB(28,28,44)
+verBg.BorderSizePixel = 0
+verBg.ZIndex = 5
+verBg.Parent = hdr
+mkC(verBg, 8)
+mkStroke(verBg, accent, 1)
+local verTxt = Instance.new("TextLabel")
+verTxt.Size = UDim2.new(1,0,1,0)
+verTxt.Text = "v1"
+verTxt.Font = Enum.Font.GothamBold
+verTxt.TextSize = 9
+verTxt.TextColor3 = accent
+verTxt.BackgroundTransparency = 1
+verTxt.ZIndex = 6
+verTxt.Parent = verBg
+
+-- Minimize / Close
+local btnSize = 26
+local btnClickConsumed = false
+local fullH = WIN_H
+local isMin = false
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0,btnSize,0,btnSize)
+minBtn.Position = UDim2.new(1,-(btnSize*2+14),0.5,-btnSize/2)
+minBtn.Text = "-"
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 18
+minBtn.TextColor3 = mutedCol
+minBtn.BackgroundColor3 = dimCol
+minBtn.BorderSizePixel = 0
+minBtn.AutoButtonColor = false
+minBtn.ZIndex = 5
+minBtn.Parent = hdr
+mkC(minBtn,6)
+minBtn.MouseEnter:Connect(function() TweenService:Create(minBtn,tw(),{BackgroundColor3=accent,TextColor3=Color3.new(1,1,1)}):Play() end)
+minBtn.MouseLeave:Connect(function() TweenService:Create(minBtn,tw(),{BackgroundColor3=dimCol,TextColor3=mutedCol}):Play() end)
+minBtn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then btnClickConsumed=true end end)
+minBtn.MouseButton1Click:Connect(function()
+    isMin = not isMin
+    if isMin then TweenService:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,HDR_H)}):Play() minBtn.Text="+"
+    else TweenService:Create(win,tw(0.3),{Size=UDim2.new(0,WIN_W,0,fullH)}):Play() minBtn.Text="-" end
+end)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0,btnSize,0,btnSize)
+closeBtn.Position = UDim2.new(1,-(btnSize+6),0.5,-btnSize/2)
+closeBtn.Text = "x"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = mutedCol
+closeBtn.BackgroundColor3 = dimCol
+closeBtn.BorderSizePixel = 0
+closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 5
+closeBtn.Parent = hdr
+mkC(closeBtn,6)
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn,tw(),{BackgroundColor3=redCol,TextColor3=Color3.new(1,1,1)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn,tw(),{BackgroundColor3=dimCol,TextColor3=mutedCol}):Play() end)
+closeBtn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then btnClickConsumed=true end end)
+closeBtn.MouseButton1Click:Connect(function() win.Visible = false end)
+
+-- Smooth lerp drag (does not hijack the header buttons)
+local dragging = false
+local dragStart, startPos
+local targetPos = win.Position
+local currentPos = win.Position
+RunService.RenderStepped:Connect(function()
+    if dragging then currentPos = currentPos:Lerp(targetPos, 0.2) win.Position = currentPos
+    else currentPos = targetPos end
+end)
+hdr.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+        if btnClickConsumed then btnClickConsumed=false return end
+        dragging=true dragStart=i.Position startPos=win.Position targetPos=startPos currentPos=startPos
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+        local delta = i.Position - dragStart
+        targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+        dragging=false btnClickConsumed=false targetPos=win.Position currentPos=win.Position
+    end
+end)
+
+-- Tab bar + pages
+local TABS = {"Combat","Movement","Visuals","Teleport","Guns","Server"}
+local TabFrames = {}
+local tabBtns = {}
+local CurrentTab = "Combat"
+
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(1,-16,0,TAB_H)
+tabBar.Position = UDim2.new(0,8,0,HDR_H+8)
+tabBar.BackgroundTransparency = 1
+tabBar.Parent = win
+local tl = Instance.new("UIListLayout")
+tl.FillDirection = Enum.FillDirection.Horizontal
+tl.SortOrder = Enum.SortOrder.LayoutOrder
+tl.Padding = UDim.new(0,4)
+tl.Parent = tabBar
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1,-16,1,-(HDR_H+TAB_H+16+30))
+content.Position = UDim2.new(0,8,0,HDR_H+TAB_H+16)
+content.BackgroundTransparency = 1
+content.Parent = win
+
+local function switchTab(name)
+    CurrentTab = name
+    for _,b in ipairs(tabBtns) do
+        local on = (b.Name == name)
+        TweenService:Create(b,tw(0.15),{BackgroundColor3 = on and accent or dimCol, TextColor3 = on and Color3.new(1,1,1) or mutedCol}):Play()
+    end
+    for n,pg in pairs(TabFrames) do pg.Visible = (n==name) end
+end
+
+for i,name in ipairs(TABS) do
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(1/#TABS,-4,1,0)
+    btn.BackgroundColor3 = (i==1) and accent or dimCol
+    btn.TextColor3 = (i==1) and Color3.new(1,1,1) or mutedCol
+    btn.Text = name
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = i
+    btn.Parent = tabBar
+    mkC(btn,6)
+    tabBtns[i] = btn
+
+    local page = Instance.new("ScrollingFrame")
+    page.Name = name
+    page.Size = UDim2.new(1,0,1,0)
+    page.BackgroundTransparency = 1
+    page.Visible = (i==1)
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = borderCol
+    page.CanvasSize = UDim2.new(0,0,0,0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.BorderSizePixel = 0
+    page.Parent = content
+    local pl = Instance.new("UIListLayout")
+    pl.SortOrder = Enum.SortOrder.LayoutOrder
+    pl.Padding = UDim.new(0,6)
+    pl.Parent = page
+    local pad = Instance.new("UIPadding")
+    pad.PaddingTop = UDim.new(0,2)
+    pad.PaddingBottom = UDim.new(0,8)
+    pad.PaddingLeft = UDim.new(0,2)
+    pad.PaddingRight = UDim.new(0,2)
+    pad.Parent = page
+    TabFrames[name] = page
+
+    btn.MouseButton1Click:Connect(function() switchTab(name) end)
+end
+
+-- Bottom status bar
+local StatusText = Instance.new("TextLabel")
+StatusText.Size = UDim2.new(1,-16,0,20)
+StatusText.Position = UDim2.new(0,8,1,-26)
+StatusText.BackgroundTransparency = 1
+StatusText.Text = "Ready   |   K: toggle UI    X: aimbot"
+StatusText.TextColor3 = mutedCol
+StatusText.TextSize = 11
+StatusText.Font = Enum.Font.Gotham
+StatusText.TextXAlignment = Enum.TextXAlignment.Left
+StatusText.TextTruncate = Enum.TextTruncate.AtEnd
+StatusText.ZIndex = 3
+StatusText.Parent = win
+
+-- ======================== UI BUILDERS ========================
+local orderCounter = 0
+local function nextOrder() orderCounter = orderCounter + 1 return orderCounter end
+local toggleY = 0  -- legacy compatibility (unused by the layout system)
+
+local function makeSection(parent, label)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,0,22)
+    f.BackgroundTransparency = 1
+    f.LayoutOrder = nextOrder()
+    f.Parent = parent
+    local lb = Instance.new("TextLabel")
+    lb.Size = UDim2.new(1,0,1,0)
+    lb.Text = string.upper(label)
+    lb.Font = Enum.Font.GothamBold
+    lb.TextSize = 10
+    lb.TextColor3 = accent
+    lb.TextXAlignment = Enum.TextXAlignment.Left
+    lb.BackgroundTransparency = 1
+    lb.Parent = f
+    local ln = Instance.new("Frame")
+    ln.Size = UDim2.new(0,26,0,2)
+    ln.Position = UDim2.new(0,0,1,-2)
+    ln.BackgroundColor3 = accent
+    ln.BorderSizePixel = 0
+    ln.Parent = f
+    mkC(ln,4)
+    return f
+end
+
+local function makeButton(parent, label, cb, col)
+    local base = col or accent
+    local bt = Instance.new("TextButton")
+    bt.Size = UDim2.new(1,0,0,34)
+    bt.BackgroundColor3 = base
+    bt.Text = label
+    bt.Font = Enum.Font.GothamBold
+    bt.TextSize = 12
+    bt.TextColor3 = Color3.new(1,1,1)
+    bt.AutoButtonColor = false
+    bt.BorderSizePixel = 0
+    bt.LayoutOrder = nextOrder()
+    bt.Parent = parent
+    mkC(bt,8)
+    bt.MouseEnter:Connect(function() TweenService:Create(bt,tw(),{BackgroundColor3 = base:Lerp(Color3.new(1,1,1),0.15)}):Play() end)
+    bt.MouseLeave:Connect(function() TweenService:Create(bt,tw(),{BackgroundColor3 = base}):Play() end)
+    bt.MouseButton1Click:Connect(function() pcall(cb) end)
+    bt.TouchTap:Connect(function() pcall(cb) end)
+    return bt
+end
+
+-- Small status text row (caller updates the returned label's .Text)
+local function makeLabel(parent, text)
+    local r = Instance.new("Frame")
+    r.Size = UDim2.new(1,0,0,26)
+    r.BackgroundColor3 = cardCol
+    r.BorderSizePixel = 0
+    r.LayoutOrder = nextOrder()
+    r.Parent = parent
+    mkC(r,8)
+    local lb = Instance.new("TextLabel")
+    lb.Size = UDim2.new(1,-24,1,0)
+    lb.Position = UDim2.new(0,12,0,0)
+    lb.BackgroundTransparency = 1
+    lb.Text = text
+    lb.Font = Enum.Font.GothamSemibold
+    lb.TextSize = 11
+    lb.TextColor3 = mutedCol
+    lb.TextXAlignment = Enum.TextXAlignment.Left
+    lb.TextTruncate = Enum.TextTruncate.AtEnd
+    lb.Parent = r
+    return lb
+end
+
+-- Feather-style toggle. Keeps the original CreateToggle(parent,text,callback,initial) API.
+local function CreateToggle(parent, text, callback, initial)
+    local st = initial or false
+    local r = Instance.new("Frame")
+    r.Size = UDim2.new(1,0,0,38)
+    r.BackgroundColor3 = cardCol
+    r.BorderSizePixel = 0
+    r.LayoutOrder = nextOrder()
+    r.Parent = parent
+    mkC(r,8)
+    local lb = Instance.new("TextLabel")
+    lb.Size = UDim2.new(1,-70,1,0)
+    lb.Position = UDim2.new(0,12,0,0)
+    lb.Text = text
+    lb.Font = Enum.Font.GothamSemibold
+    lb.TextSize = 12
+    lb.TextColor3 = txtCol
+    lb.TextXAlignment = Enum.TextXAlignment.Left
+    lb.BackgroundTransparency = 1
+    lb.Parent = r
+    local pill = Instance.new("Frame")
+    pill.Size = UDim2.new(0,42,0,22)
+    pill.Position = UDim2.new(1,-54,0.5,-11)
+    pill.BackgroundColor3 = st and accent or dimCol
+    pill.BorderSizePixel = 0
+    pill.Parent = r
+    mkC(pill,11)
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0,16,0,16)
+    knob.Position = st and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)
+    knob.BackgroundColor3 = st and Color3.new(1,1,1) or mutedCol
+    knob.BorderSizePixel = 0
+    knob.Parent = pill
+    mkC(knob,8)
+    local hit = Instance.new("TextButton")
+    hit.Size = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.Parent = r
+    local function visual()
+        TweenService:Create(pill,tw(0.15),{BackgroundColor3 = st and accent or dimCol}):Play()
+        TweenService:Create(knob,tw(0.15),{Position = st and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8), BackgroundColor3 = st and Color3.new(1,1,1) or mutedCol}):Play()
+    end
+    local function updateToggle(state)
+        st = state
+        visual()
+        pcall(callback, st)
+    end
+    hit.MouseButton1Click:Connect(function() updateToggle(not st) end)
+    hit.TouchTap:Connect(function() updateToggle(not st) end)
+    if initial then pcall(callback, true) end
+    return updateToggle
+end
+
+-- Store aimbot toggle updater
+local aimbotToggleUpdate = nil
+
+-- ======================== POPULATE TABS ========================
+
+-- Combat
+toggleY = 0
+makeSection(TabFrames["Combat"], "Aimbot")
+local aimbotToggle = CreateToggle(TabFrames["Combat"], "Enable Aimbot (Auto-Lock)", function(e)
+    Services.Aimbot.Enabled = e
+    if not e then Services.Aimbot.LockedTarget = nil end
+end)
+aimbotToggleUpdate = aimbotToggle
+
+CreateToggle(TabFrames["Combat"], "Target Hostiles Only", function(e)
+    Services.Aimbot.TargetHostilesOnly = e
+end)
+
+makeSection(TabFrames["Combat"], "Safety")
+CreateToggle(TabFrames["Combat"], "Auto Safe / Never Die", function(e)
+    Services.AutoSafe.Enabled = e
+    -- If turned off mid-hide, bring the player back first.
+    if not e and Services.AutoSafe.Safe then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp and Services.AutoSafe.ReturnCFrame then
+            hrp.CFrame = Services.AutoSafe.ReturnCFrame
+        end
+        Services.AutoSafe.Safe = false
+    end
+end)
+local autoSafeStatusLabel = makeLabel(TabFrames["Combat"], "Auto Safe: off")
+makeButton(TabFrames["Combat"], "TP Back Now", function()
+    if Services.AutoSafe.Safe and Services.AutoSafe.ReturnCFrame then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then hrp.CFrame = Services.AutoSafe.ReturnCFrame end
+        Services.AutoSafe.Safe = false
+        StatusText.Text = "Auto Safe: returned early"
+    else
+        StatusText.Text = "Auto Safe: not in safe zone"
+    end
+end)
+
+-- Movement
+toggleY = 0
+makeSection(TabFrames["Movement"], "Movement")
+CreateToggle(TabFrames["Movement"], "Fly (WASD+Space/Shift)", function(e) Services.Movement.FlyEnabled = e end)
+CreateToggle(TabFrames["Movement"], "Vehicle Fly (while seated)", function(e) Services.Movement.VehicleFlyEnabled = e end)
+CreateToggle(TabFrames["Movement"], "Noclip", function(e) 
+    Services.Movement.NoclipEnabled = e 
+    if e then Services.Movement:EnableNoclip()
+    else Services.Movement:DisableNoclip() end
+end)
+
+-- Visuals
+toggleY = 0
+makeSection(TabFrames["Visuals"], "ESP")
+CreateToggle(TabFrames["Visuals"], "Enable ESP", function(e) 
+    Services.ESP.Enabled = e 
+    if not e then Services.ESP:Cleanup() end
+end)
+-- ESP Filters
+makeSection(TabFrames["Visuals"], "Filters")
+CreateToggle(TabFrames["Visuals"], "Show Criminals", function(e) Services.ESP.Filters.Criminals = e end, true)
+CreateToggle(TabFrames["Visuals"], "Show Prisoners", function(e) Services.ESP.Filters.Prisoners = e end, true)
+CreateToggle(TabFrames["Visuals"], "Show Guards", function(e) Services.ESP.Filters.Guards = e end, true)
+CreateToggle(TabFrames["Visuals"], "Show Neutrals", function(e) Services.ESP.Filters.Neutrals = e end, true)
+
+-- Guns
+toggleY = 0
+makeSection(TabFrames["Guns"], "Gun Mods")
+CreateToggle(TabFrames["Guns"], "Infinite Ammo", function(e) Services.GunMods.InfiniteAmmo = e; Services.GunMods:Apply() end)
+CreateToggle(TabFrames["Guns"], "No Spread", function(e) Services.GunMods.NoSpread = e; Services.GunMods:Apply() end)
+
+makeSection(TabFrames["Guns"], "Grab Weapons")
+for _, gunName in ipairs({"MP5", "AK47", "Remington"}) do
+    local gb
+    gb = makeButton(TabFrames["Guns"], "GRAB " .. gunName, function()
+        Services.GunGrabber:GrabGun(gunName, gb)
+    end)
+end
+
+-- ======================== TELEPORT TAB ========================
+local function populateTeleport()
+    local parent = TabFrames["Teleport"]
+    -- This tab manages its own canvas size, so turn off the auto sizing
+    parent.AutomaticCanvasSize = Enum.AutomaticSize.None
+    -- Clear previous children
+    for _, child in ipairs(parent:GetChildren()) do
+        if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then child:Destroy() end
+    end
+
+    -- Use a container with UIListLayout for sections
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 1, 0)
+    container.BackgroundTransparency = 1
+    container.Parent = parent
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 8)
+    layout.Parent = container
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        parent.CanvasSize = UDim2.new(0, 0, 0, math.max(600, layout.AbsoluteContentSize.Y + 20))
+    end)
+
+    -- Location section
+    local locSection = Instance.new("Frame")
+    locSection.Size = UDim2.new(1, 0, 0, 232)
+    locSection.BackgroundColor3 = cardCol
+    locSection.BorderSizePixel = 0
+    locSection.LayoutOrder = 0
+    locSection.Parent = container
+    mkC(locSection, 8)
+
+    local locLabel = Instance.new("TextLabel")
+    locLabel.Size = UDim2.new(1, -24, 0, 22)
+    locLabel.Position = UDim2.new(0, 12, 0, 4)
+    locLabel.BackgroundTransparency = 1
+    locLabel.Text = "LOCATION TELEPORTS"
+    locLabel.TextColor3 = accent
+    locLabel.TextSize = 11
+    locLabel.Font = Enum.Font.GothamBold
+    locLabel.TextXAlignment = Enum.TextXAlignment.Left
+    locLabel.Parent = locSection
+
+    local locContent = Instance.new("Frame")
+    locContent.Size = UDim2.new(1, -16, 1, -34)
+    locContent.Position = UDim2.new(0, 8, 0, 28)
+    locContent.BackgroundTransparency = 1
+    locContent.Parent = locSection
+
+    local locList = Instance.new("UIListLayout")
+    locList.FillDirection = Enum.FillDirection.Vertical
+    locList.SortOrder = Enum.SortOrder.LayoutOrder
+    locList.Padding = UDim.new(0, 5)
+    locList.Parent = locContent
+
+    local order = 0
+    for _, loc in ipairs({{"Police Base","PoliceBase"}, {"Prison","Prison"}, {"Yard","Yard"}, {"City","City"}, {"Crim Base","CrimBase"}}) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 32)
+        btn.BackgroundColor3 = dimCol
+        btn.AutoButtonColor = false
+        btn.Text = "Teleport to " .. loc[1]
+        btn.TextColor3 = txtCol
+        btn.Font = Enum.Font.GothamSemibold
+        btn.TextSize = 12
+        btn.BorderSizePixel = 0
+        btn.LayoutOrder = order
+        btn.Parent = locContent
+        mkC(btn, 6)
+        btn.MouseEnter:Connect(function() TweenService:Create(btn,tw(),{BackgroundColor3=accent}):Play() end)
+        btn.MouseLeave:Connect(function() TweenService:Create(btn,tw(),{BackgroundColor3=dimCol}):Play() end)
+        btn.MouseButton1Click:Connect(function()
+            Services.Teleport:ToLocation(loc[2], btn)
+        end)
+        order = order + 1
+    end
+
+    -- Player section
+    local playerSection = Instance.new("Frame")
+    playerSection.Size = UDim2.new(1, 0, 0, 300)
+    playerSection.BackgroundColor3 = cardCol
+    playerSection.BorderSizePixel = 0
+    playerSection.LayoutOrder = 1
+    playerSection.Parent = container
+    mkC(playerSection, 8)
+
+    local playerLabel = Instance.new("TextLabel")
+    playerLabel.Size = UDim2.new(1, -24, 0, 22)
+    playerLabel.Position = UDim2.new(0, 12, 0, 4)
+    playerLabel.BackgroundTransparency = 1
+    playerLabel.Text = "PLAYER TELEPORTS"
+    playerLabel.TextColor3 = accent
+    playerLabel.TextSize = 11
+    playerLabel.Font = Enum.Font.GothamBold
+    playerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    playerLabel.Parent = playerSection
+
+    local playerList = Instance.new("ScrollingFrame")
+    playerList.Size = UDim2.new(1, -16, 1, -34)
+    playerList.Position = UDim2.new(0, 8, 0, 28)
+    playerList.BackgroundTransparency = 1
+    playerList.ScrollBarThickness = 3
+    playerList.ScrollBarImageColor3 = borderCol
+    playerList.CanvasSize = UDim2.new(0, 0, 0, 0)
+    playerList.Parent = playerSection
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.FillDirection = Enum.FillDirection.Vertical
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 3)
+    listLayout.Parent = playerList
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        playerList.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 5)
+    end)
+
+    local refreshTimer = 0
+    local function refreshPlayerList()
+        for _, child in ipairs(playerList:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+
+        local playerData = {}
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local teamName = player.Team and player.Team.Name or "No Team"
+                local priority = 0
+                if teamName == "Criminals" then priority = 1
+                elseif teamName == "Prisoner" then priority = 2
+                elseif teamName == "Police" then priority = 3
+                else priority = 4 end
+                table.insert(playerData, {player = player, team = teamName, priority = priority})
+            end
+        end
+        table.sort(playerData, function(a,b)
+            if a.priority ~= b.priority then return a.priority < b.priority end
+            return a.player.Name < b.player.Name
+        end)
+
+        for _, data in ipairs(playerData) do
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1, 0, 0, 30)
+            btn.BackgroundColor3 = dimCol
+            btn.AutoButtonColor = false
+            btn.Text = "  " .. data.player.Name .. "  (" .. data.team .. ")"
+            btn.TextColor3 = txtCol
+            btn.Font = Enum.Font.GothamSemibold
+            btn.TextSize = 12
+            btn.TextXAlignment = Enum.TextXAlignment.Left
+            btn.BorderSizePixel = 0
+            btn.Parent = playerList
+            mkC(btn, 6)
+            btn.MouseEnter:Connect(function() TweenService:Create(btn,tw(),{BackgroundColor3=accent}):Play() end)
+            btn.MouseLeave:Connect(function() TweenService:Create(btn,tw(),{BackgroundColor3=dimCol}):Play() end)
+            btn.MouseButton1Click:Connect(function()
+                Services.Teleport:ToPlayer(data.player, btn)
+            end)
+        end
+    end
+
+    refreshPlayerList()
+    RunService.Heartbeat:Connect(function(dt)
+        refreshTimer = refreshTimer + dt
+        if refreshTimer >= 0.5 then
+            refreshTimer = 0
+            if parent.Visible then refreshPlayerList() end
+        end
+    end)
+end
+populateTeleport()
+
+-- ======================== SERVER TAB ========================
+toggleY = 0
+makeSection(TabFrames["Server"], "Server")
+makeButton(TabFrames["Server"], "REJOIN SERVER", function()
+    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+end)
+makeButton(TabFrames["Server"], "SERVER HOP", function()
+    local success, servers = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+    end)
+    if success and servers and servers.data then
+        for _, server in ipairs(servers.data) do
+            if server.id ~= game.JobId and server.playing < server.maxPlayers then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
+                break
+            end
+        end
+    end
+    StatusText.Text = "Server hop attempted"
+end)
+
+-- ======================== ESP ========================
+function Services.ESP:GetCharacter(player)
+    return Workspace:FindFirstChild(player.Name)
+end
+
+function Services.ESP:CreateModernTag(player)
+    local Tag = Instance.new("BillboardGui")
+    Tag.Name = player.Name .. "_Tag"
+    Tag.AlwaysOnTop = true
+    Tag.Size = UDim2.new(0, 220, 0, 60)
+    Tag.StudsOffset = Vector3.new(0, 2.5, 0)
+    
+    local Container = Instance.new("Frame")
+    Container.Name = "Container"
+    Container.Size = UDim2.new(1, 0, 1, 0)
+    Container.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Container.BackgroundTransparency = 0.75
+    Container.BorderSizePixel = 0
+    Container.Parent = Tag
+    
+    local ContainerCorner = Instance.new("UICorner")
+    ContainerCorner.CornerRadius = UDim.new(0, 12)
+    ContainerCorner.Parent = Container
+    
+    local Border = Instance.new("Frame")
+    Border.Size = UDim2.new(1, 0, 1, 0)
+    Border.BackgroundTransparency = 1
+    Border.BorderSizePixel = 1
+    Border.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    Border.Parent = Container
+    local BorderCorner = Instance.new("UICorner")
+    BorderCorner.CornerRadius = UDim.new(0, 12)
+    BorderCorner.Parent = Border
+    
+    local Accent = Instance.new("Frame")
+    Accent.Name = "Accent"
+    Accent.Size = UDim2.new(0, 4, 1, -4)
+    Accent.Position = UDim2.new(0, 2, 0, 2)
+    Accent.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    Accent.BorderSizePixel = 0
+    Accent.Parent = Container
+    local AccentCorner = Instance.new("UICorner")
+    AccentCorner.CornerRadius = UDim.new(0, 4)
+    AccentCorner.Parent = Accent
+    
+    local NameLabel = Instance.new("TextLabel")
+    NameLabel.Name = "Name"
+    NameLabel.Size = UDim2.new(1, -20, 0, 22)
+    NameLabel.Position = UDim2.new(0, 10, 0, 2)
+    NameLabel.BackgroundTransparency = 1
+    NameLabel.Text = player.Name
+    NameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    NameLabel.TextSize = 14
+    NameLabel.Font = Enum.Font.GothamBold
+    NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    NameLabel.TextYAlignment = Enum.TextYAlignment.Top
+    NameLabel.Parent = Container
+    
+    local TeamLabel = Instance.new("TextLabel")
+    TeamLabel.Name = "Team"
+    TeamLabel.Size = UDim2.new(1, -20, 0, 16)
+    TeamLabel.Position = UDim2.new(0, 10, 0, 26)
+    TeamLabel.BackgroundTransparency = 1
+    TeamLabel.Text = ""
+    TeamLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    TeamLabel.TextSize = 11
+    TeamLabel.Font = Enum.Font.Gotham
+    TeamLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TeamLabel.TextYAlignment = Enum.TextYAlignment.Top
+    TeamLabel.Parent = Container
+    
+    local DistLabel = Instance.new("TextLabel")
+    DistLabel.Name = "Distance"
+    DistLabel.Size = UDim2.new(1, -20, 0, 14)
+    DistLabel.Position = UDim2.new(0, 10, 0, 44)
+    DistLabel.BackgroundTransparency = 1
+    DistLabel.Text = "0m"
+    DistLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+    DistLabel.TextSize = 10
+    DistLabel.Font = Enum.Font.Gotham
+    DistLabel.TextXAlignment = Enum.TextXAlignment.Left
+    DistLabel.TextYAlignment = Enum.TextYAlignment.Top
+    DistLabel.Parent = Container
+    
+    return {
+        Tag = Tag,
+        Container = Container,
+        Accent = Accent,
+        NameLabel = NameLabel,
+        TeamLabel = TeamLabel,
+        DistLabel = DistLabel,
+        Border = Border
+    }
+end
+
+function Services.ESP:Update()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local char = self:GetCharacter(player)
+            if not self.ESPObjects[player] then
+                self.ESPObjects[player] = self:CreateModernTag(player)
+            end
+            
+            local esp = self.ESPObjects[player]
+            if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") then
+                local hrp = char.HumanoidRootPart
+                local head = char.Head
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                local distance = (hrp.Position - Camera.CFrame.Position).Magnitude
+                
+                if distance <= self.MaxDistance and humanoid and humanoid.Health > 0 then
+                    local team = player.Team
+                    local teamName = team and team.Name or "No Team"
+                    local accentColor
+                    local filterKey
+                    if teamName == "Criminals" then
+                        accentColor = Color3.fromRGB(255, 80, 80)
+                        filterKey = "Criminals"
+                    elseif teamName == "Prisoner" or teamName == "Inmates" then
+                        accentColor = Color3.fromRGB(255, 165, 0)
+                        filterKey = "Prisoners"
+                    elseif teamName == "Police" or teamName == "Guards" then
+                        accentColor = Color3.fromRGB(80, 150, 255)
+                        filterKey = "Guards"
+                    else
+                        accentColor = Color3.fromRGB(180, 180, 180)
+                        filterKey = "Neutrals"
+                    end
+                    
+                    if not self.Filters[filterKey] then
+                        esp.Tag.Parent = nil
+                        continue
+                    end
+                    
+                    esp.Tag.Adornee = head
+                    esp.Tag.Parent = ScreenGui
+                    esp.Accent.BackgroundColor3 = accentColor
+                    
+                    esp.NameLabel.Text = player.DisplayName ~= player.Name and player.DisplayName .. " (@" .. player.Name .. ")" or player.Name
+                    esp.TeamLabel.Text = teamName
+                    esp.DistLabel.Text = math.floor(distance) .. "m"
+                else
+                    esp.Tag.Parent = nil
+                end
+            else
+                esp.Tag.Parent = nil
+            end
+        end
+    end
+end
+
+function Services.ESP:Cleanup()
+    for player, obj in pairs(self.ESPObjects) do
+        if obj.Tag then obj.Tag:Destroy() end
+    end
+    self.ESPObjects = {}
+end
+
+-- ======================== GUN MODS ========================
+-- Prison Life reads gun stats from ReplicatedStorage.SharedModules.ToolProperties
+-- module scripts (NOT from tool attributes). require() returns the same cached
+-- table the game's GunController uses, so editing its fields changes the live gun.
+Services.GunMods.Cache = {}   -- module -> { key = originalValue }
+
+function Services.GunMods:GetPropsFolder()
+    local shared = ReplicatedStorage:FindFirstChild("SharedModules")
+    return shared and shared:FindFirstChild("ToolProperties")
+end
+
+function Services.GunMods:Apply()
+    local folder = self:GetPropsFolder()
+    if not folder then
+        StatusText.Text = "Gun mods: ToolProperties not found"
+        return
+    end
+    for _, mod in ipairs(folder:GetChildren()) do
+        if mod:IsA("ModuleScript") then
+            local ok, props = pcall(require, mod)
+            if ok and type(props) == "table" then
+                local cache = self.Cache[mod]
+                if not cache then cache = {}; self.Cache[mod] = cache end
+                for key, val in pairs(props) do
+                    if type(val) == "number" then
+                        local lk = tostring(key):lower()
+                        local want, newVal
+                        if lk:find("spread") or lk:find("recoil") or lk:find("kick") or lk:find("sway") then
+                            want = self.NoSpread; newVal = 0
+                        elseif lk:find("ammo") or lk:find("mag") or lk:find("clip") then
+                            want = self.InfiniteAmmo; newVal = 9999
+                        end
+                        if want ~= nil then
+                            if want then
+                                if cache[key] == nil then cache[key] = val end
+                                props[key] = newVal
+                            elseif cache[key] ~= nil then
+                                props[key] = cache[key]
+                                cache[key] = nil
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    StatusText.Text = "Gun mods updated (re-equip gun if needed)"
+end
+
+-- ======================== AIMBOT ========================
+local fovCircle = nil
+local tracerLine = nil
+
+local function updateAimbotVisuals()
+    if not Services.Aimbot.Enabled then
+        if fovCircle then fovCircle:Remove(); fovCircle = nil end
+    else
+        if not fovCircle then
+            fovCircle = Drawing.new("Circle")
+            fovCircle.Color = Color3.fromRGB(0, 255, 150)
+            fovCircle.Thickness = 1
+            fovCircle.Filled = false
+            fovCircle.Transparency = 0.5
+            fovCircle.Visible = true
+        end
+        fovCircle.Radius = Services.Aimbot.FOV
+        fovCircle.Position = UserInputService:GetMouseLocation()
+    end
+
+    if not Services.Aimbot.Enabled or not Services.Aimbot.LockedTarget then
+        if tracerLine then tracerLine:Remove(); tracerLine = nil end
+        return
+    end
+
+    local targetPart = Services.Aimbot.LockedTarget
+    local posTarget, onScreenTarget = Camera:WorldToViewportPoint(targetPart.Position)
+    if not onScreenTarget then
+        if tracerLine then tracerLine:Remove(); tracerLine = nil end
+        return
+    end
+
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        if tracerLine then tracerLine:Remove(); tracerLine = nil end
+        return
+    end
+    local posChar, onScreenChar = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 1, 0))
+    if not onScreenChar then
+        if tracerLine then tracerLine:Remove(); tracerLine = nil end
+        return
+    end
+
+    if not tracerLine then
+        tracerLine = Drawing.new("Line")
+        tracerLine.Thickness = 2
+        tracerLine.Color = Color3.fromRGB(110, 95, 210)
+        tracerLine.Visible = true
+    end
+    tracerLine.From = Vector2.new(posChar.X, posChar.Y)
+    tracerLine.To = Vector2.new(posTarget.X, posTarget.Y)
+end
+
+function Services.Aimbot:GetTarget()
+    local closest = nil
+    local closestDist = math.huge
+    local mousePos = UserInputService:GetMouseLocation()
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local char = Services.ESP:GetCharacter(player)
+            if char then
+                local targetPart = char:FindFirstChild("HumanoidRootPart")
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                if targetPart and humanoid and humanoid.Health > 0 then
+                    if self.TargetHostilesOnly then
+                        if not (player.Team and (player.Team.Name == "Criminals" or player.Team.Name == "Prisoner")) then
+                            continue
+                        end
+                    end
+                    
+                    local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                    if onScreen then
+                        local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+                        if dist < self.FOV and dist < closestDist then
+                            closestDist = dist
+                            closest = targetPart
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- ======================== MOVEMENT ========================
+-- Prison Life constantly re-enables collision, so noclip runs on its own
+-- RunService.Stepped loop (fires each physics frame, before simulation) and
+-- forces every character BasePart to CanCollide = false while enabled.
+Services.Movement.NoclipParts = {}
+
+function Services.Movement:EnableNoclip()
+    self.NoclipEnabled = true
+end
+
+function Services.Movement:DisableNoclip()
+    self.NoclipEnabled = false
+    for part in pairs(self.NoclipParts) do
+        if part and part.Parent then
+            part.CanCollide = true
+        end
+    end
+    self.NoclipParts = {}
+end
+
+-- Persistent noclip driver. Bound to BOTH Stepped (before physics) and
+-- Heartbeat (after physics) so Prison Life's CharacterCollision script can
+-- never re-enable collision between our passes.
+local function noclipStep()
+    if not Services.Movement.NoclipEnabled then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.CanCollide then
+            Services.Movement.NoclipParts[part] = true
+            part.CanCollide = false
+        end
+    end
+end
+RunService.Stepped:Connect(noclipStep)
+RunService.Heartbeat:Connect(noclipStep)
+
+function Services.Movement:Fly()
+    if not self.FlyEnabled then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local cameraCF = Camera.CFrame
+    local moveDir = Vector3.new(0, 0, 0)
+    
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cameraCF.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cameraCF.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cameraCF.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cameraCF.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+    
+    if moveDir.Magnitude > 0 then
+        moveDir = moveDir.Unit * (self.FlySpeed * 0.016)
+        hrp.CFrame = CFrame.new(hrp.Position + moveDir)
+        hrp.Velocity = Vector3.new(0, 0, 0)
+    else
+        hrp.Velocity = Vector3.new(0, 0, 0)
+    end
+end
+
+function Services.Movement:VehicleFly()
+    if not self.VehicleFlyEnabled then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local seat = char:FindFirstChildOfClass("VehicleSeat") or char:FindFirstChildOfClass("Seat")
+    if not seat then return end
+    local vehicle = seat.Parent
+    if not vehicle then return end
+    
+    local primaryPart = vehicle.PrimaryPart
+    if not primaryPart then primaryPart = seat end
+    if not primaryPart then return end
+
+    local cameraCF = Camera.CFrame
+    local moveDir = Vector3.new(0, 0, 0)
+    
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cameraCF.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cameraCF.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cameraCF.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cameraCF.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+    
+    if moveDir.Magnitude > 0 then
+        moveDir = moveDir.Unit * (self.VehicleFlySpeed * 0.016)
+        primaryPart.CFrame = CFrame.new(primaryPart.Position + moveDir)
+        primaryPart.Velocity = Vector3.new(0, 0, 0)
+    else
+        primaryPart.Velocity = Vector3.new(0, 0, 0)
+    end
+end
+
+-- ======================== GUN GRABBER ========================
+function Services.GunGrabber:GrabGun(gunName, button)
+    local now = tick()
+    if now - actionCooldown < cooldownDuration then
+        local remaining = math.ceil(cooldownDuration - (now - actionCooldown))
+        if button then
+            button.Text = "Wait " .. remaining .. "s"
+            task.spawn(function()
+                while now - actionCooldown < cooldownDuration do
+                    task.wait(1)
+                    local rem = math.ceil(cooldownDuration - (tick() - actionCooldown))
+                    if rem > 0 then
+                        button.Text = "Wait " .. rem .. "s"
+                    else
+                        button.Text = "GRAB " .. gunName
+                    end
+                end
+                button.Text = "GRAB " .. gunName
+            end)
+        end
+        return
+    end
+    
+    actionCooldown = now
+    local char = LocalPlayer.Character
+    if not char then StatusText.Text = "Error: No character"; return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then StatusText.Text = "Error: No HRP"; return end
+    
+    local buttonCF = GunButtons[gunName]
+    if not buttonCF then StatusText.Text = "Error: Invalid gun"; return end
+    
+    local originalCF = hrp.CFrame
+    StatusText.Text = "Grabbing " .. gunName .. "..."
+    
+    hrp.CFrame = buttonCF + Vector3.new(0, 3, 0)
+    task.wait(0.1)
+    
+    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("ClickDetector") or obj:IsA("ProximityPrompt") then
+            local dist = (obj.Parent.Position - buttonCF.Position).Magnitude
+            if dist < 10 then
+                if obj:IsA("ClickDetector") then fireclickdetector(obj)
+                elseif obj:IsA("ProximityPrompt") then fireproximityprompt(obj) end
+            end
+        end
+    end
+    
+    task.wait(0.3)
+    hrp.CFrame = originalCF
+    StatusText.Text = "Grabbed " .. gunName .. "!"
+end
+
+-- ======================== TELEPORT FUNCTIONS ========================
+function Services.Teleport:ToLocation(locationName, button)
+    local now = tick()
+    if now - actionCooldown < cooldownDuration then
+        local remaining = math.ceil(cooldownDuration - (now - actionCooldown))
+        if button then
+            button.Text = "Wait " .. remaining .. "s"
+            task.spawn(function()
+                while now - actionCooldown < cooldownDuration do
+                    task.wait(1)
+                    local rem = math.ceil(cooldownDuration - (tick() - actionCooldown))
+                    if rem > 0 then
+                        button.Text = "Wait " .. rem .. "s"
+                    else
+                        button.Text = "Teleport to " .. locationName:gsub("(.)", string.upper, 1)
+                    end
+                end
+                button.Text = "Teleport to " .. locationName:gsub("(.)", string.upper, 1)
+            end)
+        end
+        return
+    end
+    
+    actionCooldown = now
+    local char = LocalPlayer.Character
+    if not char then StatusText.Text = "Error: No character"; return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then StatusText.Text = "Error: No HRP"; return end
+    
+    local cf = Locations[locationName]
+    if cf then
+        hrp.CFrame = cf
+        StatusText.Text = "Teleported to " .. locationName
+    end
+end
+
+function Services.Teleport:ToPlayer(player, button)
+    local now = tick()
+    if now - actionCooldown < cooldownDuration then
+        local remaining = math.ceil(cooldownDuration - (now - actionCooldown))
+        if button then
+            button.Text = "Wait " .. remaining .. "s"
+            task.spawn(function()
+                while now - actionCooldown < cooldownDuration do
+                    task.wait(1)
+                    local rem = math.ceil(cooldownDuration - (tick() - actionCooldown))
+                    if rem > 0 then
+                        button.Text = "Wait " .. rem .. "s"
+                    else
+                        button.Text = player.Name .. " (" .. (player.Team and player.Team.Name or "No Team") .. ")"
+                    end
+                end
+                button.Text = player.Name .. " (" .. (player.Team and player.Team.Name or "No Team") .. ")"
+            end)
+        end
+        return
+    end
+    
+    actionCooldown = now
+    local char = LocalPlayer.Character
+    if not char then StatusText.Text = "Error: No character"; return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then StatusText.Text = "Error: No HRP"; return end
+    
+    local targetChar = player.Character
+    if not targetChar then StatusText.Text = "Player not in game"; return end
+    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then StatusText.Text = "Target has no HRP"; return end
+    
+    hrp.CFrame = targetHRP.CFrame + Vector3.new(0, 3, 0)
+    StatusText.Text = "Teleported to " .. player.Name
+end
+
+-- ======================== KEYBINDS ========================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.K then
+        MainFrame.Visible = not MainFrame.Visible
+    end
+    if input.KeyCode == Enum.KeyCode.X then
+        if aimbotToggleUpdate then
+            local newState = not Services.Aimbot.Enabled
+            aimbotToggleUpdate(newState)
+        end
+    end
+end)
+
+
+-- ======================== GROUND SPOOF (always on) ========================
+-- Makes the game treat us as standing on solid ground at all times: blocks fall
+-- damage and the "in air" anti-exploit flags while flying / noclipping.
+local function applyGroundSpoof(char)
+    local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
+    if not hum then return end
+    pcall(function()
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    end)
+    hum.StateChanged:Connect(function(_, new)
+        if new == Enum.HumanoidStateType.Freefall
+        or new == Enum.HumanoidStateType.FallingDown
+        or new == Enum.HumanoidStateType.Ragdoll then
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+        end
+    end)
+end
+
+if LocalPlayer.Character then applyGroundSpoof(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(applyGroundSpoof)
+
+-- ======================== MAIN LOOP ========================
+RunService.RenderStepped:Connect(function()
+    -- ESP
+    if Services.ESP.Enabled then Services.ESP:Update() end
+    
+    -- Aimbot
+    if Services.Aimbot.Enabled then
+        if Services.Aimbot.LockedTarget then
+            local targetPart = Services.Aimbot.LockedTarget
+            local char = targetPart and targetPart.Parent
+            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+            if not char or not humanoid or humanoid.Health <= 0 then
+                Services.Aimbot.LockedTarget = nil
+            else
+                local pos = Camera:WorldToViewportPoint(targetPart.Position)
+                local mousePos = UserInputService:GetMouseLocation()
+                local move = (Vector2.new(pos.X, pos.Y) - mousePos) * Services.Aimbot.Smoothness
+                mousemoverel(move.X, move.Y)
+            end
+        end
+        
+        if not Services.Aimbot.LockedTarget then
+            local target = Services.Aimbot:GetTarget()
+            if target then
+                Services.Aimbot.LockedTarget = target
+            end
+        end
+    end
+    
+    updateAimbotVisuals()
+    
+    -- Fly modes
+    Services.Movement:Fly()
+    Services.Movement:VehicleFly()
+    
+    -- Noclip
+    if Services.Movement.NoclipEnabled then
+        Services.Movement:EnableNoclip()
+    end
+    
+    -- Gun mods: the live Tool carries its stats as attributes
+    -- (FireRate, MaxAmmo, Spread, ...). Patch the equipped tool every frame.
+    if Services.GunMods.InfiniteAmmo or Services.GunMods.NoSpread then
+        local gchar = LocalPlayer.Character
+        local tool = gchar and gchar:FindFirstChildOfClass("Tool")
+        if tool then
+            for name, val in pairs(tool:GetAttributes()) do
+                local lk = tostring(name):lower()
+                if type(val) == "number" then
+                    if Services.GunMods.NoSpread and (lk:find("spread") or lk:find("recoil") or lk:find("kick")) then
+                        tool:SetAttribute(name, 0)
+                    elseif Services.GunMods.InfiniteAmmo and (lk:find("ammo") or lk:find("mag") or lk:find("clip")) then
+                        tool:SetAttribute(name, 9999)
+                    end
+                elseif type(val) == "boolean" and Services.GunMods.InfiniteAmmo and lk:find("reload") then
+                    tool:SetAttribute(name, false)  -- never stuck reloading
+                end
+            end
+        end
+    end
+
+    -- Ground spoof reinforcement: never let the humanoid sit in a falling state
+    local gchar = LocalPlayer.Character
+    if gchar then
+        local ghum = gchar:FindFirstChildOfClass("Humanoid")
+        if ghum then
+            local s = ghum:GetState()
+            if s == Enum.HumanoidStateType.Freefall or s == Enum.HumanoidStateType.FallingDown then
+                pcall(function() ghum:ChangeState(Enum.HumanoidStateType.Running) end)
+            end
+        end
+    end
+
+    -- Auto Safe / Never Die: at <=20 HP, hide in the safe zone until full HP, then return
+    if Services.AutoSafe.Enabled then
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hum and hrp and hum.Health > 0 then
+            if not Services.AutoSafe.Safe then
+                if hum.Health <= Services.AutoSafe.LowHP then
+                    Services.AutoSafe.ReturnCFrame = hrp.CFrame   -- remember where we were
+                    Services.AutoSafe.Safe = true
+                end
+            else
+                -- pin in the safe zone while healing
+                hrp.CFrame = SAFE_ZONE_CFRAME
+                hrp.Velocity = Vector3.new(0, 0, 0)
+                if hum.Health >= Services.AutoSafe.SafeHP then
+                    if Services.AutoSafe.ReturnCFrame then
+                        hrp.CFrame = Services.AutoSafe.ReturnCFrame
+                    end
+                    Services.AutoSafe.Safe = false
+                end
+            end
+        end
+        -- live status line under the toggle
+        if autoSafeStatusLabel then
+            local hp = hum and math.floor(hum.Health) or 0
+            if Services.AutoSafe.Safe then
+                autoSafeStatusLabel.Text = "IN SAFE ZONE - healing " .. hp .. "/" .. Services.AutoSafe.SafeHP .. " (TP Back to leave)"
+            else
+                autoSafeStatusLabel.Text = "Watching - HP " .. hp .. " (hides at " .. Services.AutoSafe.LowHP .. ")"
+            end
+        end
+    elseif autoSafeStatusLabel then
+        autoSafeStatusLabel.Text = "Auto Safe: off"
+    end
+end)
+
+-- ======================== CLEANUP ========================
+MainFrame.Destroying:Connect(function()
+    Services.ESP:Cleanup()
+    if fovCircle then fovCircle:Remove() end
+    if tracerLine then tracerLine:Remove() end
+end)
+
+print("Prison Life Suite v4 â€“ Fully working")
+StatusText.Text = "v4 | Press K for UI, X to toggle Aimbot"
